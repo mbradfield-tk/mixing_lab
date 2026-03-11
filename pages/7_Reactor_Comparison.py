@@ -19,6 +19,9 @@ from utils.calculations import (
     compute_reactor_hydro, compute_damkohler_numbers,
     settling_velocity, particle_reynolds, zwietering_njs,
     solid_liquid_mass_transfer, particle_suspension_criterion,
+    reaction_rate_mol_per_s, heat_generation_rate,
+    estimate_jacket_area, estimate_U, heat_removal_capacity,
+    heat_balance_assessment,
 )
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
@@ -86,10 +89,15 @@ with col2:
         rxn_name = st.selectbox("Reaction (for Da numbers)", reactions["reaction_name"].tolist(), key="cmp_rxn")
         rxn = reactions[reactions["reaction_name"] == rxn_name].iloc[0]
         t_rxn = float(rxn["t_rxn_s"])
+        rxn_k = float(rxn["k_value"])
+        rxn_C0 = float(rxn["C0_mol_L"])
+        rxn_order = str(rxn.get("order", "1"))
+        rxn_T_C = _safe_float(rxn.get("T_C"), 25.0)
+        rxn_delta_H = _safe_float(rxn.get("delta_H_kJ_mol"), 0.0)
         if t_rxn <= 0:
-            k = float(rxn["k_value"])
-            C0 = float(rxn["C0_mol_L"])
-            order = str(rxn.get("order", "1"))
+            k = rxn_k
+            C0 = rxn_C0
+            order = rxn_order
             if order in ("1", "pseudo-1") and k > 0:
                 t_rxn = np.log(2) / k
             elif order in ("2", "pseudo-2") and k * C0 > 0:
@@ -98,6 +106,7 @@ with col2:
                 t_rxn = 1.0
     else:
         t_rxn = 1.0
+        rxn_k, rxn_C0, rxn_order, rxn_T_C, rxn_delta_H = 0.0, 0.0, "1", 25.0, 0.0
 
 col3, col4 = st.columns(2)
 with col3:
@@ -129,6 +138,22 @@ if include_particles and not particles_db.empty:
                                     max_value=20.0, format="%.1f", key="cmp_Szw")
 elif include_particles and particles_db.empty:
     st.warning("Particle database is empty.")
+
+# ── Heat balance options ──────────────────────────────────────────────────────
+include_heat = st.checkbox("Include heat balance", value=False, key="cmp_include_heat")
+cmp_T_coolant = rxn_T_C - 20.0  # default 20 °C below reaction temp
+if include_heat:
+    hcol1, hcol2 = st.columns(2)
+    with hcol1:
+        cmp_T_coolant = st.number_input(
+            "Coolant temperature (°C)", value=rxn_T_C - 20.0,
+            format="%.1f", key="cmp_T_cool",
+            help="Jacket coolant inlet temperature")
+    with hcol2:
+        st.markdown(f"**Reaction:** ΔH = {rxn_delta_H:.0f} kJ/mol, "
+                    f"T = {rxn_T_C:.0f} °C, ΔT = {rxn_T_C - cmp_T_coolant:.1f} °C")
+    if rxn_delta_H == 0:
+        st.info("Selected reaction has no enthalpy value – add ΔH in the Reaction Database.")
 
 
 # ── Compute 4 corners per reactor ────────────────────────────────────────
@@ -199,6 +224,16 @@ for rname in selected_names:
         rpm_max=rpm_max,
     )
 
+    # Heat-transfer geometry for this reactor
+    _r_material = str(r.get("material", ""))
+    _r_bottom_dish = str(r.get("bottom_dish", ""))
+    _r_U_override = _safe_float(r.get("U_W_m2K"), 0.0)
+    _r_A_override = _safe_float(r.get("A_ht_m2"), 0.0)
+    reactor_info[rname]["material"] = _r_material
+    reactor_info[rname]["bottom_dish"] = _r_bottom_dish
+    reactor_info[rname]["U_override"] = _r_U_override
+    reactor_info[rname]["A_override"] = _r_A_override
+
     corners = [
         ("min RPM / max V", N_lo, V_max_L),
         ("max RPM / max V", N_hi, V_max_L),
@@ -237,6 +272,22 @@ for rname in selected_names:
                 "Re_p": _rep,
                 "k_SL (m/s)": _ksl,
             }
+        # Heat balance parameters (if enabled)
+        heat_vals = {}
+        if include_heat and rxn_delta_H != 0:
+            _r_mol_s = reaction_rate_mol_per_s(rxn_order, rxn_k, rxn_C0, V_L)
+            _Q_gen = heat_generation_rate(rxn_delta_H, _r_mol_s)
+            _A_ht = _r_A_override if _r_A_override > 0 else estimate_jacket_area(D_tank_v, H_v, _r_bottom_dish)
+            _U_ht = _r_U_override if _r_U_override > 0 else estimate_U(_r_material, N)
+            _dT = rxn_T_C - cmp_T_coolant
+            _Q_cool = heat_removal_capacity(_U_ht, _A_ht, _dT)
+            heat_vals = {
+                "Q_gen (W)": _Q_gen,
+                "Q_cool (W)": _Q_cool,
+                "U (W/m²·K)": _U_ht,
+                "A_ht (m²)": _A_ht,
+                "Q_gen/Q_cool": _Q_gen / _Q_cool if _Q_cool > 0 else np.inf,
+            }
         envelope_rows.append({
             "Reactor": rname,
             "Scale": scale,
@@ -248,6 +299,7 @@ for rname in selected_names:
             **h,
             **da,
             **part_vals,
+            **heat_vals,
         })
 
 if skipped:
@@ -269,6 +321,9 @@ PLOT_PARAMS = [
     "Da_macro", "Da_micro", "Da_GL", "ε_max (W/kg)",
     "kLa (1/s)", "kLa_surface (1/s)",
 ]
+HEAT_PARAMS = ["Q_gen (W)", "Q_cool (W)", "U (W/m²·K)", "A_ht (m²)", "Q_gen/Q_cool"]
+if include_heat and rxn_delta_H != 0:
+    PLOT_PARAMS = PLOT_PARAMS + HEAT_PARAMS
 PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p", "k_SL (m/s)"]
 if include_particles and cmp_d50_um > 0:
     PLOT_PARAMS = PLOT_PARAMS + PARTICLE_PARAMS
@@ -317,6 +372,19 @@ for rname, info in reactor_info.items():
                 vals["v_t (m/s)"] = _vt
                 vals["Re_p"] = _rep
                 vals["k_SL (m/s)"] = _ksl
+            # Heat balance parameters in curve
+            if include_heat and rxn_delta_H != 0:
+                _r_mol_s = reaction_rate_mol_per_s(rxn_order, rxn_k, rxn_C0, V_L)
+                _Q_gen = heat_generation_rate(rxn_delta_H, _r_mol_s)
+                _A_ht = info["A_override"] if info["A_override"] > 0 else estimate_jacket_area(info["D_tank"], H_v, info["bottom_dish"])
+                _U_ht = info["U_override"] if info["U_override"] > 0 else estimate_U(info["material"], N)
+                _dT = rxn_T_C - cmp_T_coolant
+                _Q_cool = heat_removal_capacity(_U_ht, _A_ht, _dT)
+                vals["Q_gen (W)"] = _Q_gen
+                vals["Q_cool (W)"] = _Q_cool
+                vals["U (W/m²·K)"] = _U_ht
+                vals["A_ht (m²)"] = _A_ht
+                vals["Q_gen/Q_cool"] = _Q_gen / _Q_cool if _Q_cool > 0 else np.inf
             for p in PLOT_PARAMS:
                 param_arrs[p][j] = vals.get(p, np.nan)
         curves[vol_key] = param_arrs
@@ -351,6 +419,8 @@ with st.expander("Full 4-corner detail table", expanded=False):
                    "Da_macro", "Da_micro", "Da_GL"]
     if include_particles and cmp_d50_um > 0:
         detail_cols += PARTICLE_PARAMS
+    if include_heat and rxn_delta_H != 0:
+        detail_cols += HEAT_PARAMS
     # Only include columns that exist in the dataframe
     detail_cols = [c for c in detail_cols if c in env_df.columns]
     fmt = {c: "{:.3g}" for c in detail_cols if c not in ("Reactor", "Corner")}
@@ -524,6 +594,20 @@ for param in params_to_plot:
             font=dict(size=11, color="red"), showarrow=False,
         )
 
+    # Reference line for Q_gen/Q_cool = 1 (insufficient cooling)
+    if param == "Q_gen/Q_cool":
+        fig.add_shape(
+            type="line", x0=0, x1=1, y0=1.0, y1=1.0,
+            xref="paper", yref="y",
+            line=dict(color="red", width=1.5, dash="dash"),
+        )
+        fig.add_annotation(
+            x=1.0, xref="paper", xanchor="right",
+            y=1.0, yref="y", yanchor="bottom", yshift=2,
+            text="Q_gen/Q_cool = 1 (cooling limit)",
+            font=dict(size=11, color="red"), showarrow=False,
+        )
+
     fig.update_layout(
         title=param,
         xaxis_title="Stir speed (% of vessel max RPM)",
@@ -561,6 +645,66 @@ spanning its RPM range (as % of max) on the x-axis.
 
 Overlapping shaded regions indicate where two reactors can achieve similar parameter values.
 """)
+
+# ── Heat Balance Summary ─────────────────────────────────────────────────
+if include_heat and rxn_delta_H != 0:
+    st.header("🌡️ Heat Balance Summary")
+    st.caption(
+        f"Reaction: **{rxn_name if not reactions.empty else 'N/A'}** | "
+        f"ΔH = {rxn_delta_H:.0f} kJ/mol | "
+        f"T_rxn = {rxn_T_C:.0f} °C | T_coolant = {cmp_T_coolant:.0f} °C | "
+        f"ΔT = {rxn_T_C - cmp_T_coolant:.1f} °C"
+    )
+
+    # Build summary table: one row per reactor at max-RPM / max-V corner
+    heat_summary_rows = []
+    for rname in reactor_info:
+        corners = env_df[(env_df["Reactor"] == rname) & (env_df["Corner"] == "max RPM / max V")]
+        if corners.empty:
+            continue
+        c = corners.iloc[0]
+        Q_gen = c.get("Q_gen (W)", 0)
+        Q_cool = c.get("Q_cool (W)", 0)
+        U_val = c.get("U (W/m²·K)", 0)
+        A_val = c.get("A_ht (m²)", 0)
+        ratio = Q_gen / Q_cool if Q_cool > 0 else np.inf
+        heat_summary_rows.append({
+            "Reactor": rname,
+            "Volume (L)": c["V_L"],
+            "U (W/m²·K)": f"{U_val:.0f}",
+            "A (m²)": f"{A_val:.3f}",
+            "Q_gen (W)": f"{Q_gen:.1f}",
+            "Q_cool (W)": f"{Q_cool:.1f}",
+            "Q_gen / Q_cool": f"{ratio:.2f}" if ratio < 100 else "∞",
+            "Assessment": heat_balance_assessment(Q_gen, Q_cool),
+        })
+
+    if heat_summary_rows:
+        st.dataframe(pd.DataFrame(heat_summary_rows), width="stretch", hide_index=True)
+
+    # Bar chart: Q_gen vs Q_cool per reactor
+    if heat_summary_rows:
+        fig_heat = go.Figure()
+        r_names = [r["Reactor"] for r in heat_summary_rows]
+        q_gen_vals = [float(r["Q_gen (W)"]) for r in heat_summary_rows]
+        q_cool_vals = [float(r["Q_cool (W)"]) for r in heat_summary_rows]
+
+        fig_heat.add_trace(go.Bar(
+            name="Q_gen (W)", x=r_names, y=q_gen_vals,
+            marker_color="firebrick",
+        ))
+        fig_heat.add_trace(go.Bar(
+            name="Q_cool (W)", x=r_names, y=q_cool_vals,
+            marker_color="steelblue",
+        ))
+        fig_heat.update_layout(
+            title="Heat Generation vs Cooling Capacity (max RPM / max Volume)",
+            yaxis_title="Power (W)",
+            barmode="group",
+            height=450,
+            margin=dict(t=50, b=50),
+        )
+        st.plotly_chart(fig_heat, width="stretch")
 
 # ── Scale-up summary ─────────────────────────────────────────────────────
 st.header("Scale-Up Impact Summary")

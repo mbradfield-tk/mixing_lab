@@ -552,3 +552,140 @@ def compute_damkohler_numbers(t_blend, t_micro, t_rxn,
         "Da_GL": Da_gl,
         "Assessment": assessment,
     }
+
+
+# ---------------------------------------------------------------------------
+# Heat generation & heat transfer
+# ---------------------------------------------------------------------------
+
+def reaction_rate_mol_per_s(order: str, k: float, C0: float,
+                            V_L: float) -> float:
+    """Instantaneous molar reaction rate (mol/s) at initial concentration.
+
+    Parameters
+    ----------
+    order : str   – kinetic order ('1', 'pseudo-1', '2', 'pseudo-2')
+    k     : float – rate constant (units consistent with order)
+    C0    : float – initial concentration (mol/L)
+    V_L   : float – liquid volume (litres)
+
+    Returns
+    -------
+    r_total : float – total molar rate of consumption (mol/s)
+    """
+    if k <= 0 or C0 <= 0 or V_L <= 0:
+        return 0.0
+    if order in ("1", "pseudo-1"):
+        r = k * C0  # mol/(L·s)
+    elif order in ("2", "pseudo-2"):
+        r = k * C0**2  # mol/(L·s)
+    else:
+        return 0.0
+    return r * V_L  # mol/s  (r is per litre)
+
+
+def heat_generation_rate(delta_H_kJ_mol: float, r_mol_per_s: float) -> float:
+    """Rate of heat generation (W) from reaction.
+
+    Q_rxn = |ΔH_rxn| × r
+
+    Parameters
+    ----------
+    delta_H_kJ_mol : float – enthalpy of reaction (kJ/mol), negative = exothermic
+    r_mol_per_s    : float – molar reaction rate (mol/s)
+
+    Returns  Q_gen in Watts (positive = heat released).
+    """
+    return abs(delta_H_kJ_mol) * 1000.0 * r_mol_per_s  # kJ→J
+
+
+def estimate_jacket_area(D_tank: float, H: float,
+                         bottom_dish: str = "") -> float:
+    """Estimate jacketed heat-transfer area (m²) from vessel geometry.
+
+    Includes cylindrical wall + bottom dish.  The bottom dish area is
+    approximated as:
+      - 2:1 Elliptical:  A_dish ≈ 1.09 × π/4 × D²
+      - Torispherical:   A_dish ≈ 1.06 × π/4 × D²
+      - Conical:         A_dish ≈ 1.20 × π/4 × D²  (approx 60° cone)
+      - Default:         A_dish ≈ π/4 × D²  (flat bottom)
+    """
+    if D_tank <= 0 or H <= 0:
+        return 0.0
+    A_cyl = np.pi * D_tank * H  # cylindrical wall
+    A_flat = np.pi / 4 * D_tank**2
+    dish = str(bottom_dish).lower() if bottom_dish else ""
+    if "ellip" in dish:
+        A_bottom = 1.09 * A_flat
+    elif "torisph" in dish or "din" in dish:
+        A_bottom = 1.06 * A_flat
+    elif "conic" in dish:
+        A_bottom = 1.20 * A_flat
+    else:
+        A_bottom = A_flat
+    return A_cyl + A_bottom
+
+
+def estimate_U(material: str = "", N_rps: float = 0.0) -> float:
+    """Estimate overall heat-transfer coefficient U (W/m²·K).
+
+    Typical ranges for jacketed stirred tanks:
+      - Glass-lined:  100 – 250 W/m²·K
+      - Stainless steel / Hastelloy: 200 – 500 W/m²·K
+      - Carbon steel: 150 – 350 W/m²·K
+
+    Returns a mid-range estimate based on wall material.  When agitation
+    speed is provided, a simple correction nudges U toward the higher end
+    of the range (better internal h_i at higher RPM).
+    """
+    mat = str(material).lower() if material else ""
+    if "glass" in mat:
+        U_lo, U_hi = 100.0, 250.0
+    elif "hastel" in mat:
+        U_lo, U_hi = 200.0, 450.0
+    elif "carbon" in mat:
+        U_lo, U_hi = 150.0, 350.0
+    else:
+        # Default to stainless steel range
+        U_lo, U_hi = 200.0, 500.0
+    # Simple agitation boost: interpolate from lo→hi as RPM ramps up
+    # Assume "typical" max is ~3 rps; above that stays at U_hi
+    frac = min(N_rps / 3.0, 1.0) if N_rps > 0 else 0.5
+    return U_lo + frac * (U_hi - U_lo)
+
+
+def heat_removal_capacity(U: float, A: float, dT: float) -> float:
+    """Maximum steady-state heat-removal rate (W) through the jacket.
+
+    Q_cool = U × A × ΔT
+
+    Parameters
+    ----------
+    U  : float – overall heat-transfer coefficient (W/m²·K)
+    A  : float – heat-transfer area (m²)
+    dT : float – temperature driving force T_rxn − T_coolant (K or °C)
+
+    Returns  Q_cool in Watts.
+    """
+    if U <= 0 or A <= 0 or dT <= 0:
+        return 0.0
+    return U * A * dT
+
+
+def heat_balance_assessment(Q_gen: float, Q_cool: float) -> str:
+    """Qualitative assessment comparing heat generation to cooling capacity."""
+    if Q_gen <= 0:
+        return "No heat generation"
+    if Q_cool <= 0:
+        return "⚠️ No cooling capacity estimated"
+    ratio = Q_gen / Q_cool
+    if ratio < 0.25:
+        return f"Easily manageable (Q_gen/Q_cool = {ratio:.2f})"
+    elif ratio < 0.5:
+        return f"Comfortable margin (Q_gen/Q_cool = {ratio:.2f})"
+    elif ratio < 0.75:
+        return f"Moderate – monitor closely (Q_gen/Q_cool = {ratio:.2f})"
+    elif ratio < 1.0:
+        return f"⚠️ Tight – limited safety margin (Q_gen/Q_cool = {ratio:.2f})"
+    else:
+        return f"🔴 Insufficient cooling (Q_gen/Q_cool = {ratio:.2f})"

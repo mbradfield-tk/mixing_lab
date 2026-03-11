@@ -16,7 +16,7 @@ def _load_reactions() -> pd.DataFrame:
         return pd.read_csv(REACTION_CSV)
     return pd.DataFrame(columns=[
         "reaction_name", "type", "order", "k_value", "k_units",
-        "C0_mol_L", "t_rxn_s", "T_C", "solvent", "notes",
+        "C0_mol_L", "t_rxn_s", "T_C", "solvent", "delta_H_kJ_mol", "notes",
     ])
 
 
@@ -71,7 +71,12 @@ with tab_add:
                                      help="Leave 0 to auto-compute from k and C₀")
             T = st.number_input("Temperature (°C)", value=25.0)
             solvent = st.text_input("Solvent", "THF")
-        notes = st.text_area("Notes")
+        c4, c5 = st.columns(2)
+        with c4:
+            delta_H = st.number_input("ΔH_rxn (kJ/mol)", value=0.0, format="%.1f",
+                                       help="Heat of reaction (negative = exothermic)")
+        with c5:
+            notes = st.text_area("Notes")
         submitted = st.form_submit_button("Add reaction")
 
         if submitted and name:
@@ -86,7 +91,8 @@ with tab_add:
             new = pd.DataFrame([{
                 "reaction_name": name, "type": rxn_type, "order": order,
                 "k_value": k_val, "k_units": k_units, "C0_mol_L": C0,
-                "t_rxn_s": t_rxn, "T_C": T, "solvent": solvent, "notes": notes,
+                "t_rxn_s": t_rxn, "T_C": T, "solvent": solvent,
+                "delta_H_kJ_mol": delta_H, "notes": notes,
             }])
             st.session_state.reaction_db = pd.concat(
                 [st.session_state.reaction_db, new], ignore_index=True)
