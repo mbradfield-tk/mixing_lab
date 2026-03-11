@@ -1,0 +1,25 @@
+particle_name,rho_p_kg_m3,d10_um,d50_um,d90_um,shape_description,shape_factor,notes
+Glass beads (100 µm),2500,70,100,140,spherical,1.0,Ideal reference particle
+API crystal – needle,1400,10,50,120,needle,0.5,Typical needle-shaped pharmaceutical crystal
+API crystal – plate,1350,20,80,150,plate,0.7,Typical plate-shaped pharmaceutical crystal
+API crystal – equant,1300,30,75,130,equant,0.85,Roughly isometric crystal habit
+Sand (fine),2650,50,150,300,irregular,0.75,Fine sand reference
+Lactose monohydrate,1540,15,60,180,irregular,0.7,Common pharma excipient
+Microcrystalline cellulose,1560,20,50,100,fibrous,0.6,MCC (e.g. Avicel PH-101)
+Calcium carbonate,2710,5,30,80,rhombohedral,0.8,CaCO3 precipitate
+Pd/C (5 wt%),1800,10,30,60,irregular,0.7,Palladium on carbon; hydrogenation catalyst
+Pd/C (10 wt%),2000,10,30,60,irregular,0.7,Palladium on carbon; higher loading
+Pt/C (5 wt%),1900,10,30,60,irregular,0.7,Platinum on carbon; hydrogenation catalyst
+Raney nickel,6900,15,40,80,irregular,0.65,Skeletal Ni catalyst; pyrophoric when dry
+Magnesium turnings,1740,200,1000,3000,irregular,0.4,Mg turnings for Grignard reactions
+Magnesium powder,1740,30,75,200,irregular,0.7,Mg powder for Grignard / Rieke chemistry
+Zinc dust,7130,5,20,50,spherical,0.85,Zn dust; Reformatsky / Negishi reactions
+Iron powder,7870,20,50,100,irregular,0.75,Fe powder; reductions / coupling reactions
+Copper(I) iodide,5670,5,15,40,irregular,0.7,CuI; Ullmann / Buchwald coupling catalyst
+Pd(OH)2/C (Pearlman),1900,10,30,60,irregular,0.7,Pearlman's catalyst; debenzylation
+Activated carbon,500,15,40,100,irregular,0.6,Charcoal for decolorisation / adsorption
+Celite (diatomaceous earth),450,10,30,80,irregular,0.65,Filter aid; catalyst support
+Alumina (Al2O3),3950,20,50,120,irregular,0.75,Catalyst support; chromatography
+Silica gel,2200,30,60,150,spherical,0.9,Catalyst support; chromatography
+Sodium borohydride,1070,50,150,400,irregular,0.7,NaBH4; solid reductant (partially soluble)
+Potassium carbonate,2430,50,200,500,irregular,0.7,K2CO3; solid base catalyst

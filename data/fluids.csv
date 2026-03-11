@@ -1,0 +1,19 @@
+fluid_name,rho_kg_m3,mu_Pa_s,D_mol_m2_s,surface_tension_N_m,notes
+Water (25 °C),997.0,0.00089,2.3e-09,0.072,Standard aqueous
+Methanol (25 °C),787.0,0.00054,1.6e-09,0.022,Common organic solvent
+THF (25 °C),889.0,0.00046,2e-09,0.027,Tetrahydrofuran – widely used
+DCM (25 °C),1326.0,0.00041,2.1e-09,0.028,Dichloromethane
+Toluene (25 °C),867.0,0.00055,2e-09,0.028,Aromatic solvent
+DMF (25 °C),944.0,0.0008,1.5e-09,0.037,Dimethylformamide
+DMSO (25 °C),1100.0,0.002,9e-10,0.043,Dimethyl sulfoxide – viscous
+Acetonitrile (25 °C),786.0,0.00037,2.4e-09,0.029,Polar aprotic
+Ethanol (25 °C),789.0,0.00109,1.2e-09,0.022,Ethanol
+IPA (25 °C),786.0,0.002,1e-09,0.021,Isopropanol – moderately viscous
+Heptane (25 °C),684.0,0.00039,2.5e-09,0.02,Non-polar hydrocarbon
+Ethyl acetate (25 °C),902.0,0.00043,2.2e-09,0.024,Common extraction solvent
+Conc. H2SO4 (25 °C),1840.0,0.021,5e-10,0.055,Concentrated sulfuric acid – very viscous
+50 wt% Glycerol/Water (25 °C),1131.0,0.006,8e-10,0.069,Model viscous aqueous system
+Corn syrup solution,1380.0,5.0,1e-10,0.08,Highly viscous model fluid
+Water (30 °C),995.7,0.00080279,2.5926318823542438e-09,0.07125,Auto-generated from Water at 30.0 °C
+Methanol (30 °C),782.3,0.00050628,1.7480402989827246e-09,0.02192,Auto-generated from Methanol at 30.0 °C
+MEK (25 °C),800.0,0.000405,1.8e-09,0.0243,MEK (2-Butanone) from solvent correlations
