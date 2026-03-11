@@ -1,8 +1,6 @@
 """Page 2 – Reaction Database: browse, add, import/export reaction kinetics."""
 
 import streamlit as st
-from utils.sidebar import render_sidebar
-render_sidebar()
 
 import pandas as pd
 import pathlib
@@ -49,34 +47,75 @@ with tab_browse:
 
     edited = st.data_editor(df, num_rows="dynamic", width="stretch", key="rxn_editor")
 
-    if st.button("💾 Save changes", key="save_rxn"):
-        st.session_state.reaction_db = edited.copy()
-        _save_reactions(st.session_state.reaction_db)
-        st.success("Reaction database saved.")
+    btn_col1, btn_col2, _ = st.columns([1, 1, 4])
+    with btn_col1:
+        if st.button("💾 Save changes", key="save_rxn"):
+            st.session_state.reaction_db = edited.copy()
+            _save_reactions(st.session_state.reaction_db)
+            st.success("Reaction database saved.")
+    with btn_col2:
+        if st.button("🔄 Refresh", key="refresh_rxn"):
+            st.session_state.reaction_db = _load_reactions()
+            st.rerun()
 
 # ── Add Reaction ──────────────────────────────────────────────────────────
 with tab_add:
+    # Optional: pre-fill from an existing reaction
+    rxn_db = st.session_state.reaction_db
+    template_options = ["— blank —"] + rxn_db["reaction_name"].dropna().tolist()
+    template_choice = st.selectbox(
+        "Pre-fill from existing reaction",
+        template_options,
+        key="rxn_template_choice",
+        help="Select an existing reaction to populate the fields below, then adjust as needed.",
+    )
+    tpl: dict = {}
+    if template_choice != "— blank —":
+        tpl_row = rxn_db[rxn_db["reaction_name"] == template_choice]
+        if not tpl_row.empty:
+            tpl = tpl_row.iloc[0].to_dict()
+
+    def _tpl(col, default):
+        """Return template value for *col*, falling back to *default*."""
+        v = tpl.get(col, default)
+        if isinstance(v, float) and pd.isna(v):
+            return default
+        return v
+
     with st.form("add_rxn"):
         c1, c2, c3 = st.columns(3)
         with c1:
-            name = st.text_input("Reaction name *")
-            rxn_type = st.text_input("Type (e.g. Cross-coupling)", "")
-            order = st.selectbox("Kinetic order", ["1", "2", "pseudo-1", "pseudo-2", "n/a"])
+            name = st.text_input("Reaction name *",
+                                 value=f"{_tpl('reaction_name', '')} (copy)" if tpl else "")
+            rxn_type = st.text_input("Type (e.g. Cross-coupling)",
+                                     value=str(_tpl("type", "")))
+            order_options = ["1", "2", "pseudo-1", "pseudo-2", "n/a"]
+            tpl_order = str(_tpl("order", "1"))
+            order_idx = order_options.index(tpl_order) if tpl_order in order_options else 0
+            order = st.selectbox("Kinetic order", order_options, index=order_idx)
         with c2:
-            k_val = st.number_input("Rate constant k", min_value=0.0, value=0.01, format="%.6g")
-            k_units = st.text_input("k units", "1/s")
-            C0 = st.number_input("C₀ (mol/L)", min_value=0.0, value=0.1, format="%.4g")
+            k_val = st.number_input("Rate constant k", min_value=0.0,
+                                    value=float(_tpl("k_value", 0.01)), format="%.6g")
+            k_units = st.text_input("k units",
+                                    value=str(_tpl("k_units", "1/s")))
+            C0 = st.number_input("C₀ (mol/L)", min_value=0.0,
+                                 value=float(_tpl("C0_mol_L", 0.1)), format="%.4g")
         with c3:
-            t_rxn = st.number_input("Characteristic reaction time (s)", min_value=0.0, value=0.0, format="%.4g",
-                                     help="Leave 0 to auto-compute from k and C₀")
-            T = st.number_input("Temperature (°C)", value=25.0)
-            solvent = st.text_input("Solvent", "THF")
+            t_rxn = st.number_input("Characteristic reaction time (s)", min_value=0.0,
+                                    value=float(_tpl("t_rxn_s", 0.0)), format="%.4g",
+                                    help="Leave 0 to auto-compute from k and C₀")
+            T = st.number_input("Temperature (°C)",
+                                value=float(_tpl("T_C", 25.0)))
+            solvent = st.text_input("Solvent",
+                                    value=str(_tpl("solvent", "THF")))
         c4, c5 = st.columns(2)
         with c4:
-            delta_H = st.number_input("ΔH_rxn (kJ/mol)", value=0.0, format="%.1f",
-                                       help="Heat of reaction (negative = exothermic)")
+            delta_H = st.number_input("ΔH_rxn (kJ/mol)",
+                                      value=float(_tpl("delta_H_kJ_mol", 0.0)), format="%.1f",
+                                      help="Heat of reaction (negative = exothermic)")
         with c5:
-            notes = st.text_area("Notes")
+            notes = st.text_area("Notes",
+                                 value=str(_tpl("notes", "")))
         submitted = st.form_submit_button("Add reaction")
 
         if submitted and name:

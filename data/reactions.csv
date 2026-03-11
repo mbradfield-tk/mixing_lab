@@ -1,13 +1,14 @@
 reaction_name,type,order,k_value,k_units,C0_mol_L,t_rxn_s,T_C,solvent,delta_H_kJ_mol,notes
-Grignard addition,Nucleophilic addition,2,0.50,L/(mol·s),1.0,2.0,25,THF,-80,Typical Grignard – fast and exothermic
-Suzuki coupling,Cross-coupling,pseudo-1,0.005,1/s,0.10,139,80,DMF/H2O,-50,Pd-catalyzed; moderate rate at reflux
-Amide bond formation (EDC),Coupling,2,0.02,L/(mol·s),0.20,250,25,DCM,-30,Standard peptide coupling
-Buchwald–Hartwig amination,Cross-coupling,pseudo-1,0.002,1/s,0.05,347,100,Toluene,-45,Pd/ligand catalyzed C–N coupling
-Diazotization,Electrophilic,2,50.0,L/(mol·s),0.50,0.04,0,Water/HCl,-65,Very fast – highly mixing-sensitive
-Nitration (aromatic),Electrophilic substitution,2,5.0,L/(mol·s),2.0,0.10,5,H2SO4/HNO3,-150,Fast exothermic – mixing-sensitive
-Hydrogenation (Pd/C),Heterogeneous,pseudo-1,0.01,1/s,0.30,69,25,MeOH,-120,Gas–liquid–solid system
-Ester hydrolysis (base),Nucleophilic acyl sub.,2,0.10,L/(mol·s),0.50,20,25,Water/THF,-10,Moderate rate
-Curtius rearrangement,Rearrangement,1,0.001,1/s,0.20,693,80,Toluene,-60,Slow thermal rearrangement
-Aldol condensation,Addition,2,0.30,L/(mol·s),0.80,4.2,−20,THF,-25,Low-temp enolate chemistry
-Crystallization (anti-solvent),Phase change,n/a,0,n/a,0,5.0,25,Various,0,Mixing-sensitive nucleation event
-Bromination (electrophilic),Electrophilic addition,2,8.0,L/(mol·s),1.0,0.125,25,DCM,-100,Fast – selectivity depends on mixing
+Grignard addition,Nucleophilic addition,2,0.5,L/(mol·s),1.0,2.0,25,THF,-80.0,Typical Grignard – fast and exothermic
+Suzuki coupling,Cross-coupling,pseudo-1,0.005,1/s,0.1,139.0,80,DMF/H2O,-50.0,Pd-catalyzed; moderate rate at reflux
+Amide bond formation (EDC),Coupling,2,0.02,L/(mol·s),0.2,250.0,25,DCM,-30.0,Standard peptide coupling
+Buchwald–Hartwig amination,Cross-coupling,pseudo-1,0.002,1/s,0.05,347.0,100,Toluene,-45.0,Pd/ligand catalyzed C–N coupling
+Diazotization,Electrophilic,2,50.0,L/(mol·s),0.5,0.04,0,Water/HCl,-65.0,Very fast – highly mixing-sensitive
+Nitration (aromatic),Electrophilic substitution,2,5.0,L/(mol·s),2.0,0.1,5,H2SO4/HNO3,-150.0,Fast exothermic – mixing-sensitive
+Hydrogenation (Pd/C),Heterogeneous,pseudo-1,0.01,1/s,0.3,69.0,25,MeOH,-120.0,Gas–liquid–solid system
+Ester hydrolysis (base),Nucleophilic acyl sub.,2,0.1,L/(mol·s),0.5,20.0,25,Water/THF,-10.0,Moderate rate
+Curtius rearrangement,Rearrangement,1,0.001,1/s,0.2,693.0,80,Toluene,-60.0,Slow thermal rearrangement
+Aldol condensation,Addition,2,0.3,L/(mol·s),0.8,4.2,−20,THF,-25.0,Low-temp enolate chemistry
+Crystallization (anti-solvent),Phase change,,0.0,,0.0,5.0,25,Various,0.0,Mixing-sensitive nucleation event
+Bromination (electrophilic),Electrophilic addition,2,8.0,L/(mol·s),1.0,0.125,25,DCM,-100.0,Fast – selectivity depends on mixing
+Hydrogenation (Pd/C) TAK-279,Heterogeneous,pseudo-1,0.01,1/s,0.3,69.0,30,MeOH,-10.0,Gas–liquid–solid system

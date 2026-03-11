@@ -1,8 +1,6 @@
 """Page 1 – Reactor Database: browse, add, edit, import/export reactor geometries."""
 
 import streamlit as st
-from utils.sidebar import render_sidebar
-render_sidebar()
 
 import pandas as pd
 import pathlib

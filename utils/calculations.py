@@ -555,6 +555,92 @@ def compute_damkohler_numbers(t_blend, t_micro, t_rxn,
 
 
 # ---------------------------------------------------------------------------
+# Bottom-dish geometry helpers
+# ---------------------------------------------------------------------------
+
+def dish_geometry(D_tank: float, dish_type: str = "") -> tuple[float, float]:
+    """Return (V_dish_m3, h_dish_m) for a vessel bottom dish.
+
+    Supported dish types (case-insensitive substring match):
+      - **2:1 Elliptical** (default): h = D/4,  V = π D³ / 24
+      - **Torispherical / DIN Torispherical / Dished**: h ≈ 0.1935 D,
+        V ≈ 0.0847 D³  (ASME F&D approximation)
+      - **Conical**: assumes 45° half-angle from vertical,
+        h = D/2,  V = π D³ / 24
+
+    Parameters
+    ----------
+    D_tank    : float – internal tank diameter (m)
+    dish_type : str   – description from the reactor database
+
+    Returns
+    -------
+    (V_dish, h_dish) in (m³, m)
+    """
+    if D_tank <= 0:
+        return 0.0, 0.0
+
+    dish = str(dish_type).lower().strip() if dish_type else ""
+
+    if "conic" in dish:
+        # Standard conical bottom, 45° half-angle from vertical
+        h_dish = D_tank / 2
+        V_dish = np.pi / 12 * D_tank**2 * h_dish      # = π D³ / 24
+    elif "torisph" in dish or "din" in dish or "dished" in dish:
+        # ASME / DIN torispherical (flanged & dished) head
+        h_dish = 0.1935 * D_tank
+        V_dish = 0.0847 * D_tank**3
+    else:
+        # Default: 2:1 elliptical (most common in pharma vessels)
+        h_dish = D_tank / 4
+        V_dish = np.pi * D_tank**3 / 24
+
+    return V_dish, h_dish
+
+
+def liquid_height_from_volume(V_L_litres: float, D_tank: float,
+                              H_max: float, dish_type: str = "") -> float:
+    """Compute liquid height (m) from fill volume, accounting for bottom dish.
+
+    Logic:
+      1. Compute full dish volume ``V_dish`` and dish height ``h_dish``.
+      2. If the liquid volume exceeds the dish volume, the remainder
+         fills the cylindrical section above.
+      3. If the liquid sits entirely within the dish, linearly
+         interpolate height within the dish (exact for a cone;
+         approximate for elliptical/torispherical, but adequate
+         since reactors are rarely operated below the dish).
+
+    Parameters
+    ----------
+    V_L_litres : float – liquid volume (L)
+    D_tank     : float – internal diameter (m)
+    H_max      : float – maximum liquid height / tank straight-wall + dish (m)
+    dish_type  : str   – bottom dish description
+
+    Returns
+    -------
+    H : float – estimated liquid height (m)
+    """
+    if D_tank <= 0 or V_L_litres <= 0:
+        return 0.0
+
+    V_L_m3 = V_L_litres / 1000.0
+    V_dish, h_dish = dish_geometry(D_tank, dish_type)
+    A_cs = np.pi / 4 * D_tank**2  # cylindrical cross-section (m²)
+
+    if V_L_m3 <= V_dish and V_dish > 0:
+        # Liquid entirely within the dish – linear approximation
+        frac = V_L_m3 / V_dish
+        return frac * h_dish
+    else:
+        # Dish is full; remaining volume fills the cylinder
+        H_cyl = (V_L_m3 - V_dish) / A_cs if A_cs > 0 else 0.0
+        H_total = h_dish + H_cyl
+        return min(H_total, H_max) if H_max > 0 else H_total
+
+
+# ---------------------------------------------------------------------------
 # Heat generation & heat transfer
 # ---------------------------------------------------------------------------
 
@@ -601,29 +687,52 @@ def heat_generation_rate(delta_H_kJ_mol: float, r_mol_per_s: float) -> float:
 
 def estimate_jacket_area(D_tank: float, H: float,
                          bottom_dish: str = "") -> float:
-    """Estimate jacketed heat-transfer area (m²) from vessel geometry.
+    """Estimate jacketed heat-transfer area (m²) wetted by the liquid.
 
-    Includes cylindrical wall + bottom dish.  The bottom dish area is
-    approximated as:
-      - 2:1 Elliptical:  A_dish ≈ 1.09 × π/4 × D²
-      - Torispherical:   A_dish ≈ 1.06 × π/4 × D²
-      - Conical:         A_dish ≈ 1.20 × π/4 × D²  (approx 60° cone)
-      - Default:         A_dish ≈ π/4 × D²  (flat bottom)
+    Only the portion of the vessel wall in contact with liquid contributes.
+    The liquid height *H* (from :func:`liquid_height_from_volume`) is split
+    into a dish portion and a cylindrical portion:
+
+      * If ``H < h_dish``: only a fraction of the dish is wetted
+        (linear approximation), and no cylindrical wall is counted.
+      * If ``H ≥ h_dish``: the full dish area is wetted, plus cylindrical
+        wall for the height above the dish.
+
+    Dish surface-area approximations (full dish):
+      - 2:1 Elliptical (h = D/4):   A ≈ 1.09 × π/4 × D²
+      - Torispherical (h ≈ 0.194D): A ≈ 1.06 × π/4 × D²
+      - Conical (h = D/2, 45°):     A ≈ 1.20 × π/4 × D²
+      - Flat (h = 0):               A = π/4 × D²
     """
     if D_tank <= 0 or H <= 0:
         return 0.0
-    A_cyl = np.pi * D_tank * H  # cylindrical wall
+
     A_flat = np.pi / 4 * D_tank**2
     dish = str(bottom_dish).lower() if bottom_dish else ""
+
     if "ellip" in dish:
-        A_bottom = 1.09 * A_flat
+        h_dish = D_tank / 4
+        A_dish_full = 1.09 * A_flat
     elif "torisph" in dish or "din" in dish:
-        A_bottom = 1.06 * A_flat
+        h_dish = 0.1935 * D_tank
+        A_dish_full = 1.06 * A_flat
     elif "conic" in dish:
-        A_bottom = 1.20 * A_flat
+        h_dish = D_tank / 2
+        A_dish_full = 1.20 * A_flat
     else:
-        A_bottom = A_flat
-    return A_cyl + A_bottom
+        # Flat bottom: no dish height, full bottom always wetted
+        h_dish = 0.0
+        A_dish_full = A_flat
+
+    if h_dish > 0 and H < h_dish:
+        # Liquid partially fills the dish — approximate wetted area
+        frac = H / h_dish
+        return frac * A_dish_full
+    else:
+        # Full dish wetted + cylindrical wall above the dish
+        H_cyl = H - h_dish
+        A_cyl = np.pi * D_tank * H_cyl
+        return A_dish_full + A_cyl
 
 
 def estimate_U(material: str = "", N_rps: float = 0.0) -> float:
@@ -652,6 +761,225 @@ def estimate_U(material: str = "", N_rps: float = 0.0) -> float:
     # Assume "typical" max is ~3 rps; above that stays at U_hi
     frac = min(N_rps / 3.0, 1.0) if N_rps > 0 else 0.5
     return U_lo + frac * (U_hi - U_lo)
+
+
+# ---------------------------------------------------------------------------
+# Detailed U estimation – individual thermal resistances
+# ---------------------------------------------------------------------------
+
+# Thermal conductivity of common wall materials [W/(m·K)]
+WALL_CONDUCTIVITY: dict[str, float] = {
+    "stainless steel": 16.0,
+    "stainless": 16.0,
+    "ss316": 16.0,
+    "ss304": 16.0,
+    "hastelloy": 12.0,
+    "hastelloy c-276": 12.0,
+    "inconel": 15.0,
+    "carbon steel": 50.0,
+    "glass": 1.0,
+    "glass-lined": 1.0,
+    "titanium": 22.0,
+    "copper": 385.0,
+}
+
+# Thermal conductivity [W/(m·K)] and specific heat capacity [J/(kg·K)]
+# for common solvents at ~25 °C.  Used for Prandtl number estimation.
+SOLVENT_THERMAL: dict[str, tuple[float, float]] = {
+    # solvent_base_name: (k_fluid, Cp)
+    "water":           (0.607, 4182.0),
+    "methanol":        (0.200, 2530.0),
+    "ethanol":         (0.167, 2440.0),
+    "ipa":             (0.135, 2600.0),
+    "isopropanol":     (0.135, 2600.0),
+    "thf":             (0.120, 1720.0),
+    "tetrahydrofuran": (0.120, 1720.0),
+    "dcm":             (0.130, 1190.0),
+    "dichloromethane": (0.130, 1190.0),
+    "toluene":         (0.131, 1690.0),
+    "dmf":             (0.184, 2060.0),
+    "dimethylformamide": (0.184, 2060.0),
+    "dmso":            (0.200, 1960.0),
+    "acetonitrile":    (0.188, 2230.0),
+    "heptane":         (0.124, 2240.0),
+    "ethyl acetate":   (0.151, 1930.0),
+    "mek":             (0.145, 2140.0),
+    "acetone":         (0.161, 2160.0),
+    "glycerol":        (0.285, 2430.0),
+    "corn syrup":      (0.400, 3000.0),
+}
+
+# Typical jacket-side heat-transfer coefficients [W/(m²·K)]
+JACKET_HTC: dict[str, float] = {
+    "simple jacket":   1500.0,
+    "half-pipe coil":  2500.0,
+    "dimple jacket":   1200.0,
+}
+JACKET_HTC_DEFAULT = 1500.0  # simple jacket with water/glycol coolant
+
+# Default fouling resistance [m²·K/W]
+FOULING_DEFAULT = 0.0002  # moderate pharmaceutical process
+
+
+def _lookup_wall_k(material: str) -> float | None:
+    """Return wall thermal conductivity for the given material, or None."""
+    mat = str(material).lower().strip() if material else ""
+    for key, k in WALL_CONDUCTIVITY.items():
+        if key in mat or mat in key:
+            return k
+    return None
+
+
+def _lookup_solvent_thermal(fluid_name: str) -> tuple[float, float] | None:
+    """Return (k_fluid, Cp) for a fluid name, or None if not found.
+
+    Tries to match the base solvent name (stripping temperature tags
+    like '(25 °C)') against the lookup table.
+    """
+    import re
+    name = str(fluid_name).strip()
+    # Strip temperature / parenthetical tags:  "Water (30 °C)" → "Water"
+    base = re.sub(r"\s*\(.*?\)\s*$", "", name).strip().lower()
+    # Direct match
+    if base in SOLVENT_THERMAL:
+        return SOLVENT_THERMAL[base]
+    # Partial match (e.g. "50 wt% glycerol/water" → use water)
+    for key in SOLVENT_THERMAL:
+        if key in base:
+            return SOLVENT_THERMAL[key]
+    return None
+
+
+def estimate_U_detailed(
+    *,
+    N_rps: float,
+    D_imp: float,
+    D_tank: float,
+    rho: float,
+    mu: float,
+    material: str = "",
+    wall_thickness_mm: float = 0.0,
+    fluid_name: str = "",
+    Cp: float = 0.0,
+    k_fluid: float = 0.0,
+    jacket_htc: float = 0.0,
+    fouling: float = FOULING_DEFAULT,
+) -> tuple[float, list[str]]:
+    """Estimate U via individual resistances with Nusselt correlations.
+
+    1/U = 1/h_i  +  x_w/k_w  +  1/h_o  +  R_fouling
+
+    Process-side h_i  (stirred-vessel Nusselt correlation):
+        Nu = 0.36 · Re^(2/3) · Pr^(1/3) · (μ/μ_w)^0.14
+        h_i = Nu · k_fluid / D_tank
+
+    Utility-side h_o: user-supplied or typical jacket value.
+
+    Wall resistance: wall_thickness / k_wall.
+
+    Falls back to the simple ``estimate_U()`` when insufficient data
+    is available for the Nusselt approach.
+
+    Parameters
+    ----------
+    N_rps            : impeller speed (rev/s)
+    D_imp            : impeller diameter (m)
+    D_tank           : tank diameter (m)
+    rho              : fluid density (kg/m³)
+    mu               : dynamic viscosity (Pa·s)
+    material         : vessel wall material (for k_wall lookup)
+    wall_thickness_mm: wall thickness (mm); 0 = unknown
+    fluid_name       : fluid name for Cp/k lookup
+    Cp               : specific heat capacity (J/(kg·K)); 0 = auto-lookup
+    k_fluid          : thermal conductivity of fluid (W/(m·K)); 0 = auto-lookup
+    jacket_htc       : jacket-side coefficient (W/(m²·K)); 0 = use default
+    fouling          : fouling resistance (m²·K/W)
+
+    Returns
+    -------
+    (U, warnings) where U is in W/(m²·K) and warnings lists any
+    parameters that were assumed or missing.
+    """
+    warnings: list[str] = []
+
+    # -- Resolve fluid thermal properties ----------------------------------
+    if Cp <= 0 or k_fluid <= 0:
+        lookup = _lookup_solvent_thermal(fluid_name)
+        if lookup is not None:
+            if k_fluid <= 0:
+                k_fluid = lookup[0]
+            if Cp <= 0:
+                Cp = lookup[1]
+        else:
+            # Use water defaults as last resort
+            if k_fluid <= 0:
+                k_fluid = 0.607
+                warnings.append("k_fluid: using water default (0.61 W/m·K)")
+            if Cp <= 0:
+                Cp = 4182.0
+                warnings.append("Cp: using water default (4182 J/kg·K)")
+
+    # -- Can we compute process-side h_i? ----------------------------------
+    can_nusselt = (N_rps > 0 and D_imp > 0 and D_tank > 0
+                   and rho > 0 and mu > 0 and Cp > 0 and k_fluid > 0)
+
+    if not can_nusselt:
+        warnings.append("Insufficient data for Nusselt correlation – "
+                        "using simple material-based estimate")
+        return estimate_U(material, N_rps), warnings
+
+    # Impeller Reynolds number
+    Re = rho * N_rps * D_imp**2 / mu
+    # Prandtl number
+    Pr = Cp * mu / k_fluid
+
+    # Nusselt for jacketed stirred vessel (Seider-Tate / DIN 28131 form)
+    #   Nu = C · Re^(2/3) · Pr^(1/3) · (μ/μ_w)^0.14
+    # μ_w correction omitted (≈ 1 for moderate conditions)
+    C_Nu = 0.36  # typical for radial-flow turbines, baffled vessels
+    Nu = C_Nu * Re**(2.0/3.0) * Pr**(1.0/3.0)
+    h_i = Nu * k_fluid / D_tank  # W/(m²·K)
+
+    # -- Wall resistance ----------------------------------------------------
+    k_wall = _lookup_wall_k(material)
+    wall_m = wall_thickness_mm / 1000.0 if wall_thickness_mm > 0 else 0.0
+
+    R_wall = 0.0
+    if k_wall is not None and wall_m > 0:
+        R_wall = wall_m / k_wall
+    elif k_wall is not None and wall_m == 0:
+        warnings.append("Wall thickness unknown – wall resistance omitted")
+    elif wall_m > 0:
+        # Unknown material → assume stainless steel
+        k_wall = 16.0
+        R_wall = wall_m / k_wall
+        warnings.append(f"Wall material unknown – assumed SS (k={k_wall} W/m·K)")
+    else:
+        warnings.append("Wall thickness and material unknown – wall resistance omitted")
+
+    # For glass-lined vessels, add the glass lining resistance
+    mat_lower = str(material).lower() if material else ""
+    if "glass" in mat_lower:
+        # Typical glass lining ~1.5 mm, k_glass ≈ 1.0 W/(m·K)
+        glass_thickness = 0.0015  # m
+        k_glass = 1.0
+        R_glass = glass_thickness / k_glass
+        R_wall += R_glass
+        if wall_m == 0:
+            # Assume a steel shell behind the glass
+            R_wall += 0.010 / 16.0  # ~10 mm SS shell
+            warnings.append("Glass-lined: assumed 1.5 mm glass + 10 mm SS shell")
+
+    # -- Jacket-side h_o ---------------------------------------------------
+    h_o = jacket_htc if jacket_htc > 0 else JACKET_HTC_DEFAULT
+    if jacket_htc <= 0:
+        warnings.append(f"Jacket h_o: using typical value ({h_o:.0f} W/m²·K)")
+
+    # -- Assemble overall resistance ----------------------------------------
+    R_total = 1.0 / h_i + R_wall + 1.0 / h_o + fouling
+    U = 1.0 / R_total
+
+    return U, warnings
 
 
 def heat_removal_capacity(U: float, A: float, dT: float) -> float:

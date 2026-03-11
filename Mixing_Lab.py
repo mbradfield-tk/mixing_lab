@@ -1,7 +1,7 @@
 """
 Mixing Lab – Hydrodynamics & Mixing-Sensitivity Assessment Tool
 ================================================================
-Main entry point.  Run with:  streamlit run mixing_lab.py
+Main entry point.  Run with:  streamlit run Mixing_Lab.py
 """
 
 import streamlit as st
@@ -16,35 +16,46 @@ st.set_page_config(
 
 render_sidebar()
 
-# ── Home page content (shown when user clicks "Mixing Lab" in nav) ────────
-st.title("🔬 Mixing Lab")
-st.subheader("Hydrodynamics & Mixing-Sensitivity Assessment Tool")
+# ── Page navigation ───────────────────────────────────────────────────────
+home = st.Page("pages/home.py", title="🔬 Mixing Lab", default=True)
 
-st.markdown("""
-Welcome to **Mixing Lab** – an interactive tool for assessing hydrodynamics and
-mixing sensitivities across different reactor scales.
+databases = [
+    st.Page("pages/1_Reactor_Database.py",  title="⚗️ Reactor Database"),
+    st.Page("pages/2_Reaction_Database.py", title="🧪 Reaction Database"),
+    st.Page("pages/3_Fluid_Database.py",    title="💧 Fluid Database"),
+    st.Page("pages/4_Particle_Database.py", title="❉ Particle Database"),
+]
 
-### What you can do
+analysis = [
+    st.Page("pages/5_Mixing_Sensitivity.py", title="⚙️ Mixing Sensitivity"),
+    st.Page("pages/6_Bourne_Protocol.py",    title="🧫 Bourne Protocol"),
+    st.Page("pages/7_Reactor_Comparison.py", title="📊 Reactor Comparison"),
+]
 
-| Page | Purpose |
-|------|---------|
-| **Reactor Database** | Browse, add, and edit reactor geometries from lab to manufacturing scale |
-| **Reaction Database** | Manage reactions with kinetic parameters (rate constants, orders, temps) |
-| **Fluid Database** | Define or import fluid properties (density, viscosity, diffusivity) |
-| **Particle Database** | Define solid-particle properties (density, PSD, shape factor) for suspension calculations |
-| **Mixing Sensitivity** | Calculate hydrodynamic parameters and Damköhler numbers to estimate mixing sensitivity |
-| **Bourne Protocol** | Step-by-step Bourne mixing-sensitivity screening protocol (Sarafinas modification) |
-| **Reactor Comparison** | Side-by-side comparison of hydrodynamics across selected reactors |
-| **Recorded Results** | Save, review, and export results for specific reactor/reaction combinations |
-| **Equations** | Reference for all correlations and equations used |
+results = [
+    st.Page("pages/8_Recorded_Results.py", title="📋 Recorded Results"),
+]
 
----
+reference = [
+    st.Page("pages/equations_hydrodynamics.py",  title="📐 Hydrodynamics & Shear"),
+    st.Page("pages/equations_mixing.py",         title="📐 Mixing & Damköhler"),
+    st.Page("pages/equations_mass_transfer.py",  title="📐 Mass Transfer & kLa"),
+    st.Page("pages/equations_heat.py",           title="📐 Heat Balance"),
+    st.Page("pages/equations_particles.py",      title="📐 Solid Particles"),
+    st.Page("pages/equations_scaleup.py",        title="📐 Scale-Up & Properties"),
+]
 
-### Quick-start guide
+admin = [
+    st.Page("pages/0_Admin_Import.py", title="🛠️ Admin Import"),
+]
 
-1. **Verify your databases** – Check that reactor, reaction, and fluid databases are populated.
-2. **Select a system** – Choose a reactor, reaction, and fluid on the *Mixing Sensitivity* page.
-3. **Review results** – Examine Damköhler numbers and sensitivity flags.
-4. **Compare scales** – Use the *Reactor Comparison* page to evaluate scale-up impacts.
-5. **Record & export** – Save important results for documentation.
-""")
+nav = st.navigation({
+    "": [home],
+    "Databases": databases,
+    "Analysis": analysis,
+    "Results": results,
+    "Reference": reference,
+    "Admin": admin,
+})
+
+nav.run()
