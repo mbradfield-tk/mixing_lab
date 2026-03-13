@@ -78,11 +78,22 @@ st.divider()
 # ══════════════════════════════════════════════════════════════════════════
 st.header("0 · Define Your System")
 
+# Persist selections across page navigations
+_reactor_list = reactors["reactor_name"].tolist() if not reactors.empty else []
+_fluid_list = fluids["fluid_name"].tolist() if not fluids.empty else []
+
+def _sel_idx(lst, key, default=0):
+    val = st.session_state.get(key)
+    if val in lst:
+        return lst.index(val)
+    return default
+
 col_r, col_f = st.columns(2)
 
 with col_r:
     if not reactors.empty:
-        reactor_name = st.selectbox("Reactor", reactors["reactor_name"].tolist(), key="bp_reactor")
+        reactor_name = st.selectbox("Reactor", _reactor_list, index=_sel_idx(_reactor_list, "_sel_bp_reactor"), key="bp_reactor")
+        st.session_state["_sel_bp_reactor"] = reactor_name
         r = reactors[reactors["reactor_name"] == reactor_name].iloc[0]
         D_tank = float(r["D_tank_m"])
         H = float(r["H_m"])
@@ -103,7 +114,8 @@ with col_r:
 
 with col_f:
     if not fluids.empty:
-        fluid_name = st.selectbox("Fluid system", fluids["fluid_name"].tolist(), key="bp_fluid")
+        fluid_name = st.selectbox("Fluid system", _fluid_list, index=_sel_idx(_fluid_list, "_sel_bp_fluid"), key="bp_fluid")
+        st.session_state["_sel_bp_fluid"] = fluid_name
         fl = fluids[fluids["fluid_name"] == fluid_name].iloc[0]
         rho = float(fl["rho_kg_m3"])
         mu = float(fl["mu_Pa_s"])
@@ -164,10 +176,11 @@ def _hydro_row(label, N):
     Np = Np_val
     P = impeller_power(Np, rho, N, D_imp)
     eps = power_per_volume(P, V_m3)
+    eps_kg = eps / rho                          # W/kg for Kolmogorov & micromixing
     u = tip_speed(N, D_imp)
     t_blend = blend_time_turbulent(Nq_val, V_m3, D_imp, N)
-    t_micro = micromixing_time_engulfment(eps, nu)
-    eta = kolmogorov_length(nu, eps)
+    t_micro = micromixing_time_engulfment(eps_kg, nu)
+    eta = kolmogorov_length(nu, eps_kg)
     return {
         "Condition": label,
         "N (rev/s)": round(N, 3),
@@ -368,25 +381,26 @@ affecting macromixing**.
 
 # Compute local ε estimates for the user
 eps_avg = power_per_volume(impeller_power(Np_val, rho, N_center_calc, D_imp), V_m3)
+eps_avg_kg = eps_avg / rho  # W/kg for micromixing calculations
 
 t3_locs = pd.DataFrame([
     {
         "Feed Location": "Surface",
         "ε_loc / ε_avg": 0.1,
         "ε_loc (W/m³)": round(0.1 * eps_avg, 2),
-        "t_E micro (s)": round(micromixing_time_engulfment(0.1 * eps_avg, nu), 5),
+        "t_E micro (s)": round(micromixing_time_engulfment(0.1 * eps_avg_kg, nu), 5),
     },
     {
         "Feed Location": "Sub-surface (mid-tank)",
         "ε_loc / ε_avg": 1.0,
         "ε_loc (W/m³)": round(1.0 * eps_avg, 2),
-        "t_E micro (s)": round(micromixing_time_engulfment(1.0 * eps_avg, nu), 5),
+        "t_E micro (s)": round(micromixing_time_engulfment(1.0 * eps_avg_kg, nu), 5),
     },
     {
         "Feed Location": "Impeller zone",
         "ε_loc / ε_avg": 3.0,
         "ε_loc (W/m³)": round(3.0 * eps_avg, 2),
-        "t_E micro (s)": round(micromixing_time_engulfment(3.0 * eps_avg, nu), 5),
+        "t_E micro (s)": round(micromixing_time_engulfment(3.0 * eps_avg_kg, nu), 5),
     },
 ])
 st.dataframe(t3_locs, width="stretch", hide_index=True)
@@ -685,8 +699,8 @@ if st.button("📌 Save Bourne Protocol result to Recorded Results", key="bp_sav
         "P/V (W/L)": round(power_per_volume(impeller_power(Np_val, rho, N_center_calc, D_imp), V_m3) / 1000, 4),
         "Tip speed (m/s)": round(tip_speed(N_center_calc, D_imp), 3),
         "Blend time (s)": round(blend_time_turbulent(Nq_val, V_m3, D_imp, N_center_calc), 2),
-        "Micromix t_E (s)": round(micromixing_time_engulfment(eps_avg, nu), 5),
-        "Kolmogorov η (µm)": round(kolmogorov_length(nu, eps_avg) * 1e6, 1),
+        "Micromix t_E (s)": round(micromixing_time_engulfment(eps_avg / rho, nu), 5),
+        "Kolmogorov η (µm)": round(kolmogorov_length(nu, eps_avg / rho) * 1e6, 1),
         "t_rxn (s)": "N/A (protocol)",
         "Da_macro": "N/A",
         "Da_micro": "N/A",

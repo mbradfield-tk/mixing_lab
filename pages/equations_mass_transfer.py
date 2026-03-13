@@ -5,7 +5,7 @@ import streamlit as st
 st.title("📐 Mass Transfer Equations")
 
 # ── kLa – sparged ────────────────────────────────────────────────────────
-st.header("13. kLa – Volumetric Mass-Transfer Coefficient (Gas-Liquid)")
+st.header("kLa – Volumetric Mass-Transfer Coefficient (Gas-Liquid)")
 st.latex(r"k_L a = C_1 \left( \frac{P}{V} \right)^{C_2} v_s^{C_3}")
 st.markdown("""
 Van 't Riet (1979) correlation for aerated stirred tanks.
@@ -28,7 +28,7 @@ gas-liquid mass transfer in stirred vessels. *Ind. Eng. Chem. Process Des. Dev.*
 """)
 
 # ── kLa – headspace / free-surface ───────────────────────────────────────
-st.header("13b. kLa – Free-Surface (Headspace) Mass Transfer")
+st.header("kLa – Free-Surface (Headspace) Mass Transfer")
 st.latex(r"k_L = 0.4 \; D_{mol}^{\,1/2} \left( \frac{\varepsilon}{\nu} \right)^{1/4}")
 st.latex(r"a_{\text{surface}} = \frac{\pi / 4 \; D_T^2}{V}")
 st.latex(r"k_L a_{\text{surface}} = k_L \cdot a_{\text{surface}}")

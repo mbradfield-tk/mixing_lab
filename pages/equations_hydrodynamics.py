@@ -5,7 +5,7 @@ import streamlit as st
 st.title("📐 Hydrodynamics & Shear Equations")
 
 # ── Impeller Reynolds Number ─────────────────────────────────────────────
-st.header("1. Impeller Reynolds Number")
+st.header("Impeller Reynolds Number")
 st.latex(r"Re = \frac{\rho \, N \, D^2}{\mu}")
 st.markdown("""
 | Symbol | Description | Units |
@@ -19,7 +19,7 @@ st.markdown("""
 """)
 
 # ── Power Number & Power ─────────────────────────────────────────────────
-st.header("2. Power Number & Impeller Power")
+st.header("Power Number & Impeller Power")
 st.latex(r"P = N_p \, \rho \, N^3 \, D^5")
 st.markdown("""
 $N_p$ is the **power number**, a dimensionless constant that depends on impeller geometry and Re.
@@ -36,7 +36,7 @@ For laminar flow: $N_p \\approx 70 / Re$.
 """)
 
 # ── Power per Unit Volume ────────────────────────────────────────────────
-st.header("3. Power per Unit Volume (Specific Energy Dissipation)")
+st.header("Power per Unit Volume (Specific Energy Dissipation)")
 st.latex(r"\varepsilon = \frac{P}{V}")
 st.markdown("""
 | Symbol | Description | Units |
@@ -47,12 +47,12 @@ st.markdown("""
 """)
 
 # ── Tip Speed ────────────────────────────────────────────────────────────
-st.header("4. Impeller Tip Speed")
+st.header("Impeller Tip Speed")
 st.latex(r"u_{tip} = \pi \, N \, D")
 st.markdown("Tip speed is a common scale-up criterion and relates to shear at the impeller.")
 
 # ── Pumping Rate ─────────────────────────────────────────────────────────
-st.header("5. Pumping Rate")
+st.header("Pumping Rate")
 st.latex(r"Q = N_Q \, N \, D^3")
 st.markdown("""
 $N_Q$ is the **pumping number** (flow number).  Typical values:
@@ -65,15 +65,18 @@ $N_Q$ is the **pumping number** (flow number).  Typical values:
 """)
 
 # ── Kolmogorov Scale ─────────────────────────────────────────────────────
-st.header("8. Kolmogorov Length Scale")
+st.header("Kolmogorov Length Scale")
 st.latex(r"\eta = \left( \frac{\nu^3}{\varepsilon} \right)^{1/4}")
 st.markdown("""
 The smallest eddy size in turbulent flow.  Below this scale, viscous dissipation dominates.
 Typical values: 10 – 100 µm in stirred tanks.
+
+**Important:** $\\varepsilon$ here is the **mass-specific** energy dissipation rate in **W/kg** (= m²/s³),
+i.e. $\\varepsilon = P / (\\rho\\,V)$, not $P/V$ in W/m³.
 """)
 
 # ── Batchelor Scale ──────────────────────────────────────────────────────
-st.header("9. Batchelor Length Scale")
+st.header("Batchelor Length Scale")
 st.latex(r"\lambda_B = \frac{\eta}{\sqrt{Sc}} = \eta \left( \frac{D_{mol}}{\nu} \right)^{1/2}")
 st.markdown("""
 The scale below which molecular diffusion homogenises concentration.
@@ -82,10 +85,12 @@ The scale below which molecular diffusion homogenises concentration.
 |--------|-------------|
 | $Sc = \\nu / D_{mol}$ | Schmidt number |
 | $D_{mol}$ | Molecular diffusivity (m²/s) |
+
+**Note:** $\\varepsilon$ must be in **W/kg** (= m²/s³) for this formula.
 """)
 
 # ── Local max dissipation ────────────────────────────────────────────────
-st.header("10. Maximum Local Energy Dissipation Rate")
+st.header("Maximum Local Energy Dissipation Rate")
 st.latex(r"\varepsilon_{max} \approx C \cdot \frac{P}{\rho \, D^3}, \quad C \approx 1 - 5")
 st.markdown("""
 The energy dissipation rate near the impeller can be 1–2 orders of magnitude
@@ -94,7 +99,7 @@ higher than the mean.  We use $C = 3$ as a representative estimate
 """)
 
 # ── Shear rate and stress ────────────────────────────────────────────────
-st.header("15. Average Shear Rate (Camp-Stein)")
+st.header("Average Shear Rate (Camp-Stein)")
 st.latex(r"\dot{\gamma}_{avg} = \sqrt{\frac{P}{\mu \, V}}")
 st.markdown("""
 Derived from equating the volume-averaged viscous dissipation to the power input:
@@ -112,10 +117,10 @@ $$\\mu \\, \\dot{\\gamma}^2 = \\frac{P}{V}$$
 fluid motion. *J. Boston Soc. Civil Eng.*, 30, 219–237.
 """)
 
-st.header("16. Maximum Shear Rate (Impeller Zone)")
+st.header("Maximum Shear Rate (Impeller Zone)")
 st.latex(r"\dot{\gamma}_{max} = \sqrt{\frac{\varepsilon_{max}}{\nu}}")
 st.markdown("""
-Evaluated using $\\varepsilon_{max}$ from Equation 10.  This gives the peak
+Evaluated using $\\varepsilon_{max}$ from the Maximum Local Energy Dissipation Rate equation above.  This gives the peak
 shear rate in the impeller discharge zone.
 """)
 

@@ -27,6 +27,7 @@ databases = [
 ]
 
 analysis = [
+    st.Page("pages/10_Mixing_Sensitivity_Protocol.py", title="🧭 Sensitivity Protocol"),
     st.Page("pages/5_Mixing_Sensitivity.py", title="⚙️ Mixing Sensitivity"),
     st.Page("pages/6_Bourne_Protocol.py",    title="🧫 Bourne Protocol"),
     st.Page("pages/7_Reactor_Comparison.py", title="📊 Reactor Comparison"),
@@ -43,6 +44,7 @@ reference = [
     st.Page("pages/equations_heat.py",           title="📐 Heat Balance"),
     st.Page("pages/equations_particles.py",      title="📐 Solid Particles"),
     st.Page("pages/equations_scaleup.py",        title="📐 Scale-Up & Properties"),
+    st.Page("pages/equations_rom.py",            title="📐 ROM & Experimental"),
 ]
 
 admin = [

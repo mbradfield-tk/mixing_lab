@@ -5,7 +5,7 @@ import streamlit as st
 st.title("📐 Heat Balance Equations")
 
 # ── Heat generation ──────────────────────────────────────────────────────
-st.header("H1. Reaction Rate (Molar)")
+st.header("Reaction Rate (Molar)")
 
 st.subheader("First-order or pseudo-first-order")
 st.latex(r"r = k \, C_0 \quad [\mathrm{mol/(L \cdot s)}]")
@@ -22,7 +22,7 @@ st.markdown("""
 | $V_L$ | Liquid volume | L |
 """)
 
-st.header("H2. Heat Generation Rate")
+st.header("Heat Generation Rate")
 st.latex(r"Q_{\text{gen}} = \lvert \Delta H_{rxn} \rvert \times r_{\text{total}}")
 st.markdown("""
 | Symbol | Description | Units |
@@ -33,7 +33,7 @@ st.markdown("""
 """)
 
 # ── Heat removal ─────────────────────────────────────────────────────────
-st.header("H3. Heat Removal Capacity (Jacket)")
+st.header("Heat Removal Capacity (Jacket)")
 st.latex(r"Q_{\text{cool}} = U \, A \, \Delta T")
 st.markdown("""
 | Symbol | Description | Units |
@@ -45,7 +45,7 @@ st.markdown("""
 """)
 
 # ── Jacket area estimation ───────────────────────────────────────────────
-st.header("H4. Jacket Heat-Transfer Area Estimation")
+st.header("Jacket Heat-Transfer Area Estimation")
 st.latex(r"A_{\text{cyl}} = \pi \, D_T \, H")
 st.latex(r"A_{\text{total}} = A_{\text{cyl}} + f_{dish} \cdot \frac{\pi}{4} D_T^2")
 st.markdown("""
@@ -60,9 +60,9 @@ The cylindrical wall area plus a bottom-dish correction factor:
 """)
 
 # ── U estimation ─────────────────────────────────────────────────────────
-st.header("H5. Overall Heat-Transfer Coefficient Estimation")
+st.header("Overall Heat-Transfer Coefficient Estimation")
 
-st.subheader("H5a. Simple Material-Based Estimate (Fallback)")
+st.subheader("Simple Material-Based Estimate (Fallback)")
 st.markdown("""
 Typical ranges for jacketed stirred tanks (mid-range values used when
 reactor-specific $U$ is not provided):
@@ -78,7 +78,7 @@ A simple agitation correction interpolates within the range: higher impeller
 speed increases the internal heat-transfer coefficient $h_i$, which raises $U$.
 """)
 
-st.subheader("H5b. Individual Resistances Approach")
+st.subheader("Individual Resistances Approach")
 st.latex(r"\frac{1}{U} = \frac{1}{h_i} + \frac{x_w}{k_w} + \frac{1}{h_o} + R_f")
 st.markdown("""
 | Symbol | Description | Units |
@@ -90,7 +90,7 @@ st.markdown("""
 | $R_f$ | Fouling resistance | m²·K/W |
 """)
 
-st.subheader("H5c. Process-Side Coefficient (Nusselt Correlation)")
+st.subheader("Process-Side Coefficient (Nusselt Correlation)")
 st.markdown("""
 For turbulent flow in a baffled, jacketed stirred vessel (Seider-Tate / DIN 28131 form):
 """)
@@ -112,7 +112,7 @@ st.markdown("""
 | $\\mu / \\mu_w$ | Viscosity ratio (bulk / wall) | ≈ 1 for moderate ΔT |
 """)
 
-st.subheader("H5d. Wall Thermal Conductivity")
+st.subheader("Wall Thermal Conductivity")
 st.markdown("""
 | Material | $k_w$ (W/(m·K)) |
 |----------|-----------------|
@@ -129,7 +129,7 @@ glass lining (~1.5 mm, $k$ = 1.0 W/(m·K)) and the steel shell:
 $$R_{wall} = \\frac{x_{glass}}{k_{glass}} + \\frac{x_{steel}}{k_{steel}}$$
 """)
 
-st.subheader("H5e. Jacket-Side Coefficient")
+st.subheader("Jacket-Side Coefficient")
 st.markdown("""
 When jacket geometry and coolant flow data are not available, typical
 values are used:
@@ -143,7 +143,7 @@ values are used:
 These assume turbulent flow of aqueous-based coolants in the jacket.
 """)
 
-st.subheader("H5f. Fouling Resistance")
+st.subheader("Fouling Resistance")
 st.markdown("""
 | Condition | $R_f$ (m²·K/W) |
 |-----------|----------------|
@@ -155,7 +155,7 @@ Default value: **0.0002 m²·K/W** (moderate pharmaceutical process).
 """)
 
 # ── Heat balance assessment ──────────────────────────────────────────────
-st.header("H6. Heat Balance Assessment")
+st.header("Heat Balance Assessment")
 st.latex(r"\text{Ratio} = \frac{Q_{\text{gen}}}{Q_{\text{cool}}}")
 st.markdown("""
 | $Q_{gen} / Q_{cool}$ | Assessment |

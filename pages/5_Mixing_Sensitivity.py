@@ -39,6 +39,20 @@ from utils.calculations import (
     heat_removal_capacity,
     heat_balance_assessment,
 )
+from utils.rom_registry import (
+    compute_reactor_hydro_with_mode,
+    get_correlations,
+    has_any_alt_correlations,
+    PARAM_DISPLAY,
+    SUPPORTED_PARAMS,
+)
+from utils.corr_widgets import (
+    render_correlation_matrix_multi,
+    priority_mode_dict,
+    active_modes_set,
+    build_mode_dict_for,
+    MODE_COLORS,
+)
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
@@ -67,14 +81,30 @@ if reactors.empty or reactions.empty or fluids.empty:
 
 # ── Step 1: Select system ────────────────────────────────────────────────
 st.header("1 · Select System")
+
+# Persist selections across page navigations
+_reactor_list = reactors["reactor_name"].tolist()
+_reaction_list = reactions["reaction_name"].tolist()
+_fluid_list = fluids["fluid_name"].tolist()
+
+def _idx(lst, key, default=0):
+    """Return list index of session_state[key] if present, else default."""
+    val = st.session_state.get(key)
+    if val in lst:
+        return lst.index(val)
+    return default
+
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    reactor_name = st.selectbox("Reactor", reactors["reactor_name"].tolist())
+    reactor_name = st.selectbox("Reactor", _reactor_list, index=_idx(_reactor_list, "_sel_reactor"), key="ms_reactor")
+    st.session_state["_sel_reactor"] = reactor_name
 with col2:
-    reaction_name = st.selectbox("Reaction", reactions["reaction_name"].tolist())
+    reaction_name = st.selectbox("Reaction", _reaction_list, index=_idx(_reaction_list, "_sel_reaction"), key="ms_reaction")
+    st.session_state["_sel_reaction"] = reaction_name
 with col3:
-    fluid_name = st.selectbox("Fluid", fluids["fluid_name"].tolist())
+    fluid_name = st.selectbox("Fluid", _fluid_list, index=_idx(_fluid_list, "_sel_fluid"), key="ms_fluid")
+    st.session_state["_sel_fluid"] = fluid_name
 
 reactor = reactors[reactors["reactor_name"] == reactor_name].iloc[0]
 reaction = reactions[reactions["reaction_name"] == reaction_name].iloc[0]
@@ -95,13 +125,17 @@ _fk = fluid_name     # fluid key fragment
 _xk = reaction_name  # reaction key fragment
 
 # ── Step 2: Allow overrides ──────────────────────────────────────────────
+st.divider()
 st.header("2 · Review / Override Parameters")
 
 with st.expander("Reactor geometry & agitation", expanded=False):
     oc1, oc2, oc3, oc4 = st.columns(4)
     D_tank = oc1.number_input("D_tank (m)", value=_safe(reactor.get("D_tank_m"), 0.10), format="%.4f", key=f"ov_Dt_{_rk}")
     D_imp = oc2.number_input("D_imp (m)", value=_safe(reactor.get("D_imp_m"), 0.05), format="%.4f", key=f"ov_Di_{_rk}")
-    _N_rpm_input = oc3.number_input("N (RPM)", value=_safe(reactor.get("N_rps"), 5.0) * 60, step=2.0, format="%.0f", key=f"ov_N_{_rk}")
+    _rpm_lo = _safe(reactor.get("N_rpm_min"), 0.0)
+    _rpm_hi = _safe(reactor.get("N_rpm_max"), 0.0)
+    _rpm_default = (_rpm_lo + _rpm_hi) / 2 if _rpm_lo > 0 and _rpm_hi > 0 else (_rpm_hi if _rpm_hi > 0 else _safe(reactor.get("N_rps"), 5.0) * 60)
+    _N_rpm_input = oc3.number_input("N (RPM)", value=_rpm_default, step=2.0, format="%.0f", key=f"ov_N_{_rk}")
     N_rps = _N_rpm_input / 60.0
     oc5, oc6 = st.columns(2)
     Np_in = oc5.number_input("Np", value=_safe(reactor.get("Np"), 1.27), format="%.2f", key=f"ov_Np_{_rk}")
@@ -204,7 +238,35 @@ with st.expander("Reaction parameters", expanded=False):
     t_rxn_input = rc3.number_input("t_rxn (s)", value=float(reaction["t_rxn_s"]), format="%.4g", key=f"ov_trxn_{_xk}",
                                     help="Characteristic reaction time. 0 = auto-compute.")
 
+# ── Step 3: Correlations ─────────────────────────────────────────────
+st.divider()
+st.header("3 · Correlation Source Selection")
+
+if has_any_alt_correlations(reactor_name):
+    with st.expander("Correlation source selection", expanded=False):
+        st.caption(
+            "Select one or more of **Literature**, **ROM**, **Experimental** per "
+            "parameter.  Each selection generates its own operating envelope.  "
+            "Metrics show the highest-priority value "
+            "(Experimental → ROM → Literature)."
+        )
+        corr_selections = render_correlation_matrix_multi(
+            reactor_name, key_prefix="ms_corr",
+        )
+else:
+    st.info(f"Only **Literature** correlations available for **{reactor_name}**. "
+            "Register ROM or Experimental correlations to enable source comparison.")
+    corr_selections = {p: ["Literature"] for p in SUPPORTED_PARAMS}
+
+# Derive a single priority mode dict for the main metrics
+_priority_mode = priority_mode_dict(corr_selections)
+# Collect all active modes for envelope computation
+_active_modes = active_modes_set(corr_selections)
+
+
 # ── Heat balance options ──────────────────────────────────────────────────────
+st.divider()
+st.header("4 · Heat Balance Options")
 def _parse_fluid_temp(name: str, fallback: float = 25.0) -> float:
     m = re.search(r'\(([-\d.]+)\s*°?C\)', name)
     return float(m.group(1)) if m else fallback
@@ -255,8 +317,9 @@ if include_heat:
     if rxn_delta_H == 0:
         st.info("Selected reaction has no enthalpy value – add ΔH in the Reaction Database.")
 
-# ── Step 3: Compute ──────────────────────────────────────────────────────
-st.header("3 · Results")
+# ── Step 5: Compute ──────────────────────────────────────────────────────
+st.divider()
+st.header("5 · Centerpoint Results")
 
 # Compute reaction time if needed
 t_rxn = t_rxn_input
@@ -269,7 +332,8 @@ if t_rxn <= 0 and k_val > 0:
     else:
         t_rxn = 1.0  # fallback
 
-hydro = compute_reactor_hydro(
+hydro, rom_sources = compute_reactor_hydro_with_mode(
+    _priority_mode, reactor_name,
     N=N_rps, D_imp=D_imp, D_tank=D_tank, H=H,
     rho=rho, mu=mu, Np=Np_in, Nq=Nq_in,
     v_s=v_s, coalescing=is_coalescing,
@@ -283,6 +347,15 @@ da = compute_damkohler_numbers(
     kLa=hydro["kLa (1/s)"],
     kLa_surface=hydro["kLa_surface (1/s)"],
 )
+
+# Show which parameters are using ROM / Experimental correlations
+if rom_sources:
+    _src_lines = [f"- **{PARAM_DISPLAY.get(k, k)}**: {v}" for k, v in rom_sources.items()]
+    _modes_label = ", ".join(m for m in _active_modes if m != "Literature") or "Literature"
+    st.info(
+        f"**Metrics show highest-priority source** ({_modes_label}) for {reactor_name}:\n"
+        + "\n".join(_src_lines)
+    )
 
 # ── Display ──────────────────────────────────────────────────────────────
 
@@ -340,7 +413,7 @@ if da["Da_GL"] > 0:
     _da_banner("Gas-liquid mass transfer", da["Da_GL"], {})
 
 # Batchelor length
-lam_B = batchelor_length(mu / rho, hydro["P/V (W/m³)"], D_mol)
+lam_B = batchelor_length(mu / rho, hydro["P/V (W/kg)"], D_mol)
 st.info(f"Batchelor microscale λ_B = {lam_B * 1e6:.2f} µm  |  Reaction time t_rxn = {t_rxn:.4g} s")
 
 # ── Particle (solid-phase) results ──────────────────────────────────────
@@ -445,7 +518,8 @@ if include_heat and rxn_delta_H != 0:
     }
 
 # ── Operating Envelope Charts ────────────────────────────────────────────
-st.header("📊 Operating Envelope")
+st.divider()
+st.header("6. Operating Envelopes")
 st.caption("Parameter variation across the reactor's full RPM and volume range.")
 
 # Read RPM range
@@ -492,61 +566,111 @@ if _can_envelope:
     N_arr = np.linspace(_N_lo, _N_hi, _N_INTERP)
     pct_arr = N_arr / _N_hi * 100 if _N_hi > 0 else np.zeros(_N_INTERP)
 
-    curve_data: dict = {}  # vol_key → {param: arr}
-    for vol_key, _vl in [("maxV", _env_V_max), ("minV", _env_V_min)]:
-        H_v = liquid_height_from_volume(_vl, D_tank, H_max, _bottom_dish)
-        param_arrs = {p: np.empty(_N_INTERP) for p in PLOT_PARAMS}
-        for j, _N in enumerate(N_arr):
-            _h = compute_reactor_hydro(
-                N=_N, D_imp=D_imp, D_tank=D_tank, H=H_v,
-                rho=rho, mu=mu, Np=Np_in, Nq=Nq_in,
-                v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
-            )
-            _da = compute_damkohler_numbers(
-                _h["Blend time 95% (s)"], _h["Micromix time t_E (s)"], t_rxn,
-                kLa=_h["kLa (1/s)"], kLa_surface=_h["kLa_surface (1/s)"],
-            )
-            _vals = {**_h, **_da}
-            if include_particles and not particles.empty:
-                _dp = d50_um * 1e-6
-                _nu = mu / rho
-                _drho = abs(rho_p - rho)
-                _vt = settling_velocity(_dp, rho_p, rho, mu, phi_p)
-                _rep = particle_reynolds(_dp, _vt, rho, mu)
-                _njs = zwietering_njs(S_zw, _nu, _dp, _drho, rho, X_wt, D_imp)
-                _ksl = solid_liquid_mass_transfer(_dp, _vt, rho, mu, D_mol)
-                _vals["N_js (RPM)"] = _njs * 60
-                _vals["N/N_js"] = _N / _njs if _njs > 0 else 0.0
-                _vals["v_t (m/s)"] = _vt
-                _vals["Re_p"] = _rep
-                _vals["k_SL (m/s)"] = _ksl
+    # ── Pre-compute RPM-independent particle quantities (hoisted) ────────
+    _part_static: dict | None = None
+    if include_particles and not particles.empty:
+        _dp = d50_um * 1e-6
+        _nu_p = mu / rho
+        _drho = abs(rho_p - rho)
+        _vt = settling_velocity(_dp, rho_p, rho, mu, phi_p)
+        _rep = particle_reynolds(_dp, _vt, rho, mu)
+        _njs = zwietering_njs(S_zw, _nu_p, _dp, _drho, rho, X_wt, D_imp)
+        _ksl = solid_liquid_mass_transfer(_dp, _vt, rho, mu, D_mol)
+        _part_static = {
+            "N_js_rps": _njs,
+            "v_t (m/s)": _vt,
+            "Re_p": _rep,
+            "k_SL (m/s)": _ksl,
+            "N_js (RPM)": _njs * 60,
+        }
+
+    # ── Deduplicate mode dicts so identical sweeps run only once ──────────
+    _mode_dicts: dict[str, dict[str, str]] = {}
+    _mode_label_to_key: dict[str, str] = {}  # mode_label → canonical key
+    _seen_tuples: dict[tuple, str] = {}       # frozen mode_dict → first label
+    for _mode_label in _active_modes:
+        _md = build_mode_dict_for(_mode_label, corr_selections)
+        _frozen = tuple(sorted(_md.items()))
+        if _frozen in _seen_tuples:
+            _mode_label_to_key[_mode_label] = _seen_tuples[_frozen]
+        else:
+            _seen_tuples[_frozen] = _mode_label
+            _mode_label_to_key[_mode_label] = _mode_label
+            _mode_dicts[_mode_label] = _md
+
+    # ── Sweep only unique mode dicts ─────────────────────────────────────
+    # curve_data: mode_label → vol_key → {param: np.array}
+    _unique_curve_data: dict[str, dict[str, dict[str, np.ndarray]]] = {}
+
+    for _mode_label, _mode_dict in _mode_dicts.items():
+        mode_curves: dict[str, dict[str, np.ndarray]] = {}
+        for vol_key, _vl in [("maxV", _env_V_max), ("minV", _env_V_min)]:
+            H_v = liquid_height_from_volume(_vl, D_tank, H_max, _bottom_dish)
+            param_arrs = {p: np.empty(_N_INTERP) for p in PLOT_PARAMS}
+
+            # Pre-compute RPM-independent heat quantities for this volume
+            _Q_gen_v = _A_ht_v = 0.0
             if include_heat and rxn_delta_H != 0:
                 _r_mol_s_e = reaction_rate_mol_per_s(rxn_order, k_val, C0, _vl)
-                _Q_gen_e = heat_generation_rate(rxn_delta_H, _r_mol_s_e)
-                _A_ht_e = _r_A_override_env if _r_A_override_env > 0 else estimate_jacket_area(D_tank, H_v, _bottom_dish)
-                if _r_U_override_env > 0:
-                    _U_ht_e = _r_U_override_env
-                else:
-                    _U_ht_e, _ = estimate_U_detailed(
-                        N_rps=_N, D_imp=D_imp, D_tank=D_tank,
-                        rho=rho, mu=mu,
-                        material=_r_material_env,
-                        wall_thickness_mm=_r_wall_mm_env,
-                        fluid_name=fluid_name,
-                    )
-                _dT_e = ms_T_process - ms_T_coolant
-                _Q_cool_e = heat_removal_capacity(_U_ht_e, _A_ht_e, _dT_e)
-                _vals["Q_gen (W)"] = _Q_gen_e
-                _vals["Q_cool (W)"] = _Q_cool_e
-                _vals["U (W/m²·K)"] = _U_ht_e
-                _vals["A_ht (m²)"] = _A_ht_e
-                _vals["Q_gen/Q_cool (%)"] = _Q_gen_e / _Q_cool_e * 100 if _Q_cool_e > 0 else np.inf
-            for p in PLOT_PARAMS:
-                param_arrs[p][j] = _vals.get(p, np.nan)
-        curve_data[vol_key] = param_arrs
+                _Q_gen_v = heat_generation_rate(rxn_delta_H, _r_mol_s_e)
+                _A_ht_v = _r_A_override_env if _r_A_override_env > 0 else estimate_jacket_area(D_tank, H_v, _bottom_dish)
+
+            for j, _N in enumerate(N_arr):
+                _h, _ = compute_reactor_hydro_with_mode(
+                    _mode_dict, reactor_name,
+                    N=_N, D_imp=D_imp, D_tank=D_tank, H=H_v,
+                    rho=rho, mu=mu, Np=Np_in, Nq=Nq_in,
+                    v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
+                )
+                _da = compute_damkohler_numbers(
+                    _h["Blend time 95% (s)"], _h["Micromix time t_E (s)"], t_rxn,
+                    kLa=_h["kLa (1/s)"], kLa_surface=_h["kLa_surface (1/s)"],
+                )
+                _vals = {**_h, **_da}
+                if _part_static is not None:
+                    _vals["N_js (RPM)"] = _part_static["N_js (RPM)"]
+                    _vals["N/N_js"] = _N / _part_static["N_js_rps"] if _part_static["N_js_rps"] > 0 else 0.0
+                    _vals["v_t (m/s)"] = _part_static["v_t (m/s)"]
+                    _vals["Re_p"] = _part_static["Re_p"]
+                    _vals["k_SL (m/s)"] = _part_static["k_SL (m/s)"]
+                if include_heat and rxn_delta_H != 0:
+                    if _r_U_override_env > 0:
+                        _U_ht_e = _r_U_override_env
+                    else:
+                        _U_ht_e, _ = estimate_U_detailed(
+                            N_rps=_N, D_imp=D_imp, D_tank=D_tank,
+                            rho=rho, mu=mu,
+                            material=_r_material_env,
+                            wall_thickness_mm=_r_wall_mm_env,
+                            fluid_name=fluid_name,
+                        )
+                    _dT_e = ms_T_process - ms_T_coolant
+                    _Q_cool_e = heat_removal_capacity(_U_ht_e, _A_ht_v, _dT_e)
+                    _vals["Q_gen (W)"] = _Q_gen_v
+                    _vals["Q_cool (W)"] = _Q_cool_e
+                    _vals["U (W/m²·K)"] = _U_ht_e
+                    _vals["A_ht (m²)"] = _A_ht_v
+                    _vals["Q_gen/Q_cool (%)"] = _Q_gen_v / _Q_cool_e * 100 if _Q_cool_e > 0 else np.inf
+                for p in PLOT_PARAMS:
+                    param_arrs[p][j] = _vals.get(p, np.nan)
+            mode_curves[vol_key] = param_arrs
+        _unique_curve_data[_mode_label] = mode_curves
+
+    # Map all mode labels (including duplicates) to their computed data
+    curve_data: dict[str, dict[str, dict[str, np.ndarray]]] = {}
+    for _mode_label in _active_modes:
+        curve_data[_mode_label] = _unique_curve_data[_mode_label_to_key[_mode_label]]
 
     # Mark current operating point as RPM %
     _current_pct = N_rps / _N_hi * 100 if _N_hi > 0 else 50.0
+
+    # Priority mode label for the ★ operating-point marker
+    # (Experimental > ROM > Literature among active modes)
+    _priority_mode_label = "Literature"
+    for _ml in reversed(_active_modes):  # _active_modes is ordered Lit, ROM, Exp
+        if _ml in curve_data:
+            _priority_mode_label = _ml
+            break
 
     _DISPLAY_NAMES: dict[str, str] = {
         "Da_macro": "Macromixing (Da_macro)",
@@ -568,47 +692,55 @@ if _can_envelope:
             format_func=_display,
         )
 
-        _COLOR = "#1f77b4"
-
         for param in params_to_plot:
             fig = go.Figure()
 
-            y_maxV = curve_data["maxV"][param]
-            y_minV = curve_data["minV"][param]
+            # One envelope per active mode
+            for _mode_label in _active_modes:
+                _COLOR = MODE_COLORS.get(_mode_label, "#999999")
+                _mc = curve_data[_mode_label]
+                y_maxV = _mc["maxV"][param]
+                y_minV = _mc["minV"][param]
 
-            # Filled polygon between max-V and min-V curves
-            poly_x = np.concatenate([pct_arr, pct_arr[::-1], [pct_arr[0]]])
-            poly_y = np.concatenate([y_maxV, y_minV[::-1], [y_maxV[0]]])
-            fig.add_trace(go.Scatter(
-                x=poly_x, y=poly_y,
-                fill="toself", fillcolor=_COLOR, opacity=0.20,
-                line=dict(color=_COLOR, width=1), mode="lines",
-                name=reactor_name, showlegend=True,
-                hoverinfo="skip",
-            ))
-            # Max-volume boundary (solid)
-            fig.add_trace(go.Scatter(
-                x=pct_arr, y=y_maxV,
-                mode="lines", line=dict(color=_COLOR, width=2),
-                name=f"max V ({_env_V_max:.1f} L)", showlegend=True,
-                hovertemplate="%% max RPM: %{x:.1f}%%<br>%{y:.3g}<extra>max V</extra>",
-            ))
-            # Min-volume boundary (dotted)
-            fig.add_trace(go.Scatter(
-                x=pct_arr, y=y_minV,
-                mode="lines", line=dict(color=_COLOR, width=2, dash="dot"),
-                name=f"min V ({_env_V_min:.1f} L)", showlegend=True,
-                hovertemplate="%% max RPM: %{x:.1f}%%<br>%{y:.3g}<extra>min V</extra>",
-            ))
+                # Filled polygon
+                poly_x = np.concatenate([pct_arr, pct_arr[::-1], [pct_arr[0]]])
+                poly_y = np.concatenate([y_maxV, y_minV[::-1], [y_maxV[0]]])
+                fig.add_trace(go.Scatter(
+                    x=poly_x, y=poly_y,
+                    fill="toself", fillcolor=_COLOR, opacity=0.15,
+                    line=dict(color=_COLOR, width=1), mode="lines",
+                    name=f"{_mode_label} envelope",
+                    legendgroup=_mode_label, showlegend=True,
+                    hoverinfo="skip",
+                ))
+                # Max-volume boundary (solid)
+                fig.add_trace(go.Scatter(
+                    x=pct_arr, y=y_maxV,
+                    mode="lines", line=dict(color=_COLOR, width=2),
+                    name=f"{_mode_label} max V ({_env_V_max:.1f} L)",
+                    legendgroup=_mode_label, showlegend=True,
+                    hovertemplate=f"{_mode_label} | %% max RPM: %{{x:.1f}}%%<br>%{{y:.3g}}<extra>max V</extra>",
+                ))
+                # Min-volume boundary (dotted)
+                fig.add_trace(go.Scatter(
+                    x=pct_arr, y=y_minV,
+                    mode="lines", line=dict(color=_COLOR, width=2, dash="dot"),
+                    name=f"{_mode_label} min V ({_env_V_min:.1f} L)",
+                    legendgroup=_mode_label, showlegend=True,
+                    hovertemplate=f"{_mode_label} | %% max RPM: %{{x:.1f}}%%<br>%{{y:.3g}}<extra>min V</extra>",
+                ))
 
-            # Current operating point marker
-            # Interpolate current value from the volume closest to the selected V_L
+            # Current operating point (uses priority mode)
+            _priority_curves = curve_data[_priority_mode_label]
+            _y_maxV_p = _priority_curves["maxV"][param]
+            _y_minV_p = _priority_curves["minV"][param]
             if abs(_env_V_max - _env_V_min) > 1e-6:
                 _frac = (V_L - _env_V_min) / (_env_V_max - _env_V_min)
                 _frac = max(0.0, min(1.0, _frac))
-                _y_interp = np.interp(_current_pct, pct_arr, y_minV) * (1 - _frac) + np.interp(_current_pct, pct_arr, y_maxV) * _frac
+                _y_interp = (np.interp(_current_pct, pct_arr, _y_minV_p) * (1 - _frac)
+                             + np.interp(_current_pct, pct_arr, _y_maxV_p) * _frac)
             else:
-                _y_interp = np.interp(_current_pct, pct_arr, y_maxV)
+                _y_interp = np.interp(_current_pct, pct_arr, _y_maxV_p)
             fig.add_trace(go.Scatter(
                 x=[_current_pct], y=[_y_interp],
                 mode="markers", marker=dict(size=12, color="red", symbol="star",
@@ -683,7 +815,7 @@ if _can_envelope:
                 margin=dict(t=50, b=50),
                 hovermode="closest",
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="content")
 
         with st.expander("Chart legend"):
             st.markdown("""
@@ -694,6 +826,11 @@ if _can_envelope:
 - **Dotted line** = min fill volume edge
 
 **★ Red star** = Current operating point (selected RPM & volume)
+
+**Colours (when multiple sources selected):**
+- 🔵 Blue = Literature
+- 🟢 Green = ROM
+- 🟠 Orange = Experimental
 """)
 else:
     st.info("Reactor has no RPM range defined — cannot compute operating envelope.")

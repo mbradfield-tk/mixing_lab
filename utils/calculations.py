@@ -73,6 +73,8 @@ def micromixing_time_engulfment(epsilon: float, nu: float) -> float:
     """
     Engulfment micro-mixing time (Baldyga & Bourne).
     t_E = 17.3 (ν / ε)^0.5
+
+    epsilon must be in W/kg (= m²/s³), NOT W/m³.
     """
     if epsilon <= 0:
         return np.inf
@@ -80,14 +82,14 @@ def micromixing_time_engulfment(epsilon: float, nu: float) -> float:
 
 
 def kolmogorov_length(nu: float, epsilon: float) -> float:
-    """η = (ν³ / ε)^(1/4)"""
+    """η = (ν³ / ε)^(1/4).  epsilon must be in W/kg (= m²/s³)."""
     if epsilon <= 0:
         return np.inf
     return (nu**3 / epsilon)**0.25
 
 
 def batchelor_length(nu: float, epsilon: float, D_mol: float) -> float:
-    """λ_B = η · Sc^{-1/2},  Sc = ν / D_mol"""
+    """λ_B = η · Sc^{-1/2},  Sc = ν / D_mol.  epsilon must be in W/kg."""
     eta = kolmogorov_length(nu, epsilon)
     Sc = nu / D_mol if D_mol > 0 else 1e12
     return eta / np.sqrt(Sc)
@@ -497,21 +499,20 @@ def compute_reactor_hydro(
         Nq = pumping_number_default()
     P = impeller_power(Np, rho, N, D_imp)
     eps = power_per_volume(P, V)            # W/m³
+    eps_kg = eps / rho                      # W/kg (= m²/s³)
     u_tip = tip_speed(N, D_imp)
     Q = pumping_rate(Nq, N, D_imp)
     t_blend = blend_time_turbulent(Nq, V, D_imp, N)
-    t_micro = micromixing_time_engulfment(eps, nu)
-    eta = kolmogorov_length(nu, eps)
-    eps_max = epsilon_max_estimate(P, rho, D_imp, N)  # W/m³
-    eps_max_kg = eps_max / rho                        # W/kg
+    t_micro = micromixing_time_engulfment(eps_kg, nu)   # needs W/kg
+    eta = kolmogorov_length(nu, eps_kg)                 # needs W/kg
+    eps_max = epsilon_max_estimate(P, rho, D_imp, N)    # W/kg (= m²/s³)
 
     # New parameters
     t_micro_local = micromixing_time_local(eps_max, nu)
     gamma_avg = average_shear_rate(P, mu, V)
-    gamma_max = maximum_shear_rate(eps_max_kg, nu)
+    gamma_max = maximum_shear_rate(eps_max, nu)
     tau_avg = shear_stress(mu, gamma_avg)
     kla = kla_vant_riet(eps, v_s, coalescing=coalescing)
-    eps_kg = eps / rho  # W/kg for surface kLa (dimensional consistency)
     kla_surf = kla_surface(eps_kg, nu, D_mol, D_tank, V)
 
     return {
@@ -520,6 +521,7 @@ def compute_reactor_hydro(
         "Np": Np,
         "Power (W)": P,
         "P/V (W/m³)": eps,
+        "P/V (W/kg)": eps_kg,
         "P/V (W/L)": eps / 1000,
         "Tip speed (m/s)": u_tip,
         "Pumping rate (m³/s)": Q,
@@ -527,7 +529,7 @@ def compute_reactor_hydro(
         "Micromix time t_E (s)": t_micro,
         "Micromix time t_E_local (s)": t_micro_local,
         "Kolmogorov η (µm)": eta * 1e6,
-        "ε_max (W/kg)": eps_max_kg,
+        "ε_max (W/kg)": eps_max,
         "Avg shear rate (1/s)": gamma_avg,
         "Max shear rate (1/s)": gamma_max,
         "Avg shear stress (Pa)": tau_avg,

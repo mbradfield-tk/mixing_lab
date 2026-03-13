@@ -5,7 +5,7 @@ import streamlit as st
 st.title("📐 Solid-Particle Equations")
 
 # ── Terminal Settling Velocity ───────────────────────────────────────────
-st.header("19. Terminal Settling Velocity")
+st.header("Terminal Settling Velocity")
 st.latex(r"v_{t,\text{Stokes}} = \frac{d_p^2 \, g \, \Delta\rho}{18 \, \mu} \cdot \phi")
 st.markdown(r"""
 **Stokes regime** ($Re_p < 0.1$): valid for small or slow-settling particles.
@@ -30,11 +30,11 @@ $$v_t = \sqrt{\frac{4\,g\,d_p\,\Delta\rho}{3\,C_D\,\rho_L}} \cdot \phi$$
 *Bubbles, Drops, and Particles.* Academic Press.
 """)
 
-st.header("20. Particle Reynolds Number")
+st.header("Particle Reynolds Number")
 st.latex(r"Re_p = \frac{\rho_L \, v_t \, d_p}{\mu}")
 st.markdown("Classifies the flow regime around a settling particle.")
 
-st.header("21. Zwietering Just-Suspended Speed")
+st.header("Zwietering Just-Suspended Speed")
 st.latex(r"N_{js} = S \, \nu^{0.1} \, d_p^{0.2} \left(\frac{g\,\Delta\rho}{\rho_L}\right)^{0.45} X^{0.13} \, D^{-0.85}")
 st.markdown(r"""
 The Zwietering (1958) correlation gives the minimum impeller speed to achieve
@@ -63,7 +63,7 @@ The Zwietering (1958) correlation gives the minimum impeller speed to achieve
 liquid by agitators. *Chem. Eng. Sci.*, 8(3–4), 244–253.
 """)
 
-st.header("22. Solid-Liquid Mass Transfer (Ranz-Marshall)")
+st.header("Solid-Liquid Mass Transfer (Ranz-Marshall)")
 st.latex(r"Sh = 2 + 0.6 \, Re_p^{1/2} \, Sc^{1/3}")
 st.latex(r"k_{SL} = \frac{Sh \cdot D_{mol}}{d_p}")
 st.markdown(r"""
@@ -83,7 +83,7 @@ coefficient from the liquid to a suspended particle surface.
 *Chem. Eng. Prog.*, 48(3), 141–146; 48(4), 173–180.
 """)
 
-st.header("23. Suspension Quality Assessment")
+st.header("Suspension Quality Assessment")
 st.markdown(r"""
 The ratio $N / N_{js}$ indicates the quality of particle suspension:
 

@@ -5,7 +5,7 @@ import streamlit as st
 st.title("📐 Scale-Up & Solvent Properties")
 
 # ── Scale-up rules ───────────────────────────────────────────────────────
-st.header("17. Common Scale-Up Rules")
+st.header("Common Scale-Up Rules")
 
 st.markdown("Given geometric similarity ($D/T$ = const), the large-scale speed $N_L$ is related to the small-scale $N_S$:")
 
@@ -27,18 +27,18 @@ st.markdown("""
 """)
 
 # ── Solvent Properties (T-dependent) ────────────────────────────────────
-st.header("18. Temperature-Dependent Solvent Properties")
+st.header("Temperature-Dependent Solvent Properties")
 st.markdown("""
 The Fluid Database's *Solvent Properties (T)* tab provides physical properties
 at any liquid-phase temperature for common pharmaceutical solvents, using the
 correlations below.
 """)
 
-st.subheader("18a. Density")
+st.subheader("Density")
 st.latex(r"\rho(T) = \rho_{25} + \frac{d\rho}{dT} \cdot (T - 25) \quad [\mathrm{kg/m^3}]")
 st.markdown("Linear fit anchored at the known 25 °C value.  $T$ in °C, slope $d\\rho/dT$ (typically negative) from published data.")
 
-st.subheader("18b. Dynamic Viscosity (Arrhenius)")
+st.subheader("Dynamic Viscosity (Arrhenius)")
 st.latex(r"\mu(T) = \mu_{25} \, \exp\!\left[ \frac{E_a}{R} \left( \frac{1}{T_K} - \frac{1}{298.15} \right) \right]")
 st.markdown("""
 $T_K$ = temperature in Kelvin, $E_a$ = activation energy for viscous flow
@@ -47,11 +47,11 @@ reference value is recovered exactly.  $E_a$ values from published data
 (Perry's, CRC Handbook, DIPPR).
 """)
 
-st.subheader("18c. Surface Tension")
+st.subheader("Surface Tension")
 st.latex(r"\sigma(T) = \sigma_{25} + \frac{d\sigma}{dT} \cdot (T - 25) \quad [\mathrm{N/m}]")
 st.markdown("Linear fit anchored at the known 25 °C value.  Clamped to $\\sigma \\ge 0$.")
 
-st.subheader("18d. Molecular Diffusivity (Stokes-Einstein Scaling)")
+st.subheader("Molecular Diffusivity (Stokes-Einstein Scaling)")
 st.latex(r"D(T) = D_{\mathrm{ref}} \; \frac{T_K}{298.15} \; \frac{\mu_{\mathrm{ref}}}{\mu(T)}")
 st.markdown("""
 Scaled from a reference value $D_{\\mathrm{ref}}$ measured at 25 °C using the

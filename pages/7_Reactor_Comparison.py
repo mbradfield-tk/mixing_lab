@@ -23,6 +23,13 @@ from utils.calculations import (
     heat_removal_capacity, heat_balance_assessment,
     liquid_height_from_volume,
 )
+from utils.rom_registry import (
+    compute_reactor_hydro_with_mode,
+    get_correlations,
+    has_any_alt_correlations,
+    PARAM_DISPLAY,
+)
+from utils.corr_widgets import render_correlation_matrix
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
@@ -57,17 +64,26 @@ if reactors.empty:
     st.stop()
 
 # ── Selection ────────────────────────────────────────────────────────────
-st.header("Select Reactors & Conditions")
+st.header("1 · Select Reactors & Conditions")
 
 _all_reactor_names = reactors["reactor_name"].tolist()
 _preferred_defaults = ["Nalas – EasyMax 102", "Cambrex – R-802", "Nalas – 20-L"]
 _defaults = [n for n in _preferred_defaults if n in _all_reactor_names] or _all_reactor_names[:4]
 
+# Restore previous selection if available, otherwise use defaults
+_saved = st.session_state.get("_sel_cmp_reactors")
+if _saved is not None:
+    _initial = [n for n in _saved if n in _all_reactor_names]
+else:
+    _initial = _defaults
+
 selected_names = st.multiselect(
     "Reactors to compare",
     _all_reactor_names,
-    default=_defaults,
+    default=_initial,
+    key="cmp_reactors",
 )
+st.session_state["_sel_cmp_reactors"] = selected_names
 
 if not selected_names:
     st.info("Select at least one reactor above.")
@@ -158,16 +174,24 @@ if not reactions.empty and _fluid_names:
                 _rxn_solvent, _rxn_T, _fluid_names)
             if _matched and _matched != st.session_state.get("cmp_fluid"):
                 st.session_state["cmp_fluid"] = _matched
+                st.session_state["_sel_cmp_fluid"] = _matched
                 if _fluid_warn:
                     st.session_state["_fluid_auto_warn"] = _fluid_warn
                 else:
                     st.session_state.pop("_fluid_auto_warn", None)
                 st.rerun()
 
+def _sel_idx(lst, key, default=0):
+    val = st.session_state.get(key)
+    if val in lst:
+        return lst.index(val)
+    return default
+
 col1, col2 = st.columns(2)
 with col1:
     if not fluids.empty:
-        fluid_name = st.selectbox("Fluid system", _fluid_names, key="cmp_fluid")
+        fluid_name = st.selectbox("Fluid system", _fluid_names, index=_sel_idx(_fluid_names, "_sel_cmp_fluid"), key="cmp_fluid")
+        st.session_state["_sel_cmp_fluid"] = fluid_name
         fluid = fluids[fluids["fluid_name"] == fluid_name].iloc[0]
         rho = float(fluid["rho_kg_m3"])
         mu = float(fluid["mu_Pa_s"])
@@ -183,7 +207,9 @@ if st.session_state.get("_fluid_auto_warn"):
     st.warning(st.session_state.pop("_fluid_auto_warn"))
 with col2:
     if not reactions.empty:
-        rxn_name = st.selectbox("Reaction (for Da numbers)", reactions["reaction_name"].tolist(), key="cmp_rxn")
+        _rxn_list = reactions["reaction_name"].tolist()
+        rxn_name = st.selectbox("Reaction (for Da numbers)", _rxn_list, index=_sel_idx(_rxn_list, "_sel_cmp_rxn"), key="cmp_rxn")
+        st.session_state["_sel_cmp_rxn"] = rxn_name
         rxn = reactions[reactions["reaction_name"] == rxn_name].iloc[0]
         t_rxn = float(rxn["t_rxn_s"])
         rxn_k = float(rxn["k_value"])
@@ -219,6 +245,36 @@ with col4:
                                ["Coalescing (pure liquid)", "Non-coalescing (electrolyte)"],
                                key="cmp_coal")
     is_coalescing = coal_choice.startswith("Coalescing")
+
+st.divider()
+
+# ── Per-reactor correlation mode selector ─────────────────────────────────
+st.header("2 · Correlation Source Selection")
+corr_modes: dict[str, dict[str, str] | str] = {}  # reactor_name → per-param dict
+_any_has_alt = any(has_any_alt_correlations(n) for n in selected_names)
+if _any_has_alt:
+    with st.expander("Correlation source selection (per reactor)", expanded=False):
+        st.caption(
+            "Select **Literature**, **ROM**, or **Experimental** per parameter "
+            "for each reactor independently."
+        )
+        for rname in selected_names:
+            if has_any_alt_correlations(rname):
+                st.subheader(rname)
+                corr_modes[rname] = render_correlation_matrix(
+                    rname, key_prefix=f"cmp_corr_{rname}",
+                )
+                st.divider()
+            else:
+                corr_modes[rname] = "Literature"
+else:
+    for rname in selected_names:
+        corr_modes[rname] = "Literature"
+
+st.divider()
+
+# ── Additional options ─────────────────────────────────────────────────────────
+st.header("3 · Additional Options")
 
 # ── Particle options ──────────────────────────────────────────────────────────
 include_particles = st.checkbox("Include solid particles", value=False, key="cmp_include_particles")
@@ -374,7 +430,8 @@ for rname in selected_names:
 
     for label, N, V_L in corners:
         H_v = _liquid_height(V_L, D_tank_v, H_max, _r_bottom_dish)
-        h = compute_reactor_hydro(
+        h, _rom_src = compute_reactor_hydro_with_mode(
+            corr_modes.get(rname, "Literature"), rname,
             N=N, D_imp=D_imp_v, D_tank=D_tank_v, H=H_v,
             rho=rho, mu=mu, Np=Np_v, Nq=Nq_v,
             v_s=v_s, coalescing=is_coalescing,
@@ -499,6 +556,23 @@ agg_df = agg_df.reset_index()
 _N_INTERP = 50
 
 curve_data: dict = {}  # rname → {pct_arr, maxV: {param: arr}, minV: {param: arr}}
+
+# Pre-compute RPM-independent particle quantities (hoisted out of inner loop)
+_p7_part_static: dict[str, dict] = {}
+if include_particles and cmp_d50_um > 0:
+    _dp_p7 = cmp_d50_um * 1e-6
+    _nu_p7 = mu / rho
+    _drho_p7 = abs(cmp_rho_p - rho)
+    _vt_p7 = settling_velocity(_dp_p7, cmp_rho_p, rho, mu, cmp_phi_p)
+    _rep_p7 = particle_reynolds(_dp_p7, _vt_p7, rho, mu)
+    for rname, info in reactor_info.items():
+        _njs_p7 = zwietering_njs(cmp_S_zw, _nu_p7, _dp_p7, _drho_p7, rho, cmp_X_wt, info["D_imp"])
+        _ksl_p7 = solid_liquid_mass_transfer(_dp_p7, _vt_p7, rho, mu, D_mol)
+        _p7_part_static[rname] = {
+            "N_js_rps": _njs_p7, "N_js (RPM)": _njs_p7 * 60,
+            "v_t (m/s)": _vt_p7, "Re_p": _rep_p7, "k_SL (m/s)": _ksl_p7,
+        }
+
 for rname, info in reactor_info.items():
     N_arr = np.linspace(info["N_lo"], info["N_hi"], _N_INTERP)
     pct_arr = N_arr / info["N_hi"] * 100 if info["N_hi"] > 0 else np.zeros(_N_INTERP)
@@ -507,8 +581,17 @@ for rname, info in reactor_info.items():
     for vol_key, V_L in [("maxV", info["V_max_L"]), ("minV", info["V_min_L"])]:
         H_v = _liquid_height(V_L, info["D_tank"], info["H_max"], info["bottom_dish"])
         param_arrs: dict = {p: np.empty(_N_INTERP) for p in PLOT_PARAMS}
+
+        # Pre-compute RPM-independent heat quantities for this volume
+        _Q_gen_p7 = _A_ht_p7 = 0.0
+        if include_heat and rxn_delta_H != 0:
+            _r_mol_s = reaction_rate_mol_per_s(rxn_order, rxn_k, rxn_C0, V_L)
+            _Q_gen_p7 = heat_generation_rate(rxn_delta_H, _r_mol_s)
+            _A_ht_p7 = info["A_override"] if info["A_override"] > 0 else estimate_jacket_area(info["D_tank"], H_v, info["bottom_dish"])
+
         for j, N in enumerate(N_arr):
-            h = compute_reactor_hydro(
+            h, _ = compute_reactor_hydro_with_mode(
+                corr_modes.get(rname, "Literature"), rname,
                 N=N, D_imp=info["D_imp"], D_tank=info["D_tank"], H=H_v,
                 rho=rho, mu=mu, Np=info["Np"], Nq=info["Nq"],
                 v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
@@ -518,25 +601,16 @@ for rname, info in reactor_info.items():
                 kLa=h["kLa (1/s)"], kLa_surface=h["kLa_surface (1/s)"],
             )
             vals = {**h, **da}
-            # Particle parameters in curve
-            if include_particles and cmp_d50_um > 0:
-                _dp = cmp_d50_um * 1e-6
-                _nu = mu / rho
-                _drho = abs(cmp_rho_p - rho)
-                _vt = settling_velocity(_dp, cmp_rho_p, rho, mu, cmp_phi_p)
-                _rep = particle_reynolds(_dp, _vt, rho, mu)
-                _njs = zwietering_njs(cmp_S_zw, _nu, _dp, _drho, rho, cmp_X_wt, info["D_imp"])
-                _ksl = solid_liquid_mass_transfer(_dp, _vt, rho, mu, D_mol)
-                vals["N_js (RPM)"] = _njs * 60
-                vals["N/N_js"] = N / _njs if _njs > 0 else 0.0
-                vals["v_t (m/s)"] = _vt
-                vals["Re_p"] = _rep
-                vals["k_SL (m/s)"] = _ksl
-            # Heat balance parameters in curve
+            # Particle parameters — use pre-computed statics
+            if rname in _p7_part_static:
+                _ps = _p7_part_static[rname]
+                vals["N_js (RPM)"] = _ps["N_js (RPM)"]
+                vals["N/N_js"] = N / _ps["N_js_rps"] if _ps["N_js_rps"] > 0 else 0.0
+                vals["v_t (m/s)"] = _ps["v_t (m/s)"]
+                vals["Re_p"] = _ps["Re_p"]
+                vals["k_SL (m/s)"] = _ps["k_SL (m/s)"]
+            # Heat balance — only U depends on RPM
             if include_heat and rxn_delta_H != 0:
-                _r_mol_s = reaction_rate_mol_per_s(rxn_order, rxn_k, rxn_C0, V_L)
-                _Q_gen = heat_generation_rate(rxn_delta_H, _r_mol_s)
-                _A_ht = info["A_override"] if info["A_override"] > 0 else estimate_jacket_area(info["D_tank"], H_v, info["bottom_dish"])
                 if info["U_override"] > 0:
                     _U_ht = info["U_override"]
                 else:
@@ -548,19 +622,21 @@ for rname, info in reactor_info.items():
                         fluid_name=fluid_name,
                     )
                 _dT = cmp_T_process - cmp_T_coolant
-                _Q_cool = heat_removal_capacity(_U_ht, _A_ht, _dT)
-                vals["Q_gen (W)"] = _Q_gen
+                _Q_cool = heat_removal_capacity(_U_ht, _A_ht_p7, _dT)
+                vals["Q_gen (W)"] = _Q_gen_p7
                 vals["Q_cool (W)"] = _Q_cool
                 vals["U (W/m²·K)"] = _U_ht
-                vals["A_ht (m²)"] = _A_ht
-                vals["Q_gen/Q_cool (%)"] = _Q_gen / _Q_cool * 100 if _Q_cool > 0 else np.inf
+                vals["A_ht (m²)"] = _A_ht_p7
+                vals["Q_gen/Q_cool (%)"] = _Q_gen_p7 / _Q_cool * 100 if _Q_cool > 0 else np.inf
             for p in PLOT_PARAMS:
                 param_arrs[p][j] = vals.get(p, np.nan)
         curves[vol_key] = param_arrs
     curve_data[rname] = curves
 
+st.divider()
+
 # ── Summary Table ─────────────────────────────────────────────────────────
-st.header("Operating Envelope Summary")
+st.header("4 · Operating Envelope Summary")
 st.caption("Each row shows the range across the 4 corner conditions (min/max RPM × min/max volume).")
 
 table_rows = []
@@ -595,8 +671,10 @@ with st.expander("Full 4-corner detail table", expanded=False):
     fmt = {c: "{:.3g}" for c in detail_cols if c not in ("Reactor", "Corner")}
     st.dataframe(env_df[detail_cols].style.format(fmt), width="stretch", hide_index=True)
 
+st.divider()
+
 # ── Charts: operating envelopes ──────────────────────────────────────────
-st.header("📊 Operating Envelope Charts")
+st.header("5 · Operating Envelope Charts")
 
 with st.expander("Show / hide envelope charts", expanded=True):
 
@@ -833,7 +911,8 @@ Overlapping shaded regions indicate where two reactors can achieve similar param
 
 # ── Heat Balance Summary ─────────────────────────────────────────────────
 if include_heat and rxn_delta_H != 0:
-    st.header("🌡️ Heat Balance Summary")
+    st.divider()
+    st.header("6 · Heat Balance Summary")
     st.caption(
         f"Reaction: **{rxn_name if not reactions.empty else 'N/A'}** | "
         f"ΔH = {rxn_delta_H:.0f} kJ/mol | "
@@ -935,8 +1014,10 @@ if include_heat and rxn_delta_H != 0:
         )
         st.plotly_chart(fig_heat, width="stretch")
 
+st.divider()
+
 # ── Scale-up summary ─────────────────────────────────────────────────────
-st.header("Scale-Up Impact Summary")
+st.header("7 · Scale-Up Impact Summary")
 st.caption("Ratios use midpoint (average of 4 corners) for each parameter, relative to the first selected reactor.")
 
 if len(agg_df) >= 2:

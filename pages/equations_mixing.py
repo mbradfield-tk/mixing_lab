@@ -5,7 +5,7 @@ import streamlit as st
 st.title("📐 Mixing & Damköhler Equations")
 
 # ── Blend Time ───────────────────────────────────────────────────────────
-st.header("6. Macro-Blend Time (95 %)")
+st.header("Macro-Blend Time (95 %)")
 st.latex(r"\theta_{95} = \frac{5.2 \, V}{N_Q \, N \, D^3}")
 st.markdown("""
 Grenville correlation for turbulent blending in a baffled stirred tank.
@@ -16,7 +16,7 @@ This represents the time to achieve 95 % uniformity on the bulk (macro) scale.
 """)
 
 # ── Micromixing Time ─────────────────────────────────────────────────────
-st.header("7. Engulfment Micromixing Time")
+st.header("Engulfment Micromixing Time")
 st.latex(r"t_E = 17.3 \left( \frac{\nu}{\varepsilon} \right)^{1/2}")
 st.markdown("""
 Baldyga & Bourne engulfment model – characterises the time for mixing at the
@@ -25,13 +25,13 @@ smallest (molecular) scales.
 | Symbol | Description | Units |
 |--------|-------------|-------|
 | $\\nu$ | Kinematic viscosity ($\\mu / \\rho$) | m²/s |
-| $\\varepsilon$ | Mean energy dissipation rate (P/V) | W/m³ or W/kg |
+| $\\varepsilon$ | Mass-specific energy dissipation rate $P/(\\rho V)$ | W/kg (= m²/s³) |
 
 **Reference:** Baldyga, J. and Bourne, J. R. (1999). *Turbulent Mixing and Chemical Reactions.* Wiley.
 """)
 
 # ── Damköhler Numbers ───────────────────────────────────────────────────
-st.header("11. Damköhler Numbers")
+st.header("Damköhler Numbers")
 
 st.subheader("Macro Damköhler Number")
 st.latex(r"Da_{macro} = \frac{\theta_{blend}}{t_{rxn}}")
@@ -52,7 +52,7 @@ st.markdown("""
 """)
 
 # ── Gas-Liquid Damköhler ─────────────────────────────────────────────────
-st.header("11b. Gas-Liquid Damköhler Number")
+st.header("Gas-Liquid Damköhler Number")
 
 st.latex(r"Da_{GL} = \frac{1}{k_L a \; t_{rxn}} = \frac{t_{\text{transfer}}}{t_{rxn}}")
 
@@ -78,7 +78,7 @@ the transport process relative to reaction.
 """)
 
 # ── Reaction time ────────────────────────────────────────────────────────
-st.header("12. Characteristic Reaction Time")
+st.header("Characteristic Reaction Time")
 
 st.subheader("First-order or pseudo-first-order")
 st.latex(r"t_{rxn} = \frac{\ln 2}{k}")
@@ -94,10 +94,10 @@ st.markdown("""
 """)
 
 # ── Local micromixing time ───────────────────────────────────────────────
-st.header("14. Local Micromixing Time (Impeller Zone)")
+st.header("Local Micromixing Time (Impeller Zone)")
 st.latex(r"t_{E,\text{local}} = 17.3 \left( \frac{\nu}{\varepsilon_{max}} \right)^{1/2}")
 st.markdown("""
-This is the same Baldyga & Bourne engulfment model as Equation 7, but evaluated
+This is the same Baldyga & Bourne engulfment model as the Engulfment Micromixing Time equation above, but evaluated
 using the **local maximum** energy dissipation rate $\\varepsilon_{max}$ near the impeller
 instead of the volume-averaged $\\varepsilon$.
 
