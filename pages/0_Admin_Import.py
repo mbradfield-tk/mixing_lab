@@ -68,7 +68,7 @@ reactor_names = [
 with st.expander("Raw source preview (first 20 rows)", expanded=False):
     preview = raw.iloc[:20].copy()
     preview.columns = ["Property", "Units"] + [n or f"Col {i}" for i, n in enumerate(reactor_names)]
-    st.dataframe(preview, width="content", hide_index=True)
+    st.dataframe(preview, use_container_width=False, hide_index=True)
 
 # ─────────────────────────────────────────────────────────────────────────
 # 2. Transpose into row-per-reactor dataframe
@@ -193,10 +193,10 @@ extras_df = pd.DataFrame(extra_fields_all)
 st.header("2 · Converted Preview")
 
 st.subheader("Core fields (reactors.csv format)")
-st.dataframe(converted_df, width="content", hide_index=True)
+st.dataframe(converted_df, use_container_width=False, hide_index=True)
 
 with st.expander("All fields from source (including unmapped)", expanded=False):
-    st.dataframe(extras_df, width="content", hide_index=True)
+    st.dataframe(extras_df, use_container_width=False, hide_index=True)
 
 # ─────────────────────────────────────────────────────────────────────────
 # 4. Load current reactor DB for comparison
@@ -205,7 +205,7 @@ st.header("3 · Current Reactor Database")
 
 if REACTOR_CSV.exists():
     current_df = pd.read_csv(REACTOR_CSV)
-    st.dataframe(current_df, width="content", hide_index=True)
+    st.dataframe(current_df, use_container_width=False, hide_index=True)
     st.caption(f"{len(current_df)} reactors in current database.")
 else:
     current_df = pd.DataFrame()
@@ -286,7 +286,7 @@ if st.button("🚀 Apply to reactors.csv", type="primary"):
         st.session_state.reactor_db = result
 
     st.success(f"✅ Wrote {len(result)} reactors to **{REACTOR_CSV.name}**.")
-    st.dataframe(result, width="content", hide_index=True)
+    st.dataframe(result, use_container_width=False, hide_index=True)
 
 # ─────────────────────────────────────────────────────────────────────────
 # 6. Field mapping reference

@@ -651,7 +651,7 @@ for _, a in agg_df.iterrows():
             row[p] = f"{lo:.3g} – {hi:.3g}"
     table_rows.append(row)
 
-st.dataframe(pd.DataFrame(table_rows), width="content", hide_index=True)
+st.dataframe(pd.DataFrame(table_rows), use_container_width=False, hide_index=True)
 
 # ── Detail: 4-corner table ───────────────────────────────────────────────
 with st.expander("Full 4-corner detail table", expanded=False):
@@ -669,7 +669,7 @@ with st.expander("Full 4-corner detail table", expanded=False):
     # Only include columns that exist in the dataframe
     detail_cols = [c for c in detail_cols if c in env_df.columns]
     fmt = {c: "{:.3g}" for c in detail_cols if c not in ("Reactor", "Corner")}
-    st.dataframe(env_df[detail_cols].style.format(fmt), width="content", hide_index=True)
+    st.dataframe(env_df[detail_cols].style.format(fmt), use_container_width=False, hide_index=True)
 
 st.divider()
 
@@ -695,7 +695,7 @@ with st.expander("Show / hide envelope charts", expanded=True):
             row_data[f"{pct}%"] = f"{rpm_max_val * pct / 100:.0f}"
         rpm_table_rows.append(row_data)
 
-    st.dataframe(pd.DataFrame(rpm_table_rows), width="content", hide_index=True)
+    st.dataframe(pd.DataFrame(rpm_table_rows), use_container_width=False, hide_index=True)
 
     st.caption(
         "Each reactor's operational region is plotted as a filled polygon. "
@@ -885,7 +885,7 @@ with st.expander("Show / hide envelope charts", expanded=True):
             legend=dict(title="Reactor"),
             hovermode="closest",
         )
-        st.plotly_chart(fig, width="content")
+        st.plotly_chart(fig, use_container_width=False)
 
     # ── Chart legend ─────────────────────────────────────────────────────
     with st.expander("Chart legend"):
@@ -944,7 +944,7 @@ if include_heat and rxn_delta_H != 0:
         })
 
     if heat_summary_rows:
-        st.dataframe(pd.DataFrame(heat_summary_rows), width="content", hide_index=True)
+        st.dataframe(pd.DataFrame(heat_summary_rows), use_container_width=False, hide_index=True)
 
     # Operating envelope chart for Q_gen/Q_cool (%)
     if heat_summary_rows:
@@ -1012,7 +1012,7 @@ if include_heat and rxn_delta_H != 0:
             legend=dict(title="Reactor"),
             hovermode="closest",
         )
-        st.plotly_chart(fig_heat, width="content")
+        st.plotly_chart(fig_heat, use_container_width=False)
 
 st.divider()
 
@@ -1056,6 +1056,6 @@ if len(agg_df) >= 2:
         summary_rows.append(entry)
     summary_df = pd.DataFrame(summary_rows)
     numeric_cols = summary_df.select_dtypes(include="number").columns
-    st.dataframe(summary_df.style.format({c: "{:.2f}" for c in numeric_cols}), width="content")
+    st.dataframe(summary_df.style.format({c: "{:.2f}" for c in numeric_cols}), use_container_width=False)
 else:
     st.info("Select at least two reactors to see scale-up ratios.")

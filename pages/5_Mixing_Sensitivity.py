@@ -815,7 +815,7 @@ if _can_envelope:
                 margin=dict(t=50, b=50),
                 hovermode="closest",
             )
-            st.plotly_chart(fig, width="content")
+            st.plotly_chart(fig, use_container_width=False)
 
         with st.expander("Chart legend"):
             st.markdown("""
@@ -847,7 +847,7 @@ if heat_results:
     heat_df = pd.DataFrame([heat_results]).T
     heat_df.columns = ["Value"]
     hydro_df = pd.concat([hydro_df, heat_df])
-st.dataframe(hydro_df, width="content")
+st.dataframe(hydro_df, use_container_width=False)
 if particle_results:
     st.caption(f"Particle: **{particle_meta['Particle']}**  ·  {particle_meta['Suspension']}")
 

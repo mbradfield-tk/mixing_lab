@@ -193,7 +193,7 @@ _DOT_SOURCE = """
 """
 
 with st.expander("📋 Protocol overview", expanded=True):
-    st.graphviz_chart(_DOT_SOURCE, width="content")
+    st.graphviz_chart(_DOT_SOURCE, use_container_width=False)
 
     # Export buttons
     _graph = graphviz.Source(_DOT_SOURCE)
