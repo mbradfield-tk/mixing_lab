@@ -52,7 +52,7 @@ with tab_browse:
     edited = st.data_editor(
         df_display,
         num_rows="dynamic",
-        width="stretch",
+        width="content",
         column_config={
             "rho_kg_m3": st.column_config.NumberColumn("ρ (kg/m³)", format="%.1f"),
             "mu_Pa_s": st.column_config.NumberColumn("μ (Pa·s)", format="%.6f"),
@@ -112,7 +112,7 @@ with tab_solvent:
 
     # --- Reference table of available solvents ---
     with st.expander("Available solvents (properties at 25 °C)", expanded=False):
-        st.dataframe(pd.DataFrame(solvent_info_table()), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(solvent_info_table()), width="content", hide_index=True)
 
     # --- Solvent selector + temperature ---
     s_col1, s_col2 = st.columns(2)
@@ -184,7 +184,7 @@ with tab_solvent:
         fig.update_xaxes(title_text="T (°C)", row=r, col=c)
 
     fig.update_layout(height=550, margin=dict(t=40, b=40))
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="content")
 
     # --- Add to fluid database ---
     st.subheader("Add to Fluid Database")

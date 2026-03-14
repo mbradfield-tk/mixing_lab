@@ -847,7 +847,7 @@ if heat_results:
     heat_df = pd.DataFrame([heat_results]).T
     heat_df.columns = ["Value"]
     hydro_df = pd.concat([hydro_df, heat_df])
-st.dataframe(hydro_df, width="stretch")
+st.dataframe(hydro_df, width="content")
 if particle_results:
     st.caption(f"Particle: **{particle_meta['Particle']}**  ·  {particle_meta['Suspension']}")
 

@@ -66,7 +66,7 @@ for col in filtered.columns:
     if filtered[col].dtype in ("float64", "float32"):
         format_dict[col] = "{:.4g}"
 
-st.dataframe(filtered.style.format(format_dict), width="stretch")
+st.dataframe(filtered.style.format(format_dict), width="content")
 
 st.caption(f"Showing {len(filtered)} of {len(df)} records.")
 

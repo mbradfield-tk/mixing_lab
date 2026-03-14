@@ -86,7 +86,7 @@ with tab_browse:
     edited_df = st.data_editor(
         df_display,
         num_rows="dynamic",
-        width="stretch",
+        width="content",
         key="reactor_editor",
     )
 
@@ -141,7 +141,7 @@ with tab_browse:
                     with cols[idx % len(cols)]:
                         # Caption from the part after the reactor name
                         label = img_path.stem.removeprefix(prefix).lstrip("_") or img_path.stem
-                        st.image(str(img_path), caption=label, width="stretch")
+                        st.image(str(img_path), caption=label, width="content")
 
             # ── CFD images ────────────────────────────────────────────────
             if cfd_imgs:
@@ -163,7 +163,7 @@ with tab_browse:
                             st.image(
                                 str(img_path),
                                 caption=img_path.stem.split("_CFD_")[-1],
-                                width="stretch",
+                                width="content",
                             )
     else:
         st.info("No reactors in the filtered view.")

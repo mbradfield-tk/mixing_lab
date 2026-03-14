@@ -45,7 +45,7 @@ with tab_browse:
     if filt_solvent:
         df = df[df["solvent"].isin(filt_solvent)]
 
-    edited = st.data_editor(df, num_rows="dynamic", width="stretch", key="rxn_editor")
+    edited = st.data_editor(df, num_rows="dynamic", width="content", key="rxn_editor")
 
     btn_col1, btn_col2, _ = st.columns([1, 1, 4])
     with btn_col1:

@@ -53,7 +53,7 @@ with tab_browse:
     edited = st.data_editor(
         df_display,
         num_rows="dynamic",
-        width="stretch",
+        width="content",
         column_config={
             "rho_p_kg_m3": st.column_config.NumberColumn("ρ_p (kg/m³)", format="%.0f"),
             "d10_um": st.column_config.NumberColumn("D10 (µm)", format="%.1f"),

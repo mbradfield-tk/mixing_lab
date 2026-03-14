@@ -201,7 +201,7 @@ t1_rows = [
     _hydro_row("High (10× P/V)", N_high),
 ]
 t1_df = pd.DataFrame(t1_rows)
-st.dataframe(t1_df, width="stretch", hide_index=True)
+st.dataframe(t1_df, width="content", hide_index=True)
 
 pv_ratio = t1_rows[2]["P/V (W/kg)"] / t1_rows[0]["P/V (W/kg)"] if t1_rows[0]["P/V (W/kg)"] > 0 else 0
 st.caption(f"P/V ratio (high/low) = **{pv_ratio:.0f}×**  •  Speed ratio (high/low) = **{N_high/N_low:.1f}×**")
@@ -301,7 +301,7 @@ t2_conditions = pd.DataFrame([
         "Notes": "Less mesomixing stress — better result if meso-controlled",
     },
 ])
-st.dataframe(t2_conditions, width="stretch", hide_index=True)
+st.dataframe(t2_conditions, width="content", hide_index=True)
 st.caption(f"Flow-rate ratio (fast/slow) = **9×**  •  Hold impeller speed at N = {N_center_calc:.2f} rev/s ({N_center_calc*60:.0f} RPM)")
 
 with st.expander("Understanding mesomixing"):
@@ -403,7 +403,7 @@ t3_locs = pd.DataFrame([
         "t_E micro (s)": round(micromixing_time_engulfment(3.0 * eps_avg_kg, nu), 5),
     },
 ])
-st.dataframe(t3_locs, width="stretch", hide_index=True)
+st.dataframe(t3_locs, width="content", hide_index=True)
 st.caption("Local ε estimated at centerpoint impeller speed. Actual values depend on impeller type and geometry.")
 
 with st.expander("Practical considerations for feed location"):
