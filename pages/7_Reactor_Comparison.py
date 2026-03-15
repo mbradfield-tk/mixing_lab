@@ -1059,3 +1059,68 @@ if len(agg_df) >= 2:
     st.dataframe(summary_df.style.format({c: "{:.2f}" for c in numeric_cols}), use_container_width=False)
 else:
     st.info("Select at least two reactors to see scale-up ratios.")
+
+st.divider()
+
+# ── Save results per reactor ─────────────────────────────────────────────
+st.header("8 · Save Results")
+st.caption(
+    "Save the max-RPM / max-V corner result for each selected reactor to "
+    "Recorded Results (same format as the Mixing Sensitivity page)."
+)
+
+if st.button("📌 Save results for all selected reactors", key="cmp_save_all"):
+    if "recorded_results" not in st.session_state:
+        st.session_state.recorded_results = pd.DataFrame()
+
+    _saved_count = 0
+    for rname in selected_names:
+        _corners = env_df[
+            (env_df["Reactor"] == rname) & (env_df["Corner"] == "max RPM / max V")
+        ]
+        if _corners.empty:
+            continue
+        _c = _corners.iloc[0]
+        _result_row = {
+            "reactor": rname,
+            "reaction": rxn_name if not reactions.empty else "",
+            "fluid": fluid_name if not fluids.empty else "",
+            "RPM": _c["RPM"],
+            "Volume (L)": _c["V_L"],
+            "Re": _c.get("Re", ""),
+            "P/V (W/L)": _c.get("P/V (W/L)", ""),
+            "Tip speed (m/s)": _c.get("Tip speed (m/s)", ""),
+            "Blend time (s)": _c.get("Blend time 95% (s)", ""),
+            "Micromix t_E (s)": _c.get("Micromix time t_E (s)", ""),
+            "Micromix t_E_local (s)": _c.get("Micromix time t_E_local (s)", ""),
+            "Kolmogorov η (µm)": _c.get("Kolmogorov η (µm)", ""),
+            "Avg shear rate (1/s)": _c.get("Avg shear rate (1/s)", ""),
+            "Max shear rate (1/s)": _c.get("Max shear rate (1/s)", ""),
+            "Avg shear stress (Pa)": _c.get("Avg shear stress (Pa)", ""),
+            "kLa (1/s)": _c.get("kLa (1/s)", ""),
+            "kLa_surface (1/s)": _c.get("kLa_surface (1/s)", ""),
+            "t_rxn (s)": t_rxn,
+            "Da_macro": _c.get("Da_macro", ""),
+            "Da_micro": _c.get("Da_micro", ""),
+            "Da_GL": _c.get("Da_GL", ""),
+            "Assessment": _c.get("Assessment", ""),
+        }
+        if include_particles and cmp_d50_um > 0:
+            _result_row.update({
+                "Particle": cmp_particle_name if "cmp_particle_name" in dir() else "",
+                "d50 (µm)": cmp_d50_um,
+                "ρ_p (kg/m³)": cmp_rho_p,
+                "v_t (m/s)": _c.get("v_t (m/s)", ""),
+                "Re_p": _c.get("Re_p", ""),
+                "N_js (RPM)": _c.get("N_js (RPM)", ""),
+                "k_SL (m/s)": _c.get("k_SL (m/s)", ""),
+            })
+        st.session_state.recorded_results = pd.concat(
+            [st.session_state.recorded_results, pd.DataFrame([_result_row])],
+            ignore_index=True,
+        )
+        _saved_count += 1
+
+    _results_csv = DATA_DIR / "recorded_results.csv"
+    st.session_state.recorded_results.to_csv(_results_csv, index=False)
+    st.success(f"Saved {_saved_count} reactor result(s) to **Recorded Results**.")

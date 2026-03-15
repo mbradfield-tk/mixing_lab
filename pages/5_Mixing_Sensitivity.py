@@ -859,6 +859,8 @@ if st.button("📌 Save this result to Recorded Results"):
         "reactor": reactor_name,
         "reaction": reaction_name,
         "fluid": fluid_name,
+        "RPM": _N_rpm_input,
+        "Volume (L)": V_L,
         "Re": hydro["Re"],
         "P/V (W/L)": hydro["P/V (W/L)"],
         "Tip speed (m/s)": hydro["Tip speed (m/s)"],
