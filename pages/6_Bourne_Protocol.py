@@ -71,6 +71,13 @@ precipitation, etc.) can impact the result.
 > — E. L. Paul (2003)
 """)
 
+_BP_IMG = pathlib.Path(__file__).resolve().parent.parent / "images" / "general" / "bourne_protocol_decision_tree.png"
+with st.expander("📋 Protocol overview – Decision Tree", expanded=False):
+    if _BP_IMG.exists():
+        st.image(str(_BP_IMG), caption="Bourne Protocol – Decision Tree (Bourne 2003 / Sarafinas 2018)")
+    else:
+        st.info("Decision tree image not found. Generate it from the ⚙️ Admin page.")
+
 st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════

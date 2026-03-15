@@ -18,6 +18,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pathlib
+import graphviz
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 ALT_CSV = DATA_DIR / "reactors_alt.csv"
@@ -324,3 +325,268 @@ with st.expander("📋 Field mapping reference", expanded=False):
 `Np`, `Nq`, `Np2`, `Np3`, `Zwietering_S`, `GMB_z`, `V_L_min`, `V_L_max`,
 `OD_m`, `knuckle_radius_m`
 """)
+
+# ─────────────────────────────────────────────────────────────────────────
+# 7. Bourne Protocol Decision Tree
+# ─────────────────────────────────────────────────────────────────────────
+st.divider()
+st.header("5 · Bourne Protocol – Decision Tree")
+st.caption(
+    "Generate an interactive decision-tree diagram of the Bourne mixing-sensitivity "
+    "screening protocol (Bourne 2003 / Sarafinas 2018)."
+)
+
+_BOURNE_DOT = """
+    digraph bourne_protocol {
+        rankdir=TB
+        fontname="Arial"
+        node [fontname="Arial" fontsize=10 style=filled shape=box
+              fillcolor="#F5F5F5" color="#BDBDBD" margin="0.15,0.08"]
+        edge [fontname="Arial" fontsize=9 color="#616161"]
+
+        /* Start */
+        START [label="🧫  Bourne Protocol\nMixing Sensitivity Screening" shape=Mrecord
+               fillcolor="#4CAF50" fontcolor=white fontsize=11]
+
+        /* Test 1 */
+        T1 [label="Test 1\nVary Impeller Speed\n(~100× change in P/V)" shape=diamond
+            fillcolor="#E3F2FD" color="#90CAF9" fontsize=10]
+        T1_SETUP [label="3 speeds:\nLow (0.1× P/V)\nCenter (1× P/V)\nHigh (10× P/V)"
+                  fillcolor="#FFF3E0" color="#FFB74D"]
+        T1_NO [label="✅ Mixing is NOT critical\nover tested P/V range\n— Protocol Complete"
+               fillcolor="#E8F5E9" color="#81C784" fontsize=10]
+
+        /* Test 2 */
+        T2 [label="Test 2\nVary Feed Rate / Feed Time\n(9× range on flow rate)" shape=diamond
+            fillcolor="#E3F2FD" color="#90CAF9" fontsize=10]
+        T2_SETUP [label="3 feed times:\nFast (1/3× t_feed)\nCenter (1× t_feed)\nSlow (3× t_feed)"
+                  fillcolor="#FFF3E0" color="#FFB74D"]
+        T2_NO [label="🔬 Micromixing\nControls Process\n\n→ Hold local ε constant\nat feed point on scale-up"
+               fillcolor="#E8EAF6" color="#7986CB" fontsize=10]
+
+        /* Test 3 */
+        T3 [label="Test 3\nVary Feed Location\n(surface → impeller zone)" shape=diamond
+            fillcolor="#E3F2FD" color="#90CAF9" fontsize=10]
+        T3_SETUP [label="3 locations:\nSurface (ε_loc ≈ 0.1 ε_avg)\nSub-surface (ε_loc ≈ 1 ε_avg)\nImpeller zone (ε_loc ≈ 3 ε_avg)"
+                  fillcolor="#FFF3E0" color="#FFB74D"]
+        T3_MACRO [label="🌀 Macromixing\nControls Process\n\n→ Reduce blend time\n→ High-efficiency impellers\n→ Multiple impellers / static mixers"
+                  fillcolor="#FFEBEE" color="#EF9A9A" fontsize=10]
+        T3_MESO [label="📐 Mesomixing\nControls Process\n\n→ Keep impeller speed constant\n→ Extend feed time\n→ Multiple feed points"
+                 fillcolor="#FFF8E1" color="#FFD54F" fontsize=10]
+
+        /* Confirmatory */
+        CONFIRM [label="Confirmatory Experiments\n(Optional)" shape=Mrecord
+                 fillcolor="#F3E5F5" color="#CE93D8" fontsize=10]
+        CONF_A [label="A – Number of Feed Points\nInsensitive → Micromixing\nSensitive → Mesomixing"
+                fillcolor="#F3E5F5" color="#CE93D8"]
+        CONF_B [label="B – Viscosity Change\nSensitive → Micromixing\nInsensitive → Not micromixing"
+                fillcolor="#F3E5F5" color="#CE93D8"]
+
+        /* Edges */
+        START -> T1
+        T1 -> T1_SETUP [label="Experimental\nconditions" style=dashed]
+
+        T1 -> T1_NO     [label="No change in\nprocess response"]
+        T1 -> T2         [label="Process response\nchanged"]
+
+        T2 -> T2_SETUP [label="Experimental\nconditions" style=dashed]
+
+        T2 -> T2_NO     [label="No change\n(feed-rate insensitive)"]
+        T2 -> T3         [label="Process response\nchanged"]
+
+        T3 -> T3_SETUP [label="Experimental\nconditions" style=dashed]
+
+        T3 -> T3_MACRO  [label="No change\n(location insensitive)"]
+        T3 -> T3_MESO   [label="Process response\nchanged"]
+
+        /* Confirmatory links */
+        T2_NO -> CONFIRM [label="Optional\nvalidation" style=dashed]
+        T3_MESO -> CONFIRM [label="Optional\nvalidation" style=dashed]
+        CONFIRM -> CONF_A
+        CONFIRM -> CONF_B
+    }
+"""
+
+if st.button("📊 Generate Bourne Protocol Decision Tree", key="gen_bourne_tree"):
+    st.session_state["_show_bourne_tree"] = True
+
+if st.session_state.get("_show_bourne_tree"):
+    st.graphviz_chart(_BOURNE_DOT, use_container_width=False)
+
+    # Export buttons
+    _bourne_graph = graphviz.Source(_BOURNE_DOT)
+    _col_png, _col_svg, _ = st.columns([1, 1, 4])
+    with _col_png:
+        st.download_button(
+            "⬇️ Download PNG",
+            data=_bourne_graph.pipe(format="png"),
+            file_name="bourne_protocol_decision_tree.png",
+            mime="image/png",
+        )
+    with _col_svg:
+        st.download_button(
+            "⬇️ Download SVG",
+            data=_bourne_graph.pipe(format="svg"),
+            file_name="bourne_protocol_decision_tree.svg",
+            mime="image/svg+xml",
+        )
+
+# ─────────────────────────────────────────────────────────────────────────
+# 8. Mixing Sensitivity Protocol Decision Tree
+# ─────────────────────────────────────────────────────────────────────────
+st.divider()
+st.header("6 · Mixing Sensitivity Protocol – Decision Tree")
+st.caption(
+    "Generate an interactive decision-tree diagram of the Mixing Sensitivity "
+    "Protocol (pre-screening → kinetics → phases → competing reactions → "
+    "heat transfer → mixing-time comparison)."
+)
+
+_MSP_DOT = """
+    digraph protocol {
+        rankdir=TB
+        fontname="Arial"
+        node [fontname="Arial" fontsize=10 style=filled shape=box
+              fillcolor="#F5F5F5" color="#BDBDBD" margin="0.15,0.08"]
+        edge [fontname="Arial" fontsize=9 color="#616161"]
+
+        /* start / end nodes */
+        START [label="🧭  Start Protocol" shape=Mrecord
+               fillcolor="#4CAF50" fontcolor=white fontsize=11]
+        SUM   [label="6 · Summary & \\nRecommendations" shape=Mrecord
+               fillcolor="#2196F3" fontcolor=white fontsize=11]
+
+        /* Step 0 – Bourne pre-screening */
+        BOURNE [label="0 · Bourne Protocol\\nPart 1 suggested pre-screen" shape=diamond
+                fillcolor="#E3F2FD" color="#90CAF9"]
+        BOURNE_DO [label="Run Bourne Protocol\\nPart 1 (quick screen)\\n→ vary P/V (i.e stir speed)"
+                   fillcolor="#FFF3E0" color="#FFB74D"]
+        BOURNE_OK [label="✅ Pre-screen\\ncomplete"
+                   fillcolor="#E8F5E9" color="#81C784"]
+
+        /* Step 1 – Kinetics */
+        K     [label="1 · Kinetics\\navailable?" shape=diamond
+               fillcolor="#E3F2FD" color="#90CAF9"]
+        KACT  [label="Measure kinetics\\n& calorimetry\\n→ add to Reaction DB"
+               fillcolor="#FFF3E0" color="#FFB74D"]
+        KAPPROX [label="Select approximate\\nkinetics from DB\\n(similar reaction)"
+                 fillcolor="#FFF8E1" color="#FFD54F"]
+        KSEL  [label="Select reaction\\nfrom database"
+               fillcolor="#E8F5E9" color="#81C784"]
+
+        /* Step 2 – Phases */
+        PH    [label="2 · How many\\nphases?" shape=diamond
+               fillcolor="#E3F2FD" color="#90CAF9"]
+        PH_OK [label="✅ Mass transfer\\nnot a factor"
+               fillcolor="#E8F5E9" color="#81C784"]
+        PH_MT [label="⚠️ Interphase mass\\ntransfer may limit\\n→ characterise kLa, k_SL"
+               fillcolor="#FFF8E1" color="#FFD54F"]
+
+        /* Step 3 – Competing reactions */
+        CR      [label="3 · Competing\\nreactions?" shape=diamond
+                 fillcolor="#E3F2FD" color="#90CAF9"]
+        MESO    [label="⚠️ Micro/meso-mixing limitation possible\\n→ Bourne Protocol"
+                 fillcolor="#FFF8E1" color="#EF9A9A"]
+        MESO_OK [label="✅ Micro/meso-mixing\\nnot a factor"
+                 fillcolor="#E8F5E9" color="#81C784"]
+
+        /* Step 4 – Heat */
+        HT     [label="4 · ΔH data\\navailable?" shape=diamond
+                fillcolor="#E3F2FD" color="#90CAF9"]
+        HT_MEASURE [label="Perform calorimetry\\n→ measure ΔH"
+                    fillcolor="#FFF3E0" color="#FFB74D"]
+        HT_EST [label="Estimate ΔH from\\nsimilar reaction"
+                fillcolor="#FFF8E1" color="#FFD54F"]
+        HT_CHK [label="|ΔH| ≥ 50\\nkJ/mol?" shape=diamond
+                fillcolor="#E3F2FD" color="#90CAF9"]
+        HT_HOT [label="🔴 Heat-sensitive\\n→ run heat balance"
+                fillcolor="#FFEBEE" color="#EF9A9A"]
+        HT_OK  [label="🟢 Modest\\nexothermicity"
+                fillcolor="#E8F5E9" color="#81C784"]
+
+        /* Step 5 – Mixing time */
+        MIX    [label="5 · Reaction\\ntime t_rxn" shape=diamond
+                fillcolor="#E3F2FD" color="#90CAF9"]
+        MICRO  [label="🔴 Micromixing\\nlikely sensitive"
+                fillcolor="#FFEBEE" color="#EF9A9A"]
+        MACRO  [label="🟡 Macromixing\\nmay matter at scale"
+                fillcolor="#FFF8E1" color="#FFD54F"]
+        MIX_OK [label="🟢 Mixing unlikely\\nto be limiting"
+                fillcolor="#E8F5E9" color="#81C784"]
+
+        /* Edges — Step 0 */
+        START -> BOURNE
+
+        BOURNE -> BOURNE_DO [label="Not done\\nyet"]
+        BOURNE -> BOURNE_OK [label="Done /\\nSkip"]
+        BOURNE_DO -> BOURNE_OK [label="Complete"]
+        BOURNE_OK -> K
+
+        /* Edges — Step 1 */
+        K -> KACT    [label="No kinetics"]
+        K -> KAPPROX [label="Approximate"]
+        K -> KSEL    [label="Yes"]
+        KACT -> K    [label="Data obtained\\n→ repeat Step 1"]
+        KAPPROX -> PH
+        KSEL -> PH
+
+        /* Edges — Step 2 */
+        PH -> PH_OK [label="Single\\nliquid"]
+        PH -> PH_MT [label="Multi-phase\\n(G / L / S)"]
+
+        PH_OK -> CR
+        PH_MT -> CR
+
+        /* Edges — Step 3 */
+        CR -> MESO    [label="Yes /\\nNot sure"]
+        CR -> MESO_OK [label="No"]
+
+        MESO    -> HT
+        MESO_OK -> HT
+
+        /* Edges — Step 4 */
+        HT -> HT_MEASURE [label="No ΔH"]
+        HT -> HT_EST     [label="Estimate"]
+        HT -> HT_CHK     [label="Yes"]
+        HT_MEASURE -> HT [label="Data obtained\\n→ repeat Step 4"]
+        HT_EST -> HT_CHK
+        HT_CHK -> HT_HOT [label="Yes"]
+        HT_CHK -> HT_OK  [label="No"]
+
+        /* Edges — Step 5 */
+        HT_HOT -> MIX
+        HT_OK  -> MIX
+
+        MIX -> MICRO  [label="< 1 s"]
+        MIX -> MACRO  [label="1 – 10 s"]
+        MIX -> MIX_OK [label="> 10 s"]
+
+        MICRO  -> SUM
+        MACRO  -> SUM
+        MIX_OK -> SUM
+    }
+"""
+
+if st.button("🧭 Generate Mixing Sensitivity Protocol Decision Tree", key="gen_msp_tree"):
+    st.session_state["_show_msp_tree"] = True
+
+if st.session_state.get("_show_msp_tree"):
+    st.graphviz_chart(_MSP_DOT, use_container_width=False)
+
+    # Export buttons
+    _msp_graph = graphviz.Source(_MSP_DOT)
+    _col_png2, _col_svg2, _ = st.columns([1, 1, 4])
+    with _col_png2:
+        st.download_button(
+            "⬇️ Download PNG",
+            data=_msp_graph.pipe(format="png"),
+            file_name="mixing_sensitivity_protocol.png",
+            mime="image/png",
+        )
+    with _col_svg2:
+        st.download_button(
+            "⬇️ Download SVG",
+            data=_msp_graph.pipe(format="svg"),
+            file_name="mixing_sensitivity_protocol.svg",
+            mime="image/svg+xml",
+        )

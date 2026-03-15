@@ -19,7 +19,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pathlib
-import graphviz
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
@@ -67,151 +66,14 @@ st.caption(
 )
 
 # ── Visual overview of the decision tree ─────────────────────────────────
-_DOT_SOURCE = """
-    digraph protocol {
-        rankdir=TB
-        fontname="Arial"
-        node [fontname="Arial" fontsize=10 style=filled shape=box
-              fillcolor="#F5F5F5" color="#BDBDBD" margin="0.15,0.08"]
-        edge [fontname="Arial" fontsize=9 color="#616161"]
-
-        /* start / end nodes */
-        START [label="🧭  Start Protocol" shape=Mrecord
-               fillcolor="#4CAF50" fontcolor=white fontsize=11]
-        SUM   [label="6 · Summary & \\nRecommendations" shape=Mrecord
-               fillcolor="#2196F3" fontcolor=white fontsize=11]
-
-        /* Step 0 – Bourne pre-screening */
-        BOURNE [label="0 · Bourne Protocol\\nPart 1 suggested pre-screen" shape=diamond
-                fillcolor="#E3F2FD" color="#90CAF9"]
-        BOURNE_DO [label="Run Bourne Protocol\\nPart 1 (quick screen)\\n→ vary P/V (i.e stir speed)"
-                   fillcolor="#FFF3E0" color="#FFB74D"]
-        BOURNE_OK [label="✅ Pre-screen\\ncomplete"
-                   fillcolor="#E8F5E9" color="#81C784"]
-
-        /* Step 1 – Kinetics */
-        K     [label="1 · Kinetics\\navailable?" shape=diamond
-               fillcolor="#E3F2FD" color="#90CAF9"]
-        KACT  [label="Measure kinetics\\n& calorimetry\\n→ add to Reaction DB"
-               fillcolor="#FFF3E0" color="#FFB74D"]
-        KAPPROX [label="Select approximate\\nkinetics from DB\\n(similar reaction)"
-                 fillcolor="#FFF8E1" color="#FFD54F"]
-        KSEL  [label="Select reaction\\nfrom database"
-               fillcolor="#E8F5E9" color="#81C784"]
-
-        /* Step 2 – Phases */
-        PH    [label="2 · How many\\nphases?" shape=diamond
-               fillcolor="#E3F2FD" color="#90CAF9"]
-        PH_OK [label="✅ Mass transfer\\nnot a factor"
-               fillcolor="#E8F5E9" color="#81C784"]
-        PH_MT [label="⚠️ Interphase mass\\ntransfer may limit\\n→ characterise kLa, k_SL"
-               fillcolor="#FFF8E1" color="#FFD54F"]
-
-        /* Step 3 – Competing reactions */
-        CR      [label="3 · Competing\\nreactions?" shape=diamond
-                 fillcolor="#E3F2FD" color="#90CAF9"]
-        MESO    [label="⚠️ Micro/meso-mixing limitation possible\\n→ Bourne Protocol"
-                 fillcolor="#FFF8E1" color="#EF9A9A"]
-        MESO_OK [label="✅ Micro/meso-mixing\\nnot a factor"
-                 fillcolor="#E8F5E9" color="#81C784"]
-
-        /* Step 4 – Heat */
-        HT     [label="4 · ΔH data\\navailable?" shape=diamond
-                fillcolor="#E3F2FD" color="#90CAF9"]
-        HT_MEASURE [label="Perform calorimetry\\n→ measure ΔH"
-                    fillcolor="#FFF3E0" color="#FFB74D"]
-        HT_EST [label="Estimate ΔH from\\nsimilar reaction"
-                fillcolor="#FFF8E1" color="#FFD54F"]
-        HT_CHK [label="|ΔH| ≥ 50\\nkJ/mol?" shape=diamond
-                fillcolor="#E3F2FD" color="#90CAF9"]
-        HT_HOT [label="🔴 Heat-sensitive\\n→ run heat balance"
-                fillcolor="#FFEBEE" color="#EF9A9A"]
-        HT_OK  [label="🟢 Modest\\nexothermicity"
-                fillcolor="#E8F5E9" color="#81C784"]
-
-        /* Step 5 – Mixing time */
-        MIX    [label="5 · Reaction\\ntime t_rxn" shape=diamond
-                fillcolor="#E3F2FD" color="#90CAF9"]
-        MICRO  [label="🔴 Micromixing\\nlikely sensitive"
-                fillcolor="#FFEBEE" color="#EF9A9A"]
-        MACRO  [label="🟡 Macromixing\\nmay matter at scale"
-                fillcolor="#FFF8E1" color="#FFD54F"]
-        MIX_OK [label="🟢 Mixing unlikely\\nto be limiting"
-                fillcolor="#E8F5E9" color="#81C784"]
-
-        /* Edges — Step 0 */
-        START -> BOURNE
-
-        BOURNE -> BOURNE_DO [label="Not done\\nyet"]
-        BOURNE -> BOURNE_OK [label="Done /\\nSkip"]
-        BOURNE_DO -> BOURNE_OK [label="Complete"]
-        BOURNE_OK -> K
-
-        /* Edges — Step 1 */
-        K -> KACT    [label="No kinetics"]
-        K -> KAPPROX [label="Approximate"]
-        K -> KSEL    [label="Yes"]
-        KACT -> K    [label="Data obtained\\n→ repeat Step 1"]
-        KAPPROX -> PH
-        KSEL -> PH
-
-        /* Edges — Step 2 */
-        PH -> PH_OK [label="Single\\nliquid"]
-        PH -> PH_MT [label="Multi-phase\\n(G / L / S)"]
-
-        PH_OK -> CR
-        PH_MT -> CR
-
-        /* Edges — Step 3 */
-        CR -> MESO    [label="Yes /\\nNot sure"]
-        CR -> MESO_OK [label="No"]
-
-        MESO    -> HT
-        MESO_OK -> HT
-
-        /* Edges — Step 4 */
-        HT -> HT_MEASURE [label="No ΔH"]
-        HT -> HT_EST     [label="Estimate"]
-        HT -> HT_CHK     [label="Yes"]
-        HT_MEASURE -> HT [label="Data obtained\\n→ repeat Step 4"]
-        HT_EST -> HT_CHK
-        HT_CHK -> HT_HOT [label="Yes"]
-        HT_CHK -> HT_OK  [label="No"]
-
-        /* Edges — Step 5 */
-        HT_HOT -> MIX
-        HT_OK  -> MIX
-
-        MIX -> MICRO  [label="< 1 s"]
-        MIX -> MACRO  [label="1 – 10 s"]
-        MIX -> MIX_OK [label="> 10 s"]
-
-        MICRO  -> SUM
-        MACRO  -> SUM
-        MIX_OK -> SUM
-    }
-"""
+_IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "general"
+_MSP_IMG = _IMG_DIR / "mixing_sensitivity_protocol-2.png"
 
 with st.expander("📋 Protocol overview", expanded=True):
-    st.graphviz_chart(_DOT_SOURCE, use_container_width=False)
-
-    # Export buttons
-    _graph = graphviz.Source(_DOT_SOURCE)
-    _col_png, _col_svg, _ = st.columns([1, 1, 4])
-    with _col_png:
-        st.download_button(
-            "⬇️ Download PNG",
-            data=_graph.pipe(format="png"),
-            file_name="mixing_sensitivity_protocol.png",
-            mime="image/png",
-        )
-    with _col_svg:
-        st.download_button(
-            "⬇️ Download SVG",
-            data=_graph.pipe(format="svg"),
-            file_name="mixing_sensitivity_protocol.svg",
-            mime="image/svg+xml",
-        )
+    if _MSP_IMG.exists():
+        st.image(str(_MSP_IMG), caption="Mixing Sensitivity Protocol – Decision Tree")
+    else:
+        st.info("Protocol overview image not found. Generate it from the ⚙️ Admin page.")
 
 if st.button("🔄 Restart protocol", key=_key("restart")):
     for k in list(st.session_state.keys()):
