@@ -60,4 +60,11 @@ nav = st.navigation({
     "Admin": admin,
 })
 
+# On a fresh session (first load / browser refresh), always start on the home page
+# to ensure the sidebar renders correctly (icons + grouped menu items).
+if "_app_initialized" not in st.session_state:
+    st.session_state._app_initialized = True
+    if nav != home:
+        st.switch_page(home)
+
 nav.run()
