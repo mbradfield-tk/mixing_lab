@@ -113,7 +113,7 @@ with col2:
     reaction_name = st.selectbox("Reaction", _reaction_list, index=_idx(_reaction_list, "_sel_reaction"), key="ms_reaction")
     st.session_state["_sel_reaction"] = reaction_name
 
-fc1, fc2 = st.columns(2)
+fc1, fc2, fc3 = st.columns(3)
 with fc1:
     fluid_name = st.selectbox("Fluid", _all_fluid_names, index=_idx(_all_fluid_names, "_sel_fluid"), key="ms_fluid")
     st.session_state["_sel_fluid"] = fluid_name
@@ -124,17 +124,21 @@ with fc2:
     else:
         st.caption("Custom fluid — fixed properties (no T dependence)")
         fluid_T_C = 25.0
+with fc3:
+    if _is_solvent:
+        fluid_P_atm = st.number_input("Pressure (atm)", value=1.0, min_value=0.01, step=0.1, format="%.2f", key="ms_fluid_P")
+    else:
+        fluid_P_atm = 1.0
 
 # Compute fluid properties
 if _is_solvent:
-    _fprops = get_properties(fluid_name, fluid_T_C)
+    _fprops = get_properties(fluid_name, fluid_T_C, fluid_P_atm)
     _rho_default = _fprops["rho_kg_m3"]
     _mu_default = _fprops["mu_Pa_s"]
     _D_mol_default = _fprops["D_mol_m2_s"]
     if not _fprops["in_range"]:
-        _sd = SOLVENT_DB[fluid_name]
         st.warning(f"⚠️ {fluid_T_C:.1f} °C is outside the liquid range "
-                   f"({_sd.mp_C:.0f} – {_sd.bp_C:.0f} °C) for {fluid_name}. "
+                   f"({_fprops['mp_C']:.0f} – {_fprops['bp_at_P_C']:.0f} °C) for {fluid_name}. "
                    f"Values are extrapolated.")
 else:
     _cust = custom_fluids[custom_fluids["fluid_name"] == fluid_name].iloc[0]

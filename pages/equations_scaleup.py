@@ -61,3 +61,32 @@ temperature dependence through the viscosity term.
 **Data sources:** Yaws' Handbook, Perry's Chemical Engineers' Handbook (9th ed.),
 CRC Handbook of Chemistry and Physics, DIPPR correlations.
 """)
+
+# ── Pressure-Dependent Boiling Point (Antoine Equation) ──────────────────
+st.header("Pressure-Dependent Boiling Point (Antoine Equation)")
+st.markdown("""
+The **Antoine equation** relates vapor pressure to temperature and is used to
+determine the boiling point at non-standard pressures (e.g. vacuum distillation
+or pressurised reactors).
+""")
+
+st.subheader("Vapor Pressure")
+st.latex(r"\log_{10}\!\left(P_{\mathrm{mmHg}}\right) = A - \frac{B}{C + T\;(°C)}")
+st.markdown("""
+where $A$, $B$, $C$ are substance-specific constants fitted to experimental
+vapor-pressure data, $P$ is in mmHg, and $T$ is in °C.
+""")
+
+st.subheader("Boiling Point at Pressure P")
+st.markdown("Rearranging the Antoine equation for temperature:")
+st.latex(r"T_{\mathrm{bp}}\;(°C) = \frac{B}{A - \log_{10}(P_{\mathrm{mmHg}})} - C")
+st.markdown("""
+At 1 atm ($P$ = 760 mmHg), this recovers the normal boiling point.
+At reduced pressure (vacuum), the boiling point decreases — useful for
+understanding whether a solvent remains liquid under process conditions.
+
+**Conversion:** 1 atm = 760 mmHg = 101.325 kPa.
+
+**Data sources:** NIST Chemistry WebBook, Perry's Chemical Engineers' Handbook,
+Yaws' Handbook of Vapor Pressure (Antoine Constants).
+""")

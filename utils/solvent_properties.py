@@ -67,7 +67,13 @@ class SolventData:
     # Reference diffusivity at 25 °C [m²/s]
     D_ref_25: float
 
+    # Antoine equation: log10(P_mmHg) = A - B / (C + T_°C)
+    antoine_A: float = 0.0
+    antoine_B: float = 0.0
+    antoine_C: float = 0.0
+
     # Optional
+    aliases: tuple[str, ...] = ()      # Common synonyms / abbreviations
     notes: str = ""
 
 
@@ -88,6 +94,8 @@ _add(SolventData(
     mu_25=8.90e-4, Ea_mu=15500.0,
     sig_25=0.0720, dsig_dT=-1.50e-4,
     D_ref_25=2.3e-9,
+    antoine_A=8.07131, antoine_B=1730.63, antoine_C=233.426,
+    aliases=("H2O", "DI Water", "Deionized Water", "Purified Water"),
 ))
 
 # ─── Methanol ────────────────────────────────────────────────────────────
@@ -98,6 +106,8 @@ _add(SolventData(
     mu_25=5.44e-4, Ea_mu=10800.0,
     sig_25=0.0223, dsig_dT=-7.7e-5,
     D_ref_25=1.6e-9,
+    antoine_A=8.08097, antoine_B=1582.27, antoine_C=239.726,
+    aliases=("MeOH", "Methyl Alcohol", "CH3OH"),
 ))
 
 # ─── Ethanol ─────────────────────────────────────────────────────────────
@@ -108,6 +118,8 @@ _add(SolventData(
     mu_25=1.09e-3, Ea_mu=14000.0,
     sig_25=0.0220, dsig_dT=-8.3e-5,
     D_ref_25=1.2e-9,
+    antoine_A=8.20417, antoine_B=1642.89, antoine_C=230.300,
+    aliases=("EtOH", "Ethyl Alcohol", "C2H5OH"),
 ))
 
 # ─── Isopropanol (IPA) ──────────────────────────────────────────────────
@@ -118,6 +130,8 @@ _add(SolventData(
     mu_25=2.04e-3, Ea_mu=18000.0,
     sig_25=0.0210, dsig_dT=-8.0e-5,
     D_ref_25=1.0e-9,
+    antoine_A=8.11778, antoine_B=1580.92, antoine_C=219.610,
+    aliases=("IPA", "iPrOH", "2-Propanol", "Isopropyl Alcohol"),
 ))
 
 # ─── Acetone ─────────────────────────────────────────────────────────────
@@ -128,16 +142,20 @@ _add(SolventData(
     mu_25=3.06e-4, Ea_mu=7100.0,
     sig_25=0.0234, dsig_dT=-1.12e-4,
     D_ref_25=2.4e-9,
+    antoine_A=7.11714, antoine_B=1210.595, antoine_C=229.664,
+    aliases=("Me2CO", "Propan-2-one", "Dimethyl Ketone"),
 ))
 
 # ─── MEK (Methyl Ethyl Ketone / 2-Butanone) ─────────────────────────────
 _add(SolventData(
-    name="MEK (2-Butanone)", cas="78-93-3", mw=72.11,
+    name="MEK", cas="78-93-3", mw=72.11,
     mp_C=-86.7, bp_C=79.6,
     rho_25=800.0, drho_dT=-1.05,
     mu_25=4.05e-4, Ea_mu=8000.0,
     sig_25=0.0243, dsig_dT=-1.00e-4,
     D_ref_25=1.8e-9,
+    antoine_A=7.06356, antoine_B=1261.339, antoine_C=221.969,
+    aliases=("MEK", "Methyl Ethyl Ketone", "Butanone"),
 ))
 
 # ─── Acetonitrile ────────────────────────────────────────────────────────
@@ -148,16 +166,20 @@ _add(SolventData(
     mu_25=3.69e-4, Ea_mu=7500.0,
     sig_25=0.0290, dsig_dT=-1.04e-4,
     D_ref_25=2.4e-9,
+    antoine_A=7.09363, antoine_B=1314.400, antoine_C=230.000,
+    aliases=("MeCN", "ACN", "CH3CN"),
 ))
 
 # ─── DCM (Dichloromethane) ───────────────────────────────────────────────
 _add(SolventData(
-    name="DCM (Dichloromethane)", cas="75-09-2", mw=84.93,
+    name="DCM", cas="75-09-2", mw=84.93,
     mp_C=-96.7, bp_C=39.6,
     rho_25=1326.0, drho_dT=-1.73,
     mu_25=4.13e-4, Ea_mu=6500.0,
     sig_25=0.0280, dsig_dT=-1.18e-4,
     D_ref_25=2.1e-9,
+    antoine_A=7.08030, antoine_B=1138.91, antoine_C=231.450,
+    aliases=("DCM", "Dichloromethane", "Methylene Chloride", "CH2Cl2"),
 ))
 
 # ─── Chloroform ──────────────────────────────────────────────────────────
@@ -168,6 +190,8 @@ _add(SolventData(
     mu_25=5.36e-4, Ea_mu=7000.0,
     sig_25=0.0271, dsig_dT=-1.12e-4,
     D_ref_25=2.0e-9,
+    antoine_A=6.95465, antoine_B=1170.966, antoine_C=226.232,
+    aliases=("CHCl3", "Trichloromethane"),
 ))
 
 # ─── Ethyl Acetate ───────────────────────────────────────────────────────
@@ -178,6 +202,8 @@ _add(SolventData(
     mu_25=4.26e-4, Ea_mu=7500.0,
     sig_25=0.0238, dsig_dT=-1.10e-4,
     D_ref_25=2.2e-9,
+    antoine_A=7.10179, antoine_B=1244.951, antoine_C=217.881,
+    aliases=("EtOAc", "EA"),
 ))
 
 # ─── THF (Tetrahydrofuran) ──────────────────────────────────────────────
@@ -188,6 +214,8 @@ _add(SolventData(
     mu_25=4.63e-4, Ea_mu=7200.0,
     sig_25=0.0268, dsig_dT=-9.5e-5,
     D_ref_25=2.0e-9,
+    antoine_A=6.99515, antoine_B=1202.290, antoine_C=226.254,
+    aliases=("Tetrahydrofuran",),
 ))
 
 # ─── Toluene ─────────────────────────────────────────────────────────────
@@ -198,6 +226,8 @@ _add(SolventData(
     mu_25=5.54e-4, Ea_mu=8500.0,
     sig_25=0.0280, dsig_dT=-1.04e-4,
     D_ref_25=2.0e-9,
+    antoine_A=6.95334, antoine_B=1343.943, antoine_C=219.377,
+    aliases=("PhMe", "Tol", "Methylbenzene"),
 ))
 
 # ─── DMF (Dimethylformamide) ────────────────────────────────────────────
@@ -208,6 +238,8 @@ _add(SolventData(
     mu_25=8.02e-4, Ea_mu=10000.0,
     sig_25=0.0370, dsig_dT=-1.12e-4,
     D_ref_25=1.5e-9,
+    antoine_A=6.97780, antoine_B=1451.380, antoine_C=202.000,
+    aliases=("Dimethylformamide", "N,N-Dimethylformamide"),
 ))
 
 # ─── DMSO (Dimethyl sulfoxide) ──────────────────────────────────────────
@@ -218,6 +250,8 @@ _add(SolventData(
     mu_25=1.99e-3, Ea_mu=14500.0,
     sig_25=0.0436, dsig_dT=-1.10e-4,
     D_ref_25=0.9e-9,
+    antoine_A=7.91178, antoine_B=1956.140, antoine_C=199.820,
+    aliases=("Dimethyl Sulfoxide", "Dimethylsulfoxide"),
 ))
 
 # ─── Heptane ─────────────────────────────────────────────────────────────
@@ -228,6 +262,8 @@ _add(SolventData(
     mu_25=3.87e-4, Ea_mu=7500.0,
     sig_25=0.0200, dsig_dT=-8.8e-5,
     D_ref_25=2.5e-9,
+    antoine_A=6.89385, antoine_B=1264.370, antoine_C=216.640,
+    aliases=("n-Heptane", "C7H16"),
 ))
 
 # ─── Hexane ──────────────────────────────────────────────────────────────
@@ -238,6 +274,8 @@ _add(SolventData(
     mu_25=2.94e-4, Ea_mu=6500.0,
     sig_25=0.0179, dsig_dT=-9.6e-5,
     D_ref_25=2.7e-9,
+    antoine_A=6.87776, antoine_B=1171.530, antoine_C=224.366,
+    aliases=("n-Hexane", "C6H14"),
 ))
 
 # ─── MTBE (Methyl tert-butyl ether) ─────────────────────────────────────
@@ -248,6 +286,8 @@ _add(SolventData(
     mu_25=3.40e-4, Ea_mu=7000.0,
     sig_25=0.0190, dsig_dT=-9.8e-5,
     D_ref_25=2.3e-9,
+    antoine_A=6.64473, antoine_B=1065.940, antoine_C=228.000,
+    aliases=("Methyl tert-Butyl Ether", "tert-Butyl Methyl Ether", "TBME"),
 ))
 
 # ─── Acetic Acid ────────────────────────────────────────────────────────
@@ -258,6 +298,8 @@ _add(SolventData(
     mu_25=1.13e-3, Ea_mu=10500.0,
     sig_25=0.0271, dsig_dT=-8.4e-5,
     D_ref_25=1.3e-9,
+    antoine_A=7.38782, antoine_B=1533.313, antoine_C=222.309,
+    aliases=("AcOH", "HOAc", "Glacial Acetic Acid", "CH3COOH"),
 ))
 
 # ─── NMP (N-Methyl-2-pyrrolidone) ───────────────────────────────────────
@@ -268,6 +310,8 @@ _add(SolventData(
     mu_25=1.67e-3, Ea_mu=12000.0,
     sig_25=0.0410, dsig_dT=-9.0e-5,
     D_ref_25=1.1e-9,
+    antoine_A=7.41282, antoine_B=1826.400, antoine_C=201.000,
+    aliases=("N-Methyl-2-pyrrolidone", "N-Methylpyrrolidone"),
 ))
 
 # ─── 2-MeTHF (2-Methyltetrahydrofuran) ─────────────────────────────────
@@ -278,6 +322,8 @@ _add(SolventData(
     mu_25=4.60e-4, Ea_mu=7500.0,
     sig_25=0.0245, dsig_dT=-9.5e-5,
     D_ref_25=1.8e-9,
+    antoine_A=6.97080, antoine_B=1228.550, antoine_C=221.380,
+    aliases=("2-Methyltetrahydrofuran", "MeTHF", "2-MeOTHF"),
 ))
 
 # ─── 1,4-Dioxane ────────────────────────────────────────────────────────
@@ -288,6 +334,8 @@ _add(SolventData(
     mu_25=1.18e-3, Ea_mu=12000.0,
     sig_25=0.0330, dsig_dT=-1.02e-4,
     D_ref_25=1.7e-9,
+    antoine_A=7.43155, antoine_B=1554.679, antoine_C=240.337,
+    aliases=("Dioxane", "p-Dioxane"),
 ))
 
 # ─── Diethyl Ether ──────────────────────────────────────────────────────
@@ -298,6 +346,8 @@ _add(SolventData(
     mu_25=2.22e-4, Ea_mu=5500.0,
     sig_25=0.0170, dsig_dT=-1.12e-4,
     D_ref_25=2.6e-9,
+    antoine_A=6.92032, antoine_B=1064.070, antoine_C=228.799,
+    aliases=("Et2O", "Ether", "DEE", "Ethoxyethane"),
 ))
 
 
@@ -305,9 +355,50 @@ _add(SolventData(
 # Property computation
 # ---------------------------------------------------------------------------
 
-def _liquid_range(solvent: SolventData) -> tuple[float, float]:
-    """Return (T_min_C, T_max_C) for the liquid phase."""
-    return (solvent.mp_C, solvent.bp_C)
+_ATM_TO_MMHG = 760.0  # 1 atm = 760 mmHg
+
+
+def vapor_pressure_mmHg(T_C: float, solvent: SolventData) -> float:
+    """Vapor pressure [mmHg] at temperature T_C [°C] via the Antoine equation.
+
+    log10(P_mmHg) = A - B / (C + T_°C)
+    """
+    if solvent.antoine_A == 0.0:
+        return float('nan')
+    denom = solvent.antoine_C + T_C
+    if denom == 0:
+        return float('nan')
+    return 10.0 ** (solvent.antoine_A - solvent.antoine_B / denom)
+
+
+def vapor_pressure_atm(T_C: float, solvent: SolventData) -> float:
+    """Vapor pressure [atm] at temperature T_C [°C]."""
+    return vapor_pressure_mmHg(T_C, solvent) / _ATM_TO_MMHG
+
+
+def boiling_point_at_pressure(P_atm: float, solvent: SolventData) -> float:
+    """Boiling point [°C] at pressure P_atm [atm] via the Antoine equation.
+
+    Rearranged: T_°C = B / (A - log10(P_mmHg)) - C
+    """
+    if solvent.antoine_A == 0.0 or P_atm <= 0:
+        return solvent.bp_C
+    P_mmHg = P_atm * _ATM_TO_MMHG
+    log_P = math.log10(P_mmHg)
+    denom = solvent.antoine_A - log_P
+    if denom <= 0:
+        return float('nan')
+    return solvent.antoine_B / denom - solvent.antoine_C
+
+
+def _liquid_range(solvent: SolventData, P_atm: float = 1.0) -> tuple[float, float]:
+    """Return (T_min_C, T_max_C) for the liquid phase at the given pressure.
+
+    The boiling point is adjusted via the Antoine equation.
+    The melting point is assumed pressure-insensitive (valid at moderate P).
+    """
+    bp = boiling_point_at_pressure(P_atm, solvent) if P_atm != 1.0 else solvent.bp_C
+    return (solvent.mp_C, bp)
 
 
 def density(T_C: float, solvent: SolventData) -> float:
@@ -344,30 +435,36 @@ def diffusivity(T_C: float, solvent: SolventData) -> float:
     return solvent.D_ref_25 * (T_K / 298.15) * (solvent.mu_25 / mu_T)
 
 
-def get_properties(solvent_name: str, T_C: float) -> dict:
-    """Return a dict of all physical properties at the given temperature.
+def get_properties(solvent_name: str, T_C: float, P_atm: float = 1.0) -> dict:
+    """Return a dict of all physical properties at the given temperature and pressure.
 
     Keys: rho_kg_m3, mu_Pa_s, D_mol_m2_s, surface_tension_N_m,
-          T_C, solvent, bp_C, mp_C, in_range
+          T_C, P_atm, solvent, bp_C, bp_at_P_C, mp_C, in_range,
+          vapor_pressure_atm
     """
     if solvent_name not in SOLVENT_DB:
         raise KeyError(f"Unknown solvent: {solvent_name!r}.  "
                        f"Available: {sorted(SOLVENT_DB.keys())}")
     s = SOLVENT_DB[solvent_name]
-    T_lo, T_hi = _liquid_range(s)
+    T_lo, T_hi = _liquid_range(s, P_atm)
     in_range = (T_lo <= T_C <= T_hi)
+    bp_at_P = boiling_point_at_pressure(P_atm, s)
+    Pvap = vapor_pressure_atm(T_C, s)
     return {
         "solvent": solvent_name,
         "T_C": T_C,
+        "P_atm": P_atm,
         "in_range": in_range,
         "rho_kg_m3": density(T_C, s),
         "mu_Pa_s": viscosity(T_C, s),
         "D_mol_m2_s": diffusivity(T_C, s),
         "surface_tension_N_m": surface_tension(T_C, s),
         "bp_C": s.bp_C,
+        "bp_at_P_C": bp_at_P,
         "mp_C": s.mp_C,
         "mw": s.mw,
         "cas": s.cas,
+        "vapor_pressure_atm": Pvap,
     }
 
 
@@ -382,6 +479,7 @@ def solvent_info_table() -> list[dict]:
     for name, s in sorted(SOLVENT_DB.items()):
         rows.append({
             "Solvent": s.name,
+            "Aliases": ", ".join(s.aliases) if s.aliases else "",
             "CAS": s.cas,
             "MW": s.mw,
             "m.p. (°C)": s.mp_C,
@@ -394,49 +492,22 @@ def solvent_info_table() -> list[dict]:
     return rows
 
 
-def is_known_solvent(name: str) -> bool:
-    """Return True if *name* is a solvent with temperature-dependent correlations."""
-    return name in SOLVENT_DB
-
-
 # Alias map: common abbreviation → canonical SOLVENT_DB key
 _SOLVENT_ALIAS_MAP: dict[str, str] = {}
 
 def _build_alias_map():
-    """Populate the alias map from SOLVENT_DB names."""
-    for key in SOLVENT_DB:
+    """Populate the alias map from SOLVENT_DB names and their aliases field."""
+    for key, sd in SOLVENT_DB.items():
         _SOLVENT_ALIAS_MAP[key.lower()] = key
-        # Add common short forms
+        # Add common short forms from the display name
         base = key.split("(")[0].strip().lower()
         if base not in _SOLVENT_ALIAS_MAP:
             _SOLVENT_ALIAS_MAP[base] = key
+        # Register all aliases from the aliases field
+        for alias in sd.aliases:
+            _SOLVENT_ALIAS_MAP[alias.lower()] = key
 
 _build_alias_map()
-# Manual additions
-_SOLVENT_ALIAS_MAP.update({
-    "water": "Water", "h2o": "Water",
-    "meoh": "Methanol", "methanol": "Methanol",
-    "etoh": "Ethanol", "ethanol": "Ethanol",
-    "ipa": "Isopropanol (IPA)", "isopropanol": "Isopropanol (IPA)",
-    "thf": "THF", "tetrahydrofuran": "THF",
-    "dcm": "DCM (Dichloromethane)", "dichloromethane": "DCM (Dichloromethane)",
-    "dmf": "DMF", "dimethylformamide": "DMF",
-    "dmso": "DMSO", "dimethyl sulfoxide": "DMSO",
-    "toluene": "Toluene",
-    "heptane": "Heptane",
-    "hexane": "Hexane",
-    "acetonitrile": "Acetonitrile",
-    "ethyl acetate": "Ethyl Acetate",
-    "mek": "MEK (2-Butanone)", "2-butanone": "MEK (2-Butanone)",
-    "acetone": "Acetone",
-    "chloroform": "Chloroform",
-    "mtbe": "MTBE",
-    "acetic acid": "Acetic Acid",
-    "nmp": "NMP",
-    "2-methf": "2-MeTHF", "2-methyltetrahydrofuran": "2-MeTHF",
-    "1,4-dioxane": "1,4-Dioxane", "dioxane": "1,4-Dioxane",
-    "diethyl ether": "Diethyl Ether",
-})
 
 
 def resolve_solvent_name(name: str) -> str | None:
@@ -444,3 +515,8 @@ def resolve_solvent_name(name: str) -> str | None:
     if name in SOLVENT_DB:
         return name
     return _SOLVENT_ALIAS_MAP.get(name.strip().lower())
+
+
+def is_known_solvent(name: str) -> bool:
+    """Return True if *name* matches a solvent name or alias."""
+    return resolve_solvent_name(name) is not None

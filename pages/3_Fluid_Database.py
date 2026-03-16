@@ -9,7 +9,7 @@ import pathlib
 from utils.solvent_properties import (
     SOLVENT_DB, get_properties, list_solvents, solvent_info_table,
     density, viscosity, surface_tension, diffusivity,
-    is_known_solvent,
+    is_known_solvent, vapor_pressure_mmHg, boiling_point_at_pressure,
 )
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
@@ -43,7 +43,7 @@ tab_library, tab_solvent, tab_custom, tab_blend, tab_import = st.tabs([
 # ── Solvent Library ───────────────────────────────────────────────────────
 with tab_library:
     st.markdown(
-        "Reference table of all built-in solvents with properties at 25 °C.  "
+        "Reference table of all built-in solvents with **properties at 25 °C and 1 atm**.  "
         "These solvents are always available in the Mixing Assessment and "
         "Reactor Comparison pages — select one and set any temperature to "
         "get properties from literature correlations."
@@ -64,47 +64,64 @@ with tab_library:
 with tab_solvent:
     st.markdown(
         "Compute physical properties for common pharmaceutical solvents at any "
-        "liquid-phase temperature.  Correlations use literature-fitted density, "
-        "Arrhenius viscosity, linear surface tension, and Stokes-Einstein diffusivity."
+        "liquid-phase temperature and pressure.  Correlations use literature-fitted density, "
+        "Arrhenius viscosity, linear surface tension, and Stokes-Einstein diffusivity.  "
+        "The **Antoine equation** adjusts the boiling point for non-atmospheric pressures."
     )
 
-    # --- Solvent selector + temperature ---
-    s_col1, s_col2 = st.columns(2)
+    # --- Solvent selector + pressure + temperature ---
+    s_col1, s_col2, s_col3 = st.columns(3)
     with s_col1:
         solvent_name = st.selectbox("Solvent", list_solvents(), key="solv_sel")
+    sd = SOLVENT_DB[solvent_name]
     with s_col2:
-        sd = SOLVENT_DB[solvent_name]
+        P_atm = st.number_input(
+            "Pressure (atm)", min_value=0.001, max_value=50.0,
+            value=1.0, step=0.1, format="%.3f",
+            key="solv_P",
+            help="System pressure in atmospheres. Adjusts the boiling point "
+                 "via the Antoine equation.",
+        )
+    bp_at_P = boiling_point_at_pressure(P_atm, sd)
+    with s_col3:
         T_C = st.number_input(
-            f"Temperature (°C)  [liquid range: {sd.mp_C:.1f} – {sd.bp_C:.1f}]",
+            f"Temperature (°C)  [liquid range: {sd.mp_C:.1f} – {bp_at_P:.1f}]",
             min_value=-200.0, max_value=400.0,
             value=25.0, step=1.0, format="%.1f",
             key="solv_temp",
         )
 
-    props = get_properties(solvent_name, T_C)
+    props = get_properties(solvent_name, T_C, P_atm)
 
     if not props["in_range"]:
         st.warning(
             f"⚠️ {T_C:.1f} °C is outside the liquid range "
-            f"({sd.mp_C:.0f} – {sd.bp_C:.0f} °C) for {solvent_name}.  "
-            f"Values are extrapolated and may be unreliable."
+            f"({sd.mp_C:.0f} – {bp_at_P:.0f} °C) for {solvent_name} "
+            f"at {P_atm:.3f} atm.  Values are extrapolated and may be unreliable."
         )
 
     # --- Property results ---
-    st.subheader(f"{solvent_name} at {T_C:.1f} °C")
+    st.subheader(f"{solvent_name} at {T_C:.1f} °C, {P_atm:.3f} atm")
     pc1, pc2, pc3, pc4 = st.columns(4)
     pc1.metric("ρ (kg/m³)", f"{props['rho_kg_m3']:.2f}")
     pc2.metric("μ (Pa·s)", f"{props['mu_Pa_s']:.6f}")
     pc3.metric("σ (N/m)", f"{props['surface_tension_N_m']:.4f}")
     pc4.metric("D_mol (m²/s)", f"{props['D_mol_m2_s']:.3e}")
 
+    pc5, pc6, pc7 = st.columns(3)
+    pc5.metric("Vapor pressure (atm)", f"{props['vapor_pressure_atm']:.4f}")
+    pc6.metric("b.p. at P (°C)", f"{bp_at_P:.1f}")
+    pc7.metric("Normal b.p. (°C)", f"{sd.bp_C:.1f}")
+
     st.caption(f"MW = {props['mw']:.2f} g/mol  ·  CAS {props['cas']}  ·  "
-               f"b.p. = {props['bp_C']:.1f} °C  ·  m.p. = {props['mp_C']:.1f} °C")
+               f"b.p.(1 atm) = {props['bp_C']:.1f} °C  ·  "
+               f"b.p.({P_atm:.2f} atm) = {bp_at_P:.1f} °C  ·  "
+               f"m.p. = {props['mp_C']:.1f} °C")
 
     # --- Property-vs-temperature curves ---
     st.subheader("Property vs Temperature")
     T_lo = sd.mp_C
-    T_hi = sd.bp_C
+    T_hi = bp_at_P
     T_arr = np.linspace(T_lo, T_hi, 200)
 
     import plotly.graph_objects as go

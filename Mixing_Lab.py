@@ -33,6 +33,10 @@ analysis = [
     st.Page("pages/7_Reactor_Comparison.py", title="Reactor Comparison", icon="📈"),
 ]
 
+tools = [
+    st.Page("pages/9_Unit_Converter.py", title="Unit Converter", icon="🔄"),
+]
+
 results = [
     st.Page("pages/8_Recorded_Results.py", title="Recorded Results", icon="📋"),
 ]
@@ -55,6 +59,7 @@ nav = st.navigation({
     "": [home],
     "Databases": databases,
     "Analysis": analysis,
+    "Tools": tools,
     "Results": results,
     "Reference": reference,
     "Admin": admin,

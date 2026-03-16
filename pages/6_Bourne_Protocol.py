@@ -126,6 +126,8 @@ with col_r:
         Nq_val = st.number_input("Pumping number Nq", value=0.79, format="%.2f")
         V_L = np.pi / 4 * D_tank**2 * H * 1000
 
+col_t, col_p = st.columns(2)
+
 with col_f:
     fluid_name = st.selectbox("Fluid system", _all_fluid_names,
                               index=_sel_idx(_all_fluid_names, "_sel_bp_fluid"),
@@ -133,11 +135,17 @@ with col_f:
     st.session_state["_sel_bp_fluid"] = fluid_name
     _is_solvent = is_known_solvent(fluid_name)
     if _is_solvent:
-        _bp_T_C = st.number_input("Temperature (°C)", value=25.0, step=1.0,
+        _bp_T_C = col_t.number_input("Temperature (°C)", value=25.0, step=1.0,
                                     format="%.1f", key="bp_fluid_T")
-        _fprops = get_properties(fluid_name, _bp_T_C)
+        _bp_P_atm = col_p.number_input("Pressure (atm)", value=1.0, min_value=0.01,
+                                     step=0.1, format="%.2f", key="bp_fluid_P")
+        _fprops = get_properties(fluid_name, _bp_T_C, _bp_P_atm)
         rho = _fprops["rho_kg_m3"]
         mu = _fprops["mu_Pa_s"]
+        if not _fprops["in_range"]:
+            st.warning(f"⚠️ {_bp_T_C:.1f} °C is outside the liquid range "
+                       f"({_fprops['mp_C']:.0f} – {_fprops['bp_at_P_C']:.0f} °C) "
+                       f"for {fluid_name}. Values are extrapolated.")
     else:
         _cust = custom_fluids[custom_fluids["fluid_name"] == fluid_name].iloc[0]
         rho = float(_cust["rho_kg_m3"])

@@ -124,24 +124,26 @@ def _sel_idx(lst, key, default=0):
     return default
 
 col1, col2 = st.columns(2)
+col3, col4 = st.columns(2)
 with col1:
-    fluid_name = st.selectbox("Fluid system", _all_fluid_names,
+    fluid_name = st.selectbox("Fluid", _all_fluid_names,
                               index=_sel_idx(_all_fluid_names, "_sel_cmp_fluid"),
                               key="cmp_fluid")
     st.session_state["_sel_cmp_fluid"] = fluid_name
 
     _is_solvent = is_known_solvent(fluid_name)
     if _is_solvent:
-        fluid_T_C = st.number_input("Temperature (°C)", value=25.0, step=1.0,
+        fluid_T_C = col3.number_input("Temperature (°C)", value=25.0, step=1.0,
                                      format="%.1f", key="cmp_fluid_T")
-        _fprops = get_properties(fluid_name, fluid_T_C)
+        fluid_P_atm = col4.number_input("Pressure (atm)", value=1.0, min_value=0.01,
+                                       step=0.1, format="%.2f", key="cmp_fluid_P")
+        _fprops = get_properties(fluid_name, fluid_T_C, fluid_P_atm)
         rho = _fprops["rho_kg_m3"]
         mu = _fprops["mu_Pa_s"]
         D_mol = _fprops["D_mol_m2_s"]
         if not _fprops["in_range"]:
-            _sd = SOLVENT_DB[fluid_name]
             st.warning(f"⚠️ {fluid_T_C:.1f} °C is outside the liquid range "
-                       f"({_sd.mp_C:.0f} – {_sd.bp_C:.0f} °C) for {fluid_name}.")
+                       f"({_fprops['mp_C']:.0f} – {_fprops['bp_at_P_C']:.0f} °C) for {fluid_name}.")
     else:
         _cust = custom_fluids[custom_fluids["fluid_name"] == fluid_name].iloc[0]
         rho = float(_cust["rho_kg_m3"])
@@ -180,12 +182,12 @@ with col2:
         t_rxn = 1.0
         rxn_k, rxn_C0, rxn_order, rxn_T_C, rxn_delta_H = 0.0, 0.0, "1", 25.0, 0.0
 
-col3, col4 = st.columns(2)
-with col3:
+col5, col6 = st.columns(2)
+with col5:
     v_s = st.number_input("Superficial gas velocity v_s (m/s)", value=0.0, min_value=0.0,
                           format="%.4f", key="cmp_vs",
                           help="Set > 0 to compute kLa. Typical: 0.001 – 0.05 m/s.")
-with col4:
+with col6:
     coal_choice = st.selectbox("Liquid type (for kLa)",
                                ["Coalescing (pure liquid)", "Non-coalescing (electrolyte)"],
                                key="cmp_coal")
