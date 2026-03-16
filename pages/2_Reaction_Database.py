@@ -27,6 +27,9 @@ if "reaction_db" not in st.session_state:
 
 st.title("🧪 Reaction Database")
 
+_is_admin = st.session_state.get("admin_authenticated", False)
+_ADMIN_HINT = "Log in via Admin Tools to enable editing."
+
 tab_browse, tab_add, tab_import = st.tabs(["Browse & Edit", "Add Reaction", "Import / Export"])
 
 # ── Browse & Edit ─────────────────────────────────────────────────────────
@@ -45,12 +48,20 @@ with tab_browse:
     if filt_solvent:
         df = df[df["solvent"].isin(filt_solvent)]
 
-    edited = st.data_editor(df, num_rows="dynamic", use_container_width=False, key="rxn_editor")
+    _filters_active = bool(filt_type or filt_solvent)
+
+    edited = st.data_editor(df, num_rows="dynamic", width='content', key="rxn_editor")
 
     btn_col1, btn_col2, _ = st.columns([1, 1, 4])
     with btn_col1:
-        if st.button("💾 Save changes", key="save_rxn"):
-            st.session_state.reaction_db = edited.copy()
+        if st.button("💾 Save changes", key="save_rxn",
+                     disabled=not _is_admin, help=None if _is_admin else _ADMIN_HINT):
+            if _filters_active:
+                full = st.session_state.reaction_db.copy()
+                full = full.drop(index=df.index, errors='ignore')
+                st.session_state.reaction_db = pd.concat([full, edited], ignore_index=True)
+            else:
+                st.session_state.reaction_db = edited.copy()
             _save_reactions(st.session_state.reaction_db)
             st.success("Reaction database saved.")
     with btn_col2:
@@ -154,7 +165,8 @@ with tab_import:
             new_df = pd.read_csv(uploaded)
             st.dataframe(new_df.head())
             mode = st.radio("Import mode", ["Replace", "Append"], key="rxn_import_mode")
-            if st.button("Confirm import", key="rxn_import_confirm"):
+            if st.button("Confirm import", key="rxn_import_confirm",
+                         disabled=not _is_admin, help=None if _is_admin else _ADMIN_HINT):
                 if mode == "Replace":
                     st.session_state.reaction_db = new_df
                 else:

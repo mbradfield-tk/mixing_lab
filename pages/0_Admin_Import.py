@@ -101,7 +101,7 @@ with st.expander("Reactor Import Tool", expanded=False):
     with st.expander("Raw source preview (first 20 rows)", expanded=False):
         preview = raw.iloc[:20].copy()
         preview.columns = ["Property", "Units"] + [n or f"Col {i}" for i, n in enumerate(reactor_names)]
-        st.dataframe(preview, use_container_width=False, hide_index=True)
+        st.dataframe(preview, width='content', hide_index=True)
 
     # ─────────────────────────────────────────────────────────────────────────
     # 2. Transpose into row-per-reactor dataframe
@@ -226,10 +226,10 @@ with st.expander("Reactor Import Tool", expanded=False):
     st.header("2 · Converted Preview")
 
     st.subheader("Core fields (reactors.csv format)")
-    st.dataframe(converted_df, use_container_width=False, hide_index=True)
+    st.dataframe(converted_df, width='content', hide_index=True)
 
     with st.expander("All fields from source (including unmapped)", expanded=False):
-        st.dataframe(extras_df, use_container_width=False, hide_index=True)
+        st.dataframe(extras_df, width='content', hide_index=True)
 
     # ─────────────────────────────────────────────────────────────────────────
     # 4. Load current reactor DB for comparison
@@ -238,7 +238,7 @@ with st.expander("Reactor Import Tool", expanded=False):
 
     if REACTOR_CSV.exists():
         current_df = pd.read_csv(REACTOR_CSV)
-        st.dataframe(current_df, use_container_width=False, hide_index=True)
+        st.dataframe(current_df, width='content', hide_index=True)
         st.caption(f"{len(current_df)} reactors in current database.")
     else:
         current_df = pd.DataFrame()
@@ -319,7 +319,7 @@ with st.expander("Reactor Import Tool", expanded=False):
             st.session_state.reactor_db = result
 
         st.success(f"✅ Wrote {len(result)} reactors to **{REACTOR_CSV.name}**.")
-        st.dataframe(result, use_container_width=False, hide_index=True)
+        st.dataframe(result, width='content', hide_index=True)
 
 # ─────────────────────────────────────────────────────────────────────────
 # 6. Field mapping reference
@@ -443,7 +443,7 @@ if st.button("📊 Generate Bourne Protocol Decision Tree", key="gen_bourne_tree
     st.session_state["_show_bourne_tree"] = True
 
 if st.session_state.get("_show_bourne_tree"):
-    st.graphviz_chart(_BOURNE_DOT, use_container_width=False)
+    st.graphviz_chart(_BOURNE_DOT, width='content')
 
     # Export buttons
     _bourne_graph = graphviz.Source(_BOURNE_DOT)
@@ -603,7 +603,7 @@ if st.button("🧭 Generate Mixing Sensitivity Protocol Decision Tree", key="gen
     st.session_state["_show_msp_tree"] = True
 
 if st.session_state.get("_show_msp_tree"):
-    st.graphviz_chart(_MSP_DOT, use_container_width=False)
+    st.graphviz_chart(_MSP_DOT, width='content')
 
     # Export buttons
     _msp_graph = graphviz.Source(_MSP_DOT)

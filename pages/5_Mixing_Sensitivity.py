@@ -351,9 +351,7 @@ if st.session_state.get("_ms_heat_context") != _ms_heat_context:
 if st.button("🔥 Run Heat Balance"):
     st.session_state["_ms_heat_active"] = True
     st.session_state.pop("_ms_heat_stale", None)
-    _default_T = rxn_T_C if rxn_T_C > 0 else fluid_T_C
-    st.session_state["ms_T_process"] = _default_T
-    st.session_state["ms_T_cool"] = _default_T - 20.0
+    st.session_state["ms_T_cool"] = fluid_T_C - 20.0
     st.rerun()
 
 if st.session_state.get("_ms_heat_stale"):
@@ -365,11 +363,7 @@ ms_T_coolant = fluid_T_C - 20.0
 if include_heat:
     hcol1, hcol2, hcol3 = st.columns(3)
     with hcol1:
-        ms_T_process = st.number_input(
-            "Process temperature (°C)",
-            format="%.1f", key="ms_T_process",
-            help="Defaults to reaction temperature; adjust as needed",
-            step=1.0)
+        st.metric("Process temperature", f"{fluid_T_C:.1f} °C")
     with hcol2:
         ms_T_coolant = st.number_input(
             "Coolant temperature (°C)",
@@ -905,7 +899,7 @@ if _can_envelope:
                 margin=dict(t=50, b=50),
                 hovermode="closest",
             )
-            st.plotly_chart(fig, use_container_width=False)
+            st.plotly_chart(fig, width='content')
 
         with st.expander("Chart legend"):
             st.markdown("""
@@ -937,7 +931,7 @@ if heat_results:
     heat_df = pd.DataFrame([heat_results]).T
     heat_df.columns = ["Value"]
     hydro_df = pd.concat([hydro_df, heat_df])
-st.dataframe(hydro_df, use_container_width=False)
+st.dataframe(hydro_df, width='content')
 if particle_results:
     st.caption(f"Particle: **{particle_meta['Particle']}**  ·  {particle_meta['Suspension']}")
 

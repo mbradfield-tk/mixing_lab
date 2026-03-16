@@ -36,6 +36,9 @@ if "fluid_db" not in st.session_state:
 
 st.title("💧 Fluid Database")
 
+_is_admin = st.session_state.get("admin_authenticated", False)
+_ADMIN_HINT = "Log in via Admin Tools to enable editing."
+
 tab_library, tab_solvent, tab_custom, tab_blend, tab_import = st.tabs([
     "Solvent Library", "Solvent Properties (T)", "Custom Fluids", "Blend Fluids", "Import / Export",
 ])
@@ -51,14 +54,14 @@ with tab_library:
 
     st.dataframe(
         pd.DataFrame(solvent_info_table()),
-        use_container_width=False,
+        width='content',
         hide_index=True,
     )
 
     if not st.session_state.fluid_db.empty:
         st.subheader("Custom Fluids")
         st.caption("Fluids added manually (fixed properties, not temperature-dependent).")
-        st.dataframe(st.session_state.fluid_db, use_container_width=False, hide_index=True)
+        st.dataframe(st.session_state.fluid_db, width='content', hide_index=True)
 
 # ── Solvent Properties at Temperature ─────────────────────────────────────
 with tab_solvent:
@@ -155,7 +158,7 @@ with tab_solvent:
         fig.update_xaxes(title_text="T (°C)", row=r, col=c)
 
     fig.update_layout(height=550, margin=dict(t=40, b=40))
-    st.plotly_chart(fig, use_container_width=False)
+    st.plotly_chart(fig, width='content')
 
 # ── Custom Fluids ─────────────────────────────────────────────────────────
 with tab_custom:
@@ -170,7 +173,7 @@ with tab_custom:
     edited = st.data_editor(
         st.session_state.fluid_db,
         num_rows="dynamic",
-        use_container_width=False,
+        width='content',
         column_config={
             "rho_kg_m3": st.column_config.NumberColumn("ρ (kg/m³)", format="%.1f"),
             "mu_Pa_s": st.column_config.NumberColumn("μ (Pa·s)", format="%.6f"),
@@ -180,7 +183,8 @@ with tab_custom:
         key="fluid_editor",
     )
 
-    if st.button("💾 Save changes", key="save_fluid"):
+    if st.button("💾 Save changes", key="save_fluid",
+                 disabled=not _is_admin, help=None if _is_admin else _ADMIN_HINT):
         st.session_state.fluid_db = edited.copy()
         _save_custom_fluids(st.session_state.fluid_db)
         st.success("Custom fluid database saved.")
@@ -271,10 +275,10 @@ with tab_blend:
 
     if len(blend_components) >= 2:
         # Collect volumetric proportions
-        st.subheader("Volumetric Proportions")
+        st.subheader("Volumetric Contributions")
         st.caption(
-            "Enter the volume fraction of each component (they will be "
-            "normalised automatically so they sum to 1)."
+            "Enter the volume contribution of each component (they will be "
+            "normalised automatically to sum to 1.0)."
         )
 
         vol_fracs: dict[str, float] = {}
@@ -318,16 +322,32 @@ with tab_blend:
                 blend_D = sum(cp["mass_frac"] * cp["D_mol_m2_s"] for cp in comp_props)
                 blend_sig = sum(cp["mass_frac"] * cp["surface_tension_N_m"] for cp in comp_props)
 
+                # Display total volume input
+                st.metric("Total volume entered", f"{total_vol:.2f}")
+
                 # Display composition table
                 st.subheader("Blend Composition")
-                comp_table = pd.DataFrame([{
+                comp_rows = [{
                     "Component": cp["name"],
+                    "Added": f"{vol_fracs[cp['name']]:.2f}",
                     "Vol %": f"{cp['vol_frac'] * 100:.1f}",
                     "Mass %": f"{cp['mass_frac'] * 100:.1f}",
                     "ρ (kg/m³)": f"{cp['rho_kg_m3']:.1f}",
                     "μ (Pa·s)": f"{cp['mu_Pa_s']:.6f}",
-                } for cp in comp_props])
-                st.dataframe(comp_table, use_container_width=False, hide_index=True)
+                    "σ (N/m)": f"{cp['surface_tension_N_m']:.4f}",
+                    "D (m²/s)": f"{cp['D_mol_m2_s']:.3e}",
+                } for cp in comp_props]
+                comp_rows.append({
+                    "Component": "**Blend**",
+                    "Added": f"{total_vol:.2f}",
+                    "Vol %": "100.0",
+                    "Mass %": "100.0",
+                    "ρ (kg/m³)": f"{blend_rho:.1f}",
+                    "μ (Pa·s)": f"{blend_mu:.6f}",
+                    "σ (N/m)": f"{blend_sig:.4f}",
+                    "D (m²/s)": f"{blend_D:.3e}",
+                })
+                st.dataframe(pd.DataFrame(comp_rows), width='content', hide_index=True)
 
                 # Display blended properties
                 st.subheader("Blended Properties (mass-weighted)")
@@ -395,7 +415,8 @@ with tab_import:
             new_df = pd.read_csv(uploaded)
             st.dataframe(new_df.head())
             mode = st.radio("Import mode", ["Replace", "Append"], key="fluid_import_mode")
-            if st.button("Confirm import", key="fluid_import_confirm"):
+            if st.button("Confirm import", key="fluid_import_confirm",
+                         disabled=not _is_admin, help=None if _is_admin else _ADMIN_HINT):
                 if mode == "Replace":
                     st.session_state.fluid_db = new_df
                 else:

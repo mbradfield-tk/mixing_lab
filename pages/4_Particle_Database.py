@@ -34,6 +34,9 @@ if "particle_db" not in st.session_state:
 
 st.title("❇️ Particle Database")
 
+_is_admin = st.session_state.get("admin_authenticated", False)
+_ADMIN_HINT = "Log in via Admin Tools to enable editing."
+
 tab_browse, tab_add, tab_import = st.tabs([
     "Browse & Edit", "Add Particle", "Import / Export",
 ])
@@ -53,7 +56,7 @@ with tab_browse:
     edited = st.data_editor(
         df_display,
         num_rows="dynamic",
-        use_container_width=False,
+        width='content',
         column_config={
             "rho_p_kg_m3": st.column_config.NumberColumn("ρ_p (kg/m³)", format="%.0f"),
             "d10_um": st.column_config.NumberColumn("D10 (µm)", format="%.1f"),
@@ -68,11 +71,13 @@ with tab_browse:
         key="particle_editor",
     )
 
-    if st.button("💾 Save changes", key="save_particle"):
+    if st.button("💾 Save changes", key="save_particle",
+                 disabled=not _is_admin, help=None if _is_admin else _ADMIN_HINT):
         if search_term:
+            # Merge edits back: keep rows not in the filtered view, replace filtered with edits
             full = st.session_state.particle_db.copy()
-            full.update(edited)
-            st.session_state.particle_db = full
+            full = full.drop(index=df_display.index, errors='ignore')
+            st.session_state.particle_db = pd.concat([full, edited], ignore_index=True)
         else:
             st.session_state.particle_db = edited.copy()
         _save_particles(st.session_state.particle_db)
@@ -128,7 +133,8 @@ with tab_import:
             new_df = pd.read_csv(uploaded)
             st.dataframe(new_df.head())
             mode = st.radio("Import mode", ["Replace", "Append"], key="particle_import_mode")
-            if st.button("Confirm import", key="particle_import_confirm"):
+            if st.button("Confirm import", key="particle_import_confirm",
+                         disabled=not _is_admin, help=None if _is_admin else _ADMIN_HINT):
                 if mode == "Replace":
                     st.session_state.particle_db = new_df
                 else:

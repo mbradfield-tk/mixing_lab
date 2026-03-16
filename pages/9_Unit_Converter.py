@@ -359,7 +359,7 @@ if entry == "gas_flow":
                 {"Basis": "Standard (S)", "T_ref": "60 °F (288.71 K / 15.56 °C)", "P_ref": "1 atm (101 325 Pa)", "Standard": "US / SCFM convention"},
                 {"Basis": "Actual (A)", "T_ref": f"{gas_T_C:.1f} °C ({gas_T_C + 273.15:.2f} K)", "P_ref": f"{gas_P_atm:.3f} atm ({gas_P_atm * 101325:.0f} Pa)", "Standard": "User-specified"},
             ]),
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
         )
 
@@ -390,7 +390,7 @@ for unit, converted in results.items():
 st.markdown(f"### {input_value:g} {from_unit}")
 st.dataframe(
     pd.DataFrame(rows),
-    use_container_width=True,
+    width='stretch',
     hide_index=True,
     height=min(36 * (len(rows) + 1), 600),
 )

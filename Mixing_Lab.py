@@ -63,6 +63,8 @@ nav = st.navigation({
     "Results": results,
     "Reference": reference,
     "Admin": admin,
-})
+},
+position="sidebar",
+expanded=False)
 
 nav.run()

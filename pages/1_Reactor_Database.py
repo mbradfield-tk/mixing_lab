@@ -57,6 +57,9 @@ else:
 
 st.title("⚗️ Reactor Database")
 
+_is_admin = st.session_state.get("admin_authenticated", False)
+_ADMIN_HINT = "Log in via Admin Tools to enable editing."
+
 tab_browse, tab_add, tab_import = st.tabs(["Browse & Edit", "Add Reactor", "Import / Export"])
 
 # ── Browse & Edit ─────────────────────────────────────────────────────────
@@ -83,17 +86,26 @@ with tab_browse:
     if filt_impeller:
         df_display = df_display[df_display["impeller_type"].isin(filt_impeller)]
 
+    _filters_active = bool(filt_owner or filt_scale or filt_type or filt_impeller)
+
     edited_df = st.data_editor(
         df_display,
         num_rows="dynamic",
-        use_container_width=False,
+        width='content',
         key="reactor_editor",
     )
 
     col_s1, col_s2 = st.columns([1, 5])
     with col_s1:
-        if st.button("💾 Save changes", key="save_reactor_browse"):
-            st.session_state.reactor_db = edited_df.copy()
+        if st.button("💾 Save changes", key="save_reactor_browse",
+                     disabled=not _is_admin, help=None if _is_admin else _ADMIN_HINT):
+            if _filters_active:
+                # Merge edits back: keep unfiltered rows, replace filtered rows with edits
+                full = st.session_state.reactor_db.copy()
+                full = full.drop(index=df_display.index, errors='ignore')
+                st.session_state.reactor_db = pd.concat([full, edited_df], ignore_index=True)
+            else:
+                st.session_state.reactor_db = edited_df.copy()
             _save_reactors(st.session_state.reactor_db)
             st.success("Reactor database saved.")
 
@@ -141,7 +153,7 @@ with tab_browse:
                     with cols[idx % len(cols)]:
                         # Caption from the part after the reactor name
                         label = img_path.stem.removeprefix(prefix).lstrip("_") or img_path.stem
-                        st.image(str(img_path), caption=label, use_container_width=False)
+                        st.image(str(img_path), caption=label, width='content')
 
             # ── CFD images ────────────────────────────────────────────────
             if cfd_imgs:
@@ -163,7 +175,7 @@ with tab_browse:
                             st.image(
                                 str(img_path),
                                 caption=img_path.stem.split("_CFD_")[-1],
-                                use_container_width=False,
+                                width='content',
                             )
     else:
         st.info("No reactors in the filtered view.")
@@ -337,7 +349,8 @@ with tab_import:
             new_df = pd.read_csv(uploaded)
             st.dataframe(new_df.head())
             mode = st.radio("Import mode", ["Replace existing database", "Append to existing database"], key="reactor_import_mode")
-            if st.button("Confirm import", key="reactor_import_confirm"):
+            if st.button("Confirm import", key="reactor_import_confirm",
+                         disabled=not _is_admin, help=None if _is_admin else _ADMIN_HINT):
                 if mode.startswith("Replace"):
                     st.session_state.reactor_db = new_df
                 else:
