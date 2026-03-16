@@ -73,7 +73,7 @@ reactions = _load_csv("reaction_db", "reactions.csv", ["reaction_name"])
 fluids = _load_csv("fluid_db", "fluids.csv", ["fluid_name"])
 particles = _load_csv("particle_db", "particles.csv", ["particle_name"])
 
-st.title("⚙️ Mixing Sensitivity Calculation Workflow")
+st.title("🌀 Mixing Assessment")
 
 if reactors.empty or reactions.empty or fluids.empty:
     st.warning("Please populate the Reactor, Reaction, and Fluid databases first.")

@@ -57,7 +57,7 @@ reactors = _load("reactor_db", "reactors.csv")
 fluids = _load("fluid_db", "fluids.csv")
 
 # ══════════════════════════════════════════════════════════════════════════
-st.title("🧫 Bourne Protocol – Mixing Sensitivity Screening")
+st.title("🧐 Bourne Protocol – Mixing Sensitivity Screening")
 st.markdown("""
 The **Bourne Protocol** (Bourne 2003, as extended by Sarafinas 2018) is an
 efficient experimental method to determine **which scale of mixing** —

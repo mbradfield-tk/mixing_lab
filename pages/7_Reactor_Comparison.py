@@ -57,7 +57,7 @@ fluids = _load("fluid_db", "fluids.csv")
 reactions = _load("reaction_db", "reactions.csv")
 particles_db = _load("particle_db", "particles.csv")
 
-st.title("📊 Reactor Comparison")
+st.title("📈 Reactor Comparison")
 
 if reactors.empty:
     st.warning("Populate the Reactor Database first.")
