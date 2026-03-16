@@ -24,6 +24,8 @@ from utils.calculations import (
     estimate_jacket_area, estimate_U, estimate_U_detailed,
     heat_removal_capacity, heat_balance_assessment,
     liquid_height_from_volume,
+    mesomixing_time, cooling_rate, time_to_cool_or_heat,
+    gmb_njs,
 )
 from utils.rom_registry import (
     compute_reactor_hydro_with_mode,
@@ -222,6 +224,7 @@ st.header("3 · Additional Options")
 # ── Particle options ──────────────────────────────────────────────────────────
 include_particles = st.checkbox("Include solid particles", value=False, key="cmp_include_particles")
 cmp_rho_p = cmp_d50_um = cmp_phi_p = cmp_X_wt = cmp_S_zw = 0.0
+cmp_gmb_z = cmp_X_vol = cmp_C_D_ratio = 0.0
 if include_particles and not particles_db.empty:
     pcol1, pcol2, pcol3 = st.columns(3)
     with pcol1:
@@ -231,11 +234,37 @@ if include_particles and not particles_db.empty:
         cmp_d50_um = float(cmp_part["d50_um"])
         cmp_phi_p = float(cmp_part["shape_factor"])
     with pcol2:
-        cmp_X_wt = st.number_input("Solids loading X (wt-%)", value=5.0, min_value=0.01,
-                                    format="%.2f", key="cmp_Xwt")
-    with pcol3:
         cmp_S_zw = st.number_input("Zwietering S", value=5.5, min_value=0.5,
                                     max_value=20.0, format="%.1f", key="cmp_Szw")
+    # Solids loading – single input with auto-conversion
+    _cmp_solids_basis = st.radio("Solids loading basis",
+                                  ["Mass (wt-%)", "Volume (vol-%)"],
+                                  horizontal=True, key="cmp_solids_basis")
+    scol1, scol2, _ = st.columns(3)
+    if _cmp_solids_basis == "Mass (wt-%)":
+        cmp_X_wt = scol1.number_input("Solids loading X (wt-%)", value=5.0,
+                                       min_value=0.01, format="%.2f", key="cmp_Xwt",
+                                       help="Mass of solids / mass of liquid × 100")
+        cmp_X_vol = 100.0 * cmp_X_wt * rho / (cmp_X_wt * rho + 100.0 * cmp_rho_p) if cmp_rho_p > 0 else 0.0
+        scol2.metric("Xv (vol-%)", f"{cmp_X_vol:.2f}")
+    else:
+        cmp_X_vol = scol1.number_input("Solids loading Xv (vol-%)", value=2.0,
+                                        min_value=0.01, max_value=99.0,
+                                        format="%.2f", key="cmp_Xv",
+                                        help="Volume of solids / volume of slurry × 100")
+        cmp_X_wt = 100.0 * cmp_rho_p * cmp_X_vol / (rho * (100.0 - cmp_X_vol)) if (100.0 - cmp_X_vol) > 0 and rho > 0 else 0.0
+        scol2.metric("X (wt-%)", f"{cmp_X_wt:.2f}")
+    st.markdown("**Grenville, Mak & Brown (GMB) parameters**")
+    gcol1, gcol2 = st.columns(2)
+    with gcol1:
+        cmp_gmb_z = st.number_input("GMB z constant", value=3.0, min_value=0.1,
+                                     max_value=30.0, format="%.2f", key="cmp_gmb_z",
+                                     help="Geometry constant (impeller-type dependent)")
+    with gcol2:
+        cmp_C_D_ratio = st.number_input("C/D (clearance / impeller dia)",
+                                         value=0.33, min_value=0.01,
+                                         max_value=2.0, format="%.3f", key="cmp_CD",
+                                         help="Impeller clearance / impeller diameter")
 elif include_particles and particles_db.empty:
     st.warning("Particle database is empty.")
 
@@ -352,6 +381,10 @@ for rname in selected_names:
         rpm_max=rpm_max,
     )
 
+    # C/D ratio for GMB Njs (from reactor DB or user default)
+    _imp1_C = _safe_float(r.get("imp1_clearance_m"), 0.0)
+    reactor_info[rname]["C_D_ratio"] = _imp1_C / D_imp_v if D_imp_v > 0 and _imp1_C > 0 else cmp_C_D_ratio
+
     # Heat-transfer geometry for this reactor
     _r_material = str(r.get("material", ""))
     _r_bottom_dish = str(r.get("bottom_dish", "")) if pd.notna(r.get("bottom_dish")) else ""
@@ -392,7 +425,12 @@ for rname in selected_names:
             _drho = abs(cmp_rho_p - rho)
             _vt = settling_velocity(_dp, cmp_rho_p, rho, mu, cmp_phi_p)
             _rep = particle_reynolds(_dp, _vt, rho, mu)
-            _njs = zwietering_njs(cmp_S_zw, _nu, _dp, _drho, rho, cmp_X_wt, D_imp_v)
+            _njs_zw = zwietering_njs(cmp_S_zw, _nu, _dp, _drho, rho, cmp_X_wt, D_imp_v)
+            _Np_corner = Np_v if Np_v else 1.27
+            _C_D_corner = _safe_float(r.get("imp1_clearance_m")) / D_imp_v if D_imp_v > 0 and _safe_float(r.get("imp1_clearance_m")) > 0 else cmp_C_D_ratio
+            _njs_gmb = gmb_njs(cmp_gmb_z, _Np_corner, D_imp_v, _dp,
+                               _drho, rho, cmp_X_vol, _C_D_corner)
+            _njs = max(_njs_zw, _njs_gmb)
             _ksl = solid_liquid_mass_transfer(_dp, _vt, rho, mu, D_mol)
             _njs_rpm = _njs * 60
             _n_over_njs = N / _njs if _njs > 0 else 0.0
@@ -475,10 +513,12 @@ env_df["RPM_pct"] = env_df["RPM"] / env_df["RPM_max"] * 100
 # ── Aggregate min / max per reactor for plotting ─────────────────────────
 PLOT_PARAMS = [
     "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)",
+    "Circulation time (s)",
     "Micromix time t_E (s)", "Micromix time t_E_local (s)",
     "Kolmogorov η (µm)", "Re",
     "Avg shear rate (1/s)", "Max shear rate (1/s)", "Avg shear stress (Pa)",
     "Da_macro", "Da_micro", "Da_GL", "ε_max (W/kg)",
+    "EDCF (W/kg/s)", "Torque (N·m)", "Torque/V (N·m/m³)", "Froude number",
     "kLa (1/s)", "kLa_surface (1/s)",
 ]
 HEAT_PARAMS = ["Q_gen (W)", "Q_cool (W)", "U (W/m²·K)", "A_ht (m²)", "Q_gen/Q_cool (%)"]
@@ -509,7 +549,12 @@ if include_particles and cmp_d50_um > 0:
     _vt_p7 = settling_velocity(_dp_p7, cmp_rho_p, rho, mu, cmp_phi_p)
     _rep_p7 = particle_reynolds(_dp_p7, _vt_p7, rho, mu)
     for rname, info in reactor_info.items():
-        _njs_p7 = zwietering_njs(cmp_S_zw, _nu_p7, _dp_p7, _drho_p7, rho, cmp_X_wt, info["D_imp"])
+        _njs_zw_p7 = zwietering_njs(cmp_S_zw, _nu_p7, _dp_p7, _drho_p7, rho, cmp_X_wt, info["D_imp"])
+        _Np_p7 = info["Np"] if info["Np"] else 1.27
+        _C_D_p7 = info.get("C_D_ratio", cmp_C_D_ratio)
+        _njs_gmb_p7 = gmb_njs(cmp_gmb_z, _Np_p7, info["D_imp"], _dp_p7,
+                               _drho_p7, rho, cmp_X_vol, _C_D_p7)
+        _njs_p7 = max(_njs_zw_p7, _njs_gmb_p7)
         _ksl_p7 = solid_liquid_mass_transfer(_dp_p7, _vt_p7, rho, mu, D_mol)
         _p7_part_static[rname] = {
             "N_js_rps": _njs_p7, "N_js (RPM)": _njs_p7 * 60,
@@ -1035,9 +1080,13 @@ if st.button("📌 Save results for all selected reactors", key="cmp_save_all"):
             "P/V (W/L)": _c.get("P/V (W/L)", ""),
             "Tip speed (m/s)": _c.get("Tip speed (m/s)", ""),
             "Blend time (s)": _c.get("Blend time 95% (s)", ""),
+            "Circulation time (s)": _c.get("Circulation time (s)", ""),
             "Micromix t_E (s)": _c.get("Micromix time t_E (s)", ""),
             "Micromix t_E_local (s)": _c.get("Micromix time t_E_local (s)", ""),
             "Kolmogorov η (µm)": _c.get("Kolmogorov η (µm)", ""),
+            "EDCF (W/kg/s)": _c.get("EDCF (W/kg/s)", ""),
+            "Torque (N·m)": _c.get("Torque (N·m)", ""),
+            "Froude number": _c.get("Froude number", ""),
             "Avg shear rate (1/s)": _c.get("Avg shear rate (1/s)", ""),
             "Max shear rate (1/s)": _c.get("Max shear rate (1/s)", ""),
             "Avg shear stress (Pa)": _c.get("Avg shear stress (Pa)", ""),

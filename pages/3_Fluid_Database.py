@@ -1,4 +1,4 @@
-"""Page 3 – Fluid System Database: browse solvents, explore T-dependent properties, manage custom fluids."""
+"""Page 3 – Fluid Database: browse solvents, explore T-dependent properties, manage custom fluids."""
 
 import streamlit as st
 
@@ -34,7 +34,7 @@ def _save_custom_fluids(df: pd.DataFrame):
 if "fluid_db" not in st.session_state:
     st.session_state.fluid_db = _load_custom_fluids()
 
-st.title("💧 Fluid System Database")
+st.title("💧 Fluid Database")
 
 tab_library, tab_solvent, tab_custom, tab_blend, tab_import = st.tabs([
     "Solvent Library", "Solvent Properties (T)", "Custom Fluids", "Blend Fluids", "Import / Export",

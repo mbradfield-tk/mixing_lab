@@ -130,3 +130,71 @@ st.markdown("""
 For Newtonian fluids, shear stress (Pa) is simply viscosity multiplied by
 the shear rate.  Both $\\tau_{avg}$ and $\\tau_{max}$ are reported.
 """)
+
+# ── Circulation Time ─────────────────────────────────────────────────────
+st.header("Circulation Time")
+st.latex(r"t_c = \frac{V}{N_q \, N \, D^3}")
+st.markdown("""
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $V$ | Liquid volume | m³ |
+| $N_q$ | Pumping (flow) number | — |
+| $N$ | Impeller speed | rev/s |
+| $D$ | Impeller diameter | m |
+
+The mean time for a fluid element to complete one loop through the
+impeller zone.  Related to blend time via $\\theta_{95} \\approx 5.2 \\, t_c$.
+
+**Reference:** Eq 2.14 (PDF reference).
+""")
+
+# ── Torque ────────────────────────────────────────────────────────────────
+st.header("Impeller Torque")
+st.latex(r"\Lambda = \frac{P}{2 \pi N}")
+st.markdown("""
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $P$ | Impeller power draw | W |
+| $N$ | Impeller speed | rev/s |
+| $\\Lambda$ | Torque | N·m |
+
+**Torque per unit volume** $\\Lambda/V$ provides a scale-independent measure
+of mechanical stress on the fluid, useful for comparing across scales.
+
+**Reference:** Eq 2.20–2.21 (PDF reference).
+""")
+
+# ── EDCF ──────────────────────────────────────────────────────────────────
+st.header("Energy Dissipation Circulation Function (EDCF)")
+st.latex(r"\text{EDCF} = \frac{\varepsilon_{max}}{t_c}")
+st.markdown("""
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $\\varepsilon_{max}$ | Maximum local energy dissipation rate | W/kg |
+| $t_c$ | Circulation time | s |
+| EDCF | Mixing intensity × exposure frequency | W/kg/s |
+
+EDCF combines the **intensity** of the impeller discharge zone with the
+**frequency** at which fluid passes through it.  A higher EDCF indicates
+more vigorous overall mixing — particularly relevant for shear-sensitive
+and fast-reacting systems.
+
+**Reference:** Eq 2.23 (PDF reference); Nienow (1997).
+""")
+
+# ── Froude Number ─────────────────────────────────────────────────────────
+st.header("Froude Number")
+st.latex(r"Fr = \frac{N^2 \, D}{g}")
+st.markdown("""
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $N$ | Impeller speed | rev/s |
+| $D$ | Impeller diameter | m |
+| $g$ | Gravitational acceleration | m/s² |
+
+Ratio of inertial to gravitational forces.  Important for predicting
+free-surface vortex formation in unbaffled or partially baffled vessels.
+At high Fr the liquid surface can draw down to the impeller.
+
+**Reference:** Eq 2.30 (PDF reference).
+""")

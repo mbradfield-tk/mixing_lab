@@ -40,6 +40,10 @@ from utils.calculations import (
     estimate_U_detailed,
     heat_removal_capacity,
     heat_balance_assessment,
+    mesomixing_time,
+    cooling_rate,
+    time_to_cool_or_heat,
+    gmb_njs,
 )
 from utils.rom_registry import (
     compute_reactor_hydro_with_mode,
@@ -246,13 +250,42 @@ if include_particles and not particles.empty:
         phi_p = pc3.number_input("Shape factor φ",
                                  min_value=0.01, max_value=1.0, step=0.05,
                                  format="%.2f", key="ov_phi")
-        pc4, pc5 = st.columns(2)
-        X_wt = pc4.number_input("Solids loading X (wt-%)", value=5.0, min_value=0.01,
-                                format="%.2f", key="ov_Xwt",
-                                help="Mass fraction of solids as weight-%")
-        S_zw = pc5.number_input("Zwietering S constant", value=5.5, min_value=0.5,
+        # Solids loading – single input with auto-conversion
+        _solids_basis = st.radio("Solids loading basis",
+                                 ["Mass (wt-%)", "Volume (vol-%)"],
+                                 horizontal=True, key="ov_solids_basis")
+        pc4, pc5, pc6 = st.columns(3)
+        if _solids_basis == "Mass (wt-%)":
+            X_wt = pc4.number_input("Solids loading X (wt-%)", value=5.0,
+                                    min_value=0.01, format="%.2f", key="ov_Xwt",
+                                    help="Mass of solids / mass of liquid × 100")
+            # Convert wt-% → vol-%
+            X_vol = 100.0 * X_wt * rho / (X_wt * rho + 100.0 * rho_p) if rho_p > 0 else 0.0
+            pc5.metric("Xv (vol-%)", f"{X_vol:.2f}")
+        else:
+            X_vol = pc4.number_input("Solids loading Xv (vol-%)", value=2.0,
+                                     min_value=0.01, max_value=99.0,
+                                     format="%.2f", key="ov_Xv",
+                                     help="Volume of solids / volume of slurry × 100")
+            # Convert vol-% → wt-%
+            X_wt = 100.0 * rho_p * X_vol / (rho * (100.0 - X_vol)) if (100.0 - X_vol) > 0 and rho > 0 else 0.0
+            pc5.metric("X (wt-%)", f"{X_wt:.2f}")
+        S_zw = pc6.number_input("Zwietering S constant", value=5.5, min_value=0.5,
                                 max_value=20.0, format="%.1f", key="ov_Szw",
                                 help="Geometry-dependent constant (typ. 1–10, PBT ≈ 5.5)")
+
+        st.markdown("**Grenville, Mak & Brown (GMB) parameters**")
+        _gmb_z_default = _safe(reactor.get("GMB_z"), 0.0)
+        _C_imp_default = _safe(reactor.get("imp1_clearance_m"), 0.0)
+        _C_D_default = _C_imp_default / D_imp if D_imp > 0 and _C_imp_default > 0 else 0.33
+        pc7, pc8 = st.columns(2)
+        gmb_z = pc7.number_input("GMB z constant", value=_gmb_z_default if _gmb_z_default > 0 else 3.0,
+                                  min_value=0.1, max_value=30.0, format="%.2f", key="ov_gmb_z",
+                                  help="Geometry constant (impeller-type dependent)")
+        C_D_ratio = pc8.number_input("C/D (clearance / impeller dia)",
+                                      value=_C_D_default, min_value=0.01,
+                                      max_value=2.0, format="%.3f", key="ov_CD",
+                                      help="Impeller clearance / impeller diameter")
 elif include_particles and particles.empty:
     st.warning("Particle database is empty. Add particles on the Particle Database page.")
 
@@ -407,6 +440,13 @@ m10.metric("Max shear rate (1/s)", f"{hydro['Max shear rate (1/s)']:.0f}")
 m11.metric("Avg shear stress (Pa)", f"{hydro['Avg shear stress (Pa)']:.3g}")
 m12.metric("t_E local (s)", f"{hydro['Micromix time t_E_local (s)']:.4g}")
 
+# Additional hydrodynamic parameters row
+m9b, m10b, m11b, m12b = st.columns(4)
+m9b.metric("Circulation time (s)", f"{hydro['Circulation time (s)']:.2f}")
+m10b.metric("Froude number", f"{hydro['Froude number']:.4g}")
+m11b.metric("EDCF (W/kg/s)", f"{hydro['EDCF (W/kg/s)']:.3g}")
+m12b.metric("Torque (N·m)", f"{hydro['Torque (N·m)']:.3g}")
+
 if v_s > 0:
     m13, m14, m15, _ = st.columns(4)
     m13.metric("kLa sparged (1/s)", f"{hydro['kLa (1/s)']:.4g}")
@@ -455,7 +495,10 @@ if include_particles and not particles.empty:
 
     v_t = settling_velocity(d_p_m, rho_p, rho, mu, phi_p)
     Re_p = particle_reynolds(d_p_m, v_t, rho, mu)
-    N_js = zwietering_njs(S_zw, nu, d_p_m, delta_rho, rho, X_wt, D_imp)
+    N_js_zw = zwietering_njs(S_zw, nu, d_p_m, delta_rho, rho, X_wt, D_imp)
+    N_js_gmb = gmb_njs(gmb_z, Np_in if Np_in else 1.27, D_imp, d_p_m,
+                       delta_rho, rho, X_vol, C_D_ratio)
+    N_js = max(N_js_zw, N_js_gmb)  # conservative: use the higher estimate
     k_SL = solid_liquid_mass_transfer(d_p_m, v_t, rho, mu, D_mol)
     susp = particle_suspension_criterion(N_rps, N_js)
 
@@ -464,8 +507,13 @@ if include_particles and not particles.empty:
         "ρ_p (kg/m³)": rho_p,
         "Shape factor φ": phi_p,
         "X (wt-%)": X_wt,
+        "Xv (vol-%)": X_vol,
         "v_t (m/s)": v_t,
         "Re_p": Re_p,
+        "N_js Zwietering (rev/s)": N_js_zw,
+        "N_js Zwietering (RPM)": N_js_zw * 60,
+        "N_js GMB (rev/s)": N_js_gmb,
+        "N_js GMB (RPM)": N_js_gmb * 60,
         "N_js (rev/s)": N_js,
         "N_js (RPM)": N_js * 60,
         "k_SL (m/s)": k_SL,
@@ -478,10 +526,15 @@ if include_particles and not particles.empty:
     sp1, sp2, sp3, sp4 = st.columns(4)
     sp1.metric("Settling velocity (m/s)", f"{v_t:.3e}")
     sp2.metric("Re_p", f"{Re_p:.3g}")
-    sp3.metric("N_js (RPM)", f"{N_js * 60:.1f}")
-    sp4.metric("k_SL (m/s)", f"{k_SL:.3e}")
+    sp3.metric("N_js Zwietering (RPM)", f"{N_js_zw * 60:.1f}")
+    sp4.metric("N_js GMB (RPM)", f"{N_js_gmb * 60:.1f}")
 
-    # Suspension assessment
+    sp5, sp6, _, _ = st.columns(4)
+    sp5.metric("N_js design (RPM)", f"{N_js * 60:.1f}",
+              help="Higher of Zwietering and GMB estimates")
+    sp6.metric("k_SL (m/s)", f"{k_SL:.3e}")
+
+    # Suspension assessment (based on conservative N_js)
     if "Poorly" in susp:
         st.error(f"🔴 **{susp}** — current speed is below just-suspended speed")
     elif "Partially" in susp:
@@ -577,10 +630,12 @@ if _can_envelope:
 
     PLOT_PARAMS = [
         "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)",
+        "Circulation time (s)",
         "Micromix time t_E (s)", "Micromix time t_E_local (s)",
         "Kolmogorov η (µm)", "Re",
         "Avg shear rate (1/s)", "Max shear rate (1/s)", "Avg shear stress (Pa)",
         "Da_macro", "Da_micro", "Da_GL", "ε_max (W/kg)",
+        "EDCF (W/kg/s)", "Torque (N·m)", "Torque/V (N·m/m³)", "Froude number",
         "kLa (1/s)", "kLa_surface (1/s)",
     ]
     HEAT_PARAMS = ["Q_gen (W)", "Q_cool (W)", "U (W/m²·K)", "A_ht (m²)", "Q_gen/Q_cool (%)"]
@@ -602,7 +657,10 @@ if _can_envelope:
         _drho = abs(rho_p - rho)
         _vt = settling_velocity(_dp, rho_p, rho, mu, phi_p)
         _rep = particle_reynolds(_dp, _vt, rho, mu)
-        _njs = zwietering_njs(S_zw, _nu_p, _dp, _drho, rho, X_wt, D_imp)
+        _njs_zw = zwietering_njs(S_zw, _nu_p, _dp, _drho, rho, X_wt, D_imp)
+        _njs_gmb = gmb_njs(gmb_z, Np_in if Np_in else 1.27, D_imp, _dp,
+                           _drho, rho, X_vol, C_D_ratio)
+        _njs = max(_njs_zw, _njs_gmb)
         _ksl = solid_liquid_mass_transfer(_dp, _vt, rho, mu, D_mol)
         _part_static = {
             "N_js_rps": _njs,
@@ -894,10 +952,14 @@ if st.button("📌 Save this result to Recorded Results"):
         "P/V (W/L)": hydro["P/V (W/L)"],
         "Tip speed (m/s)": hydro["Tip speed (m/s)"],
         "Blend time (s)": hydro["Blend time 95% (s)"],
+        "Circulation time (s)": hydro["Circulation time (s)"],
         "Micromix t_E (s)": hydro["Micromix time t_E (s)"],
         "Micromix t_E_local (s)": hydro["Micromix time t_E_local (s)"],
         "Kolmogorov η (µm)": hydro["Kolmogorov η (µm)"],
         "Batchelor λ_B (µm)": lam_B * 1e6,
+        "EDCF (W/kg/s)": hydro["EDCF (W/kg/s)"],
+        "Torque (N·m)": hydro["Torque (N·m)"],
+        "Froude number": hydro["Froude number"],
         "Avg shear rate (1/s)": hydro["Avg shear rate (1/s)"],
         "Max shear rate (1/s)": hydro["Max shear rate (1/s)"],
         "Avg shear stress (Pa)": hydro["Avg shear stress (Pa)"],
@@ -916,6 +978,8 @@ if st.button("📌 Save this result to Recorded Results"):
             "ρ_p (kg/m³)": particle_results.get("ρ_p (kg/m³)", ""),
             "v_t (m/s)": particle_results.get("v_t (m/s)", ""),
             "Re_p": particle_results.get("Re_p", ""),
+            "N_js Zwietering (RPM)": particle_results.get("N_js Zwietering (RPM)", ""),
+            "N_js GMB (RPM)": particle_results.get("N_js GMB (RPM)", ""),
             "N_js (RPM)": particle_results.get("N_js (RPM)", ""),
             "k_SL (m/s)": particle_results.get("k_SL (m/s)", ""),
             "Suspension": particle_meta.get("Suspension", ""),

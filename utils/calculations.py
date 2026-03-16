@@ -54,6 +54,66 @@ def pumping_rate(Nq: float, N: float, D: float) -> float:
     return Nq * N * D**3
 
 
+def circulation_time(Nq: float, V: float, D: float, N: float) -> float:
+    """Circulation time  t_c = V / (Nq · N · D³).
+
+    The mean time for a fluid element to complete one circulation loop
+    through the impeller zone.
+
+    Reference: Eq 2.14 (PDF reference).
+    """
+    Q = pumping_rate(Nq, N, D)
+    if Q <= 0:
+        return np.inf
+    return V / Q
+
+
+def torque(P: float, N: float) -> float:
+    """Impeller torque  Λ = P / (2π N)  (N·m).
+
+    Reference: Eq 2.20 (PDF reference).
+    """
+    if N <= 0:
+        return 0.0
+    return P / (2 * np.pi * N)
+
+
+def torque_per_volume(P: float, N: float, V: float) -> float:
+    """Torque per unit volume  Λ/V  (N·m / m³).
+
+    Reference: Eq 2.21 (PDF reference).
+    """
+    if N <= 0 or V <= 0:
+        return 0.0
+    return torque(P, N) / V
+
+
+def edcf(epsilon_max: float, t_c: float) -> float:
+    """Energy Dissipation Circulation Function  EDCF = ε_max / t_c  (W/kg/s).
+
+    Combines the intensity of local mixing (ε_max) with the frequency
+    of exposure (1 / t_c).  Higher EDCF indicates more vigorous mixing.
+
+    Reference: Eq 2.23 (PDF reference); Nienow (1997).
+    """
+    if t_c <= 0 or t_c == np.inf:
+        return 0.0
+    return epsilon_max / t_c
+
+
+def froude_number(N: float, D: float, g: float = 9.81) -> float:
+    """Froude number  Fr = N² D / g.
+
+    Ratio of inertial to gravitational forces; important for free-surface
+    vortex formation.
+
+    Reference: Eq 2.30 (PDF reference).
+    """
+    if g <= 0:
+        return 0.0
+    return N**2 * D / g
+
+
 # ---------------------------------------------------------------------------
 # Mixing times
 # ---------------------------------------------------------------------------
@@ -197,6 +257,28 @@ def micromixing_time_local(epsilon_max: float, nu: float) -> float:
     return 17.3 * np.sqrt(nu / epsilon_max)
 
 
+def mesomixing_time(epsilon: float, d_feed: float) -> float:
+    """Mesomixing (turbulent dispersion) time constant.
+
+    t_meso = 2 · (d_feed² / ε)^(1/3)
+
+    Represents the time for feed plumes to be dispersed by turbulent
+    eddies at the scale of the feed pipe diameter.
+
+    Parameters
+    ----------
+    epsilon : float – local energy dissipation rate at the feed point (W/kg = m²/s³)
+    d_feed  : float – feed pipe internal diameter (m)
+
+    Returns t_meso in seconds.
+
+    Reference: Eq 3.3 (PDF reference); Baldyga & Bourne (1999).
+    """
+    if epsilon <= 0 or d_feed <= 0:
+        return np.inf
+    return 2.0 * (d_feed**2 / epsilon) ** (1.0 / 3.0)
+
+
 # ---------------------------------------------------------------------------
 # Shear rate and shear stress
 # ---------------------------------------------------------------------------
@@ -316,6 +398,44 @@ def zwietering_njs(S: float, nu: float, d_p: float, delta_rho: float,
             * X**0.13 * D_imp**(-0.85))
 
 
+def gmb_njs(z: float, Np: float, D_imp: float, d_p: float,
+            delta_rho: float, rho_L: float, X_v: float,
+            C_D_ratio: float, g: float = 9.81) -> float:
+    """Grenville, Mak & Brown (2015) just-suspended speed.
+
+    N_js = z · Po^{-1/3} · D^{-2/3} · (g Δρ/ρ_L)^{0.45}
+           · X_v^{0.154} · d_p^{0.167} · (C/D)^{0.1}
+
+    Parameters
+    ----------
+    z         : float – geometry constant (impeller-type dependent)
+    Np        : float – impeller power number (Po)
+    D_imp     : float – impeller diameter (m)
+    d_p       : float – particle diameter (m)
+    delta_rho : float – |ρ_p − ρ_L| (kg/m³)
+    rho_L     : float – liquid density (kg/m³)
+    X_v       : float – volume percent of solids (vol-%)
+    C_D_ratio : float – impeller clearance / impeller diameter (C/D)
+    g         : float – gravitational acceleration (m/s²)
+
+    Returns
+    -------
+    N_js : float – just-suspended impeller speed (rev/s)
+
+    Reference
+    ---------
+    Grenville, R.K., Mak, A.T.C. & Brown, D.A.R. (2015).
+    Suspension of solid particles in vessels agitated by axial flow
+    impellers. *Chem. Eng. Res. Des.*, 100, 282–291.
+    """
+    if D_imp <= 0 or rho_L <= 0 or X_v <= 0 or d_p <= 0 or Np <= 0:
+        return 0.0
+    return (z * Np**(-1.0/3.0) * D_imp**(-2.0/3.0)
+            * (g * delta_rho / rho_L)**0.45
+            * X_v**0.154 * d_p**0.167
+            * C_D_ratio**0.1)
+
+
 def solid_liquid_mass_transfer(d_p: float, v_slip: float, rho_L: float,
                                mu: float, D_mol: float) -> float:
     """Solid-liquid mass transfer coefficient via Ranz-Marshall.
@@ -342,6 +462,42 @@ def solid_liquid_mass_transfer(d_p: float, v_slip: float, rho_L: float,
     Sc = nu_val / D_mol if D_mol > 0 else 1e12
     Sh = 2.0 + 0.6 * np.sqrt(max(Re_p, 0)) * Sc**(1.0/3.0)
     return Sh * D_mol / d_p
+
+
+def archimedes_number(d_p: float, rho_L: float, delta_rho: float,
+                      mu: float, g: float = 9.81) -> float:
+    """Archimedes number  Ar = g · d_p³ · ρ_L · Δρ / μ².
+
+    A key dimensionless group for solid-liquid systems that quantifies
+    the ratio of gravitational to viscous forces.
+
+    Reference: Eq 4.5 (PDF reference).
+    """
+    if d_p <= 0 or mu <= 0:
+        return 0.0
+    return g * d_p**3 * rho_L * abs(delta_rho) / mu**2
+
+
+def solid_liquid_kla(k_SL: float, d_p: float, phi_s: float) -> float:
+    """Solid-liquid volumetric mass-transfer coefficient  kLa_SL.
+
+    Specific surface area:  a_s = 6 φ_s / d_p
+    kLa_SL = k_SL × a_s
+
+    Parameters
+    ----------
+    k_SL  : float – solid-liquid mass transfer coefficient (m/s)
+    d_p   : float – particle diameter (m)
+    phi_s : float – volumetric solids fraction φ_s (dimensionless, 0–1)
+
+    Returns  kLa_SL in 1/s.
+
+    Reference: Eq 4.10–4.12 (PDF reference).
+    """
+    if d_p <= 0 or phi_s <= 0 or k_SL <= 0:
+        return 0.0
+    a_s = 6.0 * phi_s / d_p
+    return k_SL * a_s
 
 
 def particle_suspension_criterion(N: float, N_js: float) -> str:
@@ -515,6 +671,13 @@ def compute_reactor_hydro(
     kla = kla_vant_riet(eps, v_s, coalescing=coalescing)
     kla_surf = kla_surface(eps_kg, nu, D_mol, D_tank, V)
 
+    # Additional derived parameters
+    t_c = circulation_time(Nq, V, D_imp, N)
+    _torque = torque(P, N)
+    _torque_per_vol = torque_per_volume(P, N, V)
+    _edcf = edcf(eps_max, t_c)
+    Fr = froude_number(N, D_imp)
+
     return {
         "Volume (L)": V * 1000,
         "Re": Re,
@@ -526,10 +689,15 @@ def compute_reactor_hydro(
         "Tip speed (m/s)": u_tip,
         "Pumping rate (m³/s)": Q,
         "Blend time 95% (s)": t_blend,
+        "Circulation time (s)": t_c,
         "Micromix time t_E (s)": t_micro,
         "Micromix time t_E_local (s)": t_micro_local,
         "Kolmogorov η (µm)": eta * 1e6,
         "ε_max (W/kg)": eps_max,
+        "EDCF (W/kg/s)": _edcf,
+        "Torque (N·m)": _torque,
+        "Torque/V (N·m/m³)": _torque_per_vol,
+        "Froude number": Fr,
         "Avg shear rate (1/s)": gamma_avg,
         "Max shear rate (1/s)": gamma_max,
         "Avg shear stress (Pa)": tau_avg,
@@ -1019,3 +1187,64 @@ def heat_balance_assessment(Q_gen: float, Q_cool: float) -> str:
         return f"⚠️ Tight – limited safety margin (Q_gen/Q_cool = {ratio:.2f})"
     else:
         return f"🔴 Insufficient cooling (Q_gen/Q_cool = {ratio:.2f})"
+
+
+def cooling_rate(Q_cool: float, P_agitator: float,
+                 rho: float, V_L: float, Cp: float) -> float:
+    """Instantaneous cooling rate  dT/dt = (Q_cool − P_agitator) / (ρ V Cp).
+
+    A positive value means the batch is cooling; negative means the
+    agitator power input exceeds cooling capacity (net heating).
+
+    Parameters
+    ----------
+    Q_cool      : float – jacket cooling capacity (W)
+    P_agitator  : float – impeller power draw (W)
+    rho         : float – fluid density (kg/m³)
+    V_L         : float – liquid volume (m³)
+    Cp          : float – specific heat capacity (J/(kg·K))
+
+    Returns  dT/dt in K/s (positive = cooling).
+
+    Reference: Eq 5.20 (PDF reference).
+    """
+    if rho <= 0 or V_L <= 0 or Cp <= 0:
+        return 0.0
+    return (Q_cool - P_agitator) / (rho * V_L * Cp)
+
+
+def time_to_cool_or_heat(rho: float, V_L: float, Cp: float,
+                         U: float, A: float,
+                         T_start: float, T_end: float,
+                         T_jacket: float) -> float:
+    """Logarithmic batch heating / cooling time.
+
+    t = (ρ V Cp) / (U A) · ln[(T_start − T_jacket) / (T_end − T_jacket)]
+
+    Parameters
+    ----------
+    rho       : float – fluid density (kg/m³)
+    V_L       : float – liquid volume (m³)
+    Cp        : float – specific heat capacity (J/(kg·K))
+    U         : float – overall heat-transfer coefficient (W/(m²·K))
+    A         : float – heat-transfer area (m²)
+    T_start   : float – initial batch temperature (°C or K)
+    T_end     : float – final batch temperature (°C or K)
+    T_jacket  : float – jacket / coolant temperature (°C or K)
+
+    Returns  time in seconds (positive).  Returns inf when the
+    temperature approach is zero or negative (unreachable).
+
+    Reference: Eq 5.21 (PDF reference).
+    """
+    if U <= 0 or A <= 0 or rho <= 0 or V_L <= 0 or Cp <= 0:
+        return np.inf
+    dT_start = T_start - T_jacket
+    dT_end = T_end - T_jacket
+    # Both deltas must have the same sign and dT_end must be closer to 0
+    if dT_start == 0 or dT_end == 0:
+        return np.inf
+    ratio = dT_start / dT_end
+    if ratio <= 0 or ratio <= 1:
+        return np.inf  # unreachable target or already there
+    return (rho * V_L * Cp) / (U * A) * np.log(ratio)

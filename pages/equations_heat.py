@@ -166,3 +166,45 @@ st.markdown("""
 | 0.75 – 1.00 | ⚠️ Tight – limited safety margin |
 | > 1.00 | 🔴 Insufficient cooling capacity |
 """)
+
+# ── Cooling Rate ─────────────────────────────────────────────────────────
+st.header("Cooling Rate")
+st.latex(r"\frac{dT}{dt} = \frac{Q_{\text{cool}} - P_{\text{agitator}}}{\rho \, V \, C_p}")
+st.markdown("""
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $Q_{\\text{cool}}$ | Jacket cooling capacity | W |
+| $P_{\\text{agitator}}$ | Impeller power draw | W |
+| $\\rho$ | Fluid density | kg/m³ |
+| $V$ | Liquid volume | m³ |
+| $C_p$ | Specific heat capacity | J/(kg·K) |
+
+The instantaneous rate of temperature change of the batch, accounting
+for the heat input from agitator dissipation. A positive value means
+the batch is cooling; negative means net heating.
+
+**Reference:** Eq 5.20 (PDF reference).
+""")
+
+# ── Time to Cool / Heat ─────────────────────────────────────────────────
+st.header("Time to Cool or Heat (Batch)")
+st.latex(r"t = \frac{\rho \, V \, C_p}{U \, A} \, \ln \frac{T_{\text{start}} - T_{\text{jacket}}}{T_{\text{end}} - T_{\text{jacket}}}")
+st.markdown("""
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $\\rho$ | Fluid density | kg/m³ |
+| $V$ | Liquid volume | m³ |
+| $C_p$ | Specific heat capacity | J/(kg·K) |
+| $U$ | Overall heat-transfer coefficient | W/(m²·K) |
+| $A$ | Heat-transfer area | m² |
+| $T_{\\text{start}}$ | Initial batch temperature | °C |
+| $T_{\\text{end}}$ | Target batch temperature | °C |
+| $T_{\\text{jacket}}$ | Jacket / coolant temperature | °C |
+
+This is the standard logarithmic solution for a well-mixed batch with
+constant $U$, $A$, and jacket temperature, assuming no internal heat
+generation.  It applies to both cooling ($T_{start} > T_{jacket}$) and
+heating ($T_{start} < T_{jacket}$) scenarios.
+
+**Reference:** Eq 5.21 (PDF reference).
+""")

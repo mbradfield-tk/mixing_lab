@@ -107,3 +107,26 @@ reagents are **fed directly into the impeller discharge zone**.
 
 **Reference:** Baldyga, J. and Bourne, J. R. (1999). *Turbulent Mixing and Chemical Reactions.* Wiley.
 """)
+
+# ── Mesomixing Time ──────────────────────────────────────────────────────
+st.header("Mesomixing Time (Turbulent Dispersion)")
+st.latex(r"t_{\text{meso}} = 2 \left( \frac{d_{\text{feed}}^2}{\varepsilon} \right)^{1/3}")
+st.markdown("""
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $d_{\\text{feed}}$ | Feed-pipe internal diameter | m |
+| $\\varepsilon$ | Local energy dissipation rate at the feed point | W/kg (m²/s³) |
+
+The mesomixing time characterises the **turbulent dispersion** of
+a fed reagent plume at the scale of the feed-pipe diameter.
+It sits between the macromixing (blend time) and micromixing
+(engulfment) time scales:
+
+$$t_{\\text{blend}} > t_{\\text{meso}} > t_E$$
+
+When $t_{\\text{meso}}$ is comparable to or longer than the reaction
+time, the local concentration field near the feed point may become
+non-uniform, leading to selectivity issues.
+
+**Reference:** Eq 3.3 (PDF reference); Baldyga & Bourne (1999).
+""")

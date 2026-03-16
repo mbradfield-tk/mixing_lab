@@ -39,6 +39,11 @@ from utils.calculations import (
     tip_speed,
     pumping_rate,
     reynolds_number,
+    circulation_time,
+    torque,
+    torque_per_volume,
+    edcf,
+    froude_number,
 )
 
 
@@ -371,6 +376,11 @@ def compute_reactor_hydro_with_mode(
     gamma_avg = average_shear_rate(P, mu, V)
     gamma_max = maximum_shear_rate(eps_max_val, nu)
     tau_avg = shear_stress(mu, gamma_avg)
+    t_c = circulation_time(Nq_val, V, D_imp, N)
+    _torque = torque(P, N)
+    _torque_per_vol = torque_per_volume(P, N, V)
+    _edcf = edcf(eps_max_val, t_c)
+    Fr = froude_number(N, D_imp)
 
     hydro = {
         "Volume (L)": V * 1000,
@@ -383,10 +393,15 @@ def compute_reactor_hydro_with_mode(
         "Tip speed (m/s)": u_tip,
         "Pumping rate (m³/s)": Q,
         "Blend time 95% (s)": t_blend,
+        "Circulation time (s)": t_c,
         "Micromix time t_E (s)": t_micro,
         "Micromix time t_E_local (s)": t_micro_local,
         "Kolmogorov η (µm)": eta * 1e6,
         "ε_max (W/kg)": eps_max_val,
+        "EDCF (W/kg/s)": _edcf,
+        "Torque (N·m)": _torque,
+        "Torque/V (N·m/m³)": _torque_per_vol,
+        "Froude number": Fr,
         "Avg shear rate (1/s)": gamma_avg,
         "Max shear rate (1/s)": gamma_max,
         "Avg shear stress (Pa)": tau_avg,

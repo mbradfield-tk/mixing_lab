@@ -63,6 +63,37 @@ The Zwietering (1958) correlation gives the minimum impeller speed to achieve
 liquid by agitators. *Chem. Eng. Sci.*, 8(3–4), 244–253.
 """)
 
+# ── GMB Njs ──────────────────────────────────────────────────────────────
+st.header("Grenville, Mak & Brown (GMB) Just-Suspended Speed")
+st.latex(r"N_{js} = z \, Po^{-1/3} \, D^{-2/3} \left(\frac{g\,\Delta\rho}{\rho_L}\right)^{0.45} X_v^{0.154} \, d_p^{0.167} \left(\frac{C}{D}\right)^{0.1}")
+st.markdown(r"""
+An alternative to the Zwietering correlation that uses the **power number**
+$Po$ and **impeller clearance ratio** $C/D$ explicitly, removing the need
+for the empirical $S$ constant that lumps all geometry effects together.
+
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $z$ | Geometry constant (impeller-type dependent) | – |
+| $Po$ | Power number ($N_p$) | – |
+| $D$ | Impeller diameter | m |
+| $g$ | Gravitational acceleration | m/s² |
+| $\Delta\rho$ | $\lvert\rho_p - \rho_L\rvert$ | kg/m³ |
+| $\rho_L$ | Liquid density | kg/m³ |
+| $X_v$ | Volume percent of solids | vol-% |
+| $d_p$ | Particle diameter | m |
+| $C/D$ | Impeller clearance / impeller diameter | – |
+
+Note: The Zwietering correlation uses mass-based solids loading $X$ (wt-%),
+while the GMB correlation uses volume-based $X_v$ (vol-%).
+
+The Mixing Lab reports the **higher** of the Zwietering and GMB estimates
+as the design $N_{js}$.
+
+**Reference:** Grenville, R.K., Mak, A.T.C. & Brown, D.A.R. (2015).
+Suspension of solid particles in vessels agitated by axial flow impellers.
+*Chem. Eng. Res. Des.*, 100, 282–291.
+""")
+
 st.header("Solid-Liquid Mass Transfer (Ranz-Marshall)")
 st.latex(r"Sh = 2 + 0.6 \, Re_p^{1/2} \, Sc^{1/3}")
 st.latex(r"k_{SL} = \frac{Sh \cdot D_{mol}}{d_p}")
@@ -96,4 +127,43 @@ The ratio $N / N_{js}$ indicates the quality of particle suspension:
 
 Operating at $N \ge N_{js}$ ensures complete off-bottom suspension.
 Higher speeds improve homogeneity but energy cost increases as $N^3$.
+""")
+
+# ── Archimedes Number ────────────────────────────────────────────────────
+st.header("Archimedes Number")
+st.latex(r"Ar = \frac{g \, d_p^3 \, \rho_L \, \Delta\rho}{\mu^2}")
+st.markdown(r"""
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $g$ | Gravitational acceleration | m/s² |
+| $d_p$ | Particle diameter | m |
+| $\rho_L$ | Liquid density | kg/m³ |
+| $\Delta\rho$ | $\lvert\rho_p - \rho_L\rvert$ | kg/m³ |
+| $\mu$ | Dynamic viscosity | Pa·s |
+
+The Archimedes number characterises the balance between gravitational
+and viscous forces for a particle in a fluid.  It is used as a
+correlating parameter for settling, suspension, and fluidisation.
+
+**Reference:** Eq 4.5 (PDF reference).
+""")
+
+# ── Solid-Liquid kLa ─────────────────────────────────────────────────────
+st.header("Solid-Liquid Volumetric Mass Transfer (kLa)")
+st.latex(r"a_s = \frac{6 \, \phi_s}{d_p}")
+st.latex(r"k_L a_{SL} = k_{SL} \cdot a_s")
+st.markdown(r"""
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $a_s$ | Specific surface area of particles per unit liquid volume | 1/m |
+| $\phi_s$ | Volumetric solids fraction | – |
+| $d_p$ | Particle diameter | m |
+| $k_{SL}$ | Solid-liquid mass transfer coefficient (from Ranz-Marshall) | m/s |
+| $k_L a_{SL}$ | Volumetric mass transfer coefficient | 1/s |
+
+This extends the single-particle $k_{SL}$ to a **volumetric** basis by
+multiplying with the specific interfacial area $a_s$, giving the overall
+dissolution or crystallisation mass-transfer capacity per unit liquid volume.
+
+**Reference:** Eq 4.10–4.12 (PDF reference).
 """)
