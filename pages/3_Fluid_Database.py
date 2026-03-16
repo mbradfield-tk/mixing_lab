@@ -1,4 +1,4 @@
-"""Page 3 – Fluid System Database: browse, define, import/export fluid properties."""
+"""Page 3 – Fluid System Database: browse solvents, explore T-dependent properties, manage custom fluids."""
 
 import streamlit as st
 
@@ -9,13 +9,16 @@ import pathlib
 from utils.solvent_properties import (
     SOLVENT_DB, get_properties, list_solvents, solvent_info_table,
     density, viscosity, surface_tension, diffusivity,
+    is_known_solvent,
 )
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 FLUID_CSV = DATA_DIR / "fluids.csv"
 
 
-def _load_fluids() -> pd.DataFrame:
+# ── Custom-fluid persistence ─────────────────────────────────────────────
+
+def _load_custom_fluids() -> pd.DataFrame:
     if FLUID_CSV.exists():
         return pd.read_csv(FLUID_CSV)
     return pd.DataFrame(columns=[
@@ -24,83 +27,38 @@ def _load_fluids() -> pd.DataFrame:
     ])
 
 
-def _save_fluids(df: pd.DataFrame):
+def _save_custom_fluids(df: pd.DataFrame):
     df.to_csv(FLUID_CSV, index=False)
 
 
 if "fluid_db" not in st.session_state:
-    st.session_state.fluid_db = _load_fluids()
+    st.session_state.fluid_db = _load_custom_fluids()
 
 st.title("💧 Fluid System Database")
 
-tab_browse, tab_add, tab_solvent, tab_import = st.tabs([
-    "Browse & Edit", "Add Fluid", "Solvent Properties (T)", "Import / Export",
+tab_library, tab_solvent, tab_custom, tab_blend, tab_import = st.tabs([
+    "Solvent Library", "Solvent Properties (T)", "Custom Fluids", "Blend Fluids", "Import / Export",
 ])
 
-# ── Browse & Edit ─────────────────────────────────────────────────────────
-with tab_browse:
-    st.markdown("Edit fluid properties directly in the table.  Click **Save changes** to persist.")
-
-    search_term = st.text_input("🔍 Search by fluid name", key="fluid_search",
-                                placeholder="e.g. water, methanol, toluene…")
-
-    df_display = st.session_state.fluid_db.copy()
-    if search_term:
-        mask = df_display["fluid_name"].str.contains(search_term, case=False, na=False)
-        df_display = df_display[mask]
-
-    edited = st.data_editor(
-        df_display,
-        num_rows="dynamic",
-        use_container_width=False,
-        column_config={
-            "rho_kg_m3": st.column_config.NumberColumn("ρ (kg/m³)", format="%.1f"),
-            "mu_Pa_s": st.column_config.NumberColumn("μ (Pa·s)", format="%.6f"),
-            "D_mol_m2_s": st.column_config.NumberColumn("D_mol (m²/s)", format="%.2e"),
-            "surface_tension_N_m": st.column_config.NumberColumn("σ (N/m)", format="%.4f"),
-        },
-        key="fluid_editor",
+# ── Solvent Library ───────────────────────────────────────────────────────
+with tab_library:
+    st.markdown(
+        "Reference table of all built-in solvents with properties at 25 °C.  "
+        "These solvents are always available in the Mixing Assessment and "
+        "Reactor Comparison pages — select one and set any temperature to "
+        "get properties from literature correlations."
     )
 
-    if st.button("💾 Save changes", key="save_fluid"):
-        if search_term:
-            # Merge edits back into the full dataframe
-            full = st.session_state.fluid_db.copy()
-            full.update(edited)
-            st.session_state.fluid_db = full
-        else:
-            st.session_state.fluid_db = edited.copy()
-        _save_fluids(st.session_state.fluid_db)
-        st.success("Fluid database saved.")
+    st.dataframe(
+        pd.DataFrame(solvent_info_table()),
+        use_container_width=False,
+        hide_index=True,
+    )
 
-# ── Add Fluid ─────────────────────────────────────────────────────────────
-with tab_add:
-    with st.form("add_fluid"):
-        c1, c2 = st.columns(2)
-        with c1:
-            name = st.text_input("Fluid name *")
-            rho = st.number_input("Density ρ (kg/m³)", min_value=1.0, value=997.0, format="%.1f")
-            mu = st.number_input("Dynamic viscosity μ (Pa·s)", min_value=1e-6, value=0.00089, format="%.6f")
-        with c2:
-            D_mol = st.number_input("Molecular diffusivity D (m²/s)", min_value=1e-12, value=2.3e-9, format="%.2e")
-            sigma = st.number_input("Surface tension σ (N/m)", min_value=0.0, value=0.072, format="%.4f")
-            notes = st.text_input("Notes", "")
-        submitted = st.form_submit_button("Add fluid")
-        if submitted and name:
-            new = pd.DataFrame([{
-                "fluid_name": name,
-                "rho_kg_m3": rho,
-                "mu_Pa_s": mu,
-                "D_mol_m2_s": D_mol,
-                "surface_tension_N_m": sigma,
-                "notes": notes,
-            }])
-            st.session_state.fluid_db = pd.concat(
-                [st.session_state.fluid_db, new], ignore_index=True)
-            _save_fluids(st.session_state.fluid_db)
-            st.success(f"Added **{name}**.")
-        elif submitted:
-            st.warning("Enter a fluid name.")
+    if not st.session_state.fluid_db.empty:
+        st.subheader("Custom Fluids")
+        st.caption("Fluids added manually (fixed properties, not temperature-dependent).")
+        st.dataframe(st.session_state.fluid_db, use_container_width=False, hide_index=True)
 
 # ── Solvent Properties at Temperature ─────────────────────────────────────
 with tab_solvent:
@@ -109,10 +67,6 @@ with tab_solvent:
         "liquid-phase temperature.  Correlations use literature-fitted density, "
         "Arrhenius viscosity, linear surface tension, and Stokes-Einstein diffusivity."
     )
-
-    # --- Reference table of available solvents ---
-    with st.expander("Available solvents (properties at 25 °C)", expanded=False):
-        st.dataframe(pd.DataFrame(solvent_info_table()), use_container_width=False, hide_index=True)
 
     # --- Solvent selector + temperature ---
     s_col1, s_col2 = st.columns(2)
@@ -159,7 +113,7 @@ with tab_solvent:
     fig = make_subplots(rows=2, cols=2, subplot_titles=[
         "Density ρ (kg/m³)", "Viscosity μ (Pa·s)",
         "Surface tension σ (N/m)", "Diffusivity D (m²/s)",
-    ], vertical_spacing=0.12, horizontal_spacing=0.10)
+    ], vertical_spacing=0.2, horizontal_spacing=0.10)
 
     rho_arr = [density(T, sd) for T in T_arr]
     mu_arr = [viscosity(T, sd) for T in T_arr]
@@ -186,36 +140,236 @@ with tab_solvent:
     fig.update_layout(height=550, margin=dict(t=40, b=40))
     st.plotly_chart(fig, use_container_width=False)
 
-    # --- Add to fluid database ---
-    st.subheader("Add to Fluid Database")
-    auto_name = f"{solvent_name} ({T_C:.0f} °C)"
-    # Update the default name whenever solvent or temperature changes
-    if st.session_state.get("_solv_prev_auto") != auto_name:
-        st.session_state["solv_add_name"] = auto_name
-        st.session_state["_solv_prev_auto"] = auto_name
-    fluid_name = st.text_input("Fluid name for database entry", key="solv_add_name")
+# ── Custom Fluids ─────────────────────────────────────────────────────────
+with tab_custom:
+    st.markdown(
+        "Add or edit **custom fluids** that are not in the built-in solvent library "
+        "(e.g. mixtures, slurries, concentrated acids).  Custom fluids have fixed "
+        "properties that do not vary with temperature."
+    )
 
-    if st.button("➕ Add to fluid database", key="solv_add_btn"):
-        new_row = pd.DataFrame([{
-            "fluid_name": fluid_name,
-            "rho_kg_m3": round(props["rho_kg_m3"], 2),
-            "mu_Pa_s": round(props["mu_Pa_s"], 8),
-            "D_mol_m2_s": props["D_mol_m2_s"],
-            "surface_tension_N_m": round(props["surface_tension_N_m"], 5),
-            "notes": f"Auto-generated from {solvent_name} at {T_C:.1f} °C",
-        }])
-        st.session_state.fluid_db = pd.concat(
-            [st.session_state.fluid_db, new_row], ignore_index=True)
-        _save_fluids(st.session_state.fluid_db)
-        st.success(f"Added **{fluid_name}** to the fluid database.")
-        st.rerun()
+    # --- Browse & edit ---
+    st.subheader("Browse & Edit")
+    edited = st.data_editor(
+        st.session_state.fluid_db,
+        num_rows="dynamic",
+        use_container_width=False,
+        column_config={
+            "rho_kg_m3": st.column_config.NumberColumn("ρ (kg/m³)", format="%.1f"),
+            "mu_Pa_s": st.column_config.NumberColumn("μ (Pa·s)", format="%.6f"),
+            "D_mol_m2_s": st.column_config.NumberColumn("D_mol (m²/s)", format="%.2e"),
+            "surface_tension_N_m": st.column_config.NumberColumn("σ (N/m)", format="%.4f"),
+        },
+        key="fluid_editor",
+    )
+
+    if st.button("💾 Save changes", key="save_fluid"):
+        st.session_state.fluid_db = edited.copy()
+        _save_custom_fluids(st.session_state.fluid_db)
+        st.success("Custom fluid database saved.")
+
+    # --- Add custom fluid ---
+    st.subheader("Add Custom Fluid")
+    with st.form("add_fluid"):
+        c1, c2 = st.columns(2)
+        with c1:
+            name = st.text_input("Fluid name *")
+            rho = st.number_input("Density ρ (kg/m³)", min_value=1.0, value=997.0, format="%.1f")
+            mu = st.number_input("Dynamic viscosity μ (Pa·s)", min_value=1e-6, value=0.00089, format="%.6f")
+        with c2:
+            D_mol = st.number_input("Molecular diffusivity D (m²/s)", min_value=1e-12, value=2.3e-9, format="%.2e")
+            sigma = st.number_input("Surface tension σ (N/m)", min_value=0.0, value=0.072, format="%.4f")
+            notes = st.text_input("Notes", "")
+        submitted = st.form_submit_button("Add fluid")
+        if submitted and name:
+            if is_known_solvent(name):
+                st.warning(f"**{name}** is already in the solvent library — no need to add it.")
+            else:
+                new = pd.DataFrame([{
+                    "fluid_name": name,
+                    "rho_kg_m3": rho,
+                    "mu_Pa_s": mu,
+                    "D_mol_m2_s": D_mol,
+                    "surface_tension_N_m": sigma,
+                    "notes": notes,
+                }])
+                st.session_state.fluid_db = pd.concat(
+                    [st.session_state.fluid_db, new], ignore_index=True)
+                _save_custom_fluids(st.session_state.fluid_db)
+                st.success(f"Added **{name}**.")
+        elif submitted:
+            st.warning("Enter a fluid name.")
+
+# ── Blend Fluids ──────────────────────────────────────────────────────────
+with tab_blend:
+    st.markdown(
+        "Create a **blend** from existing fluids (solvents and/or custom fluids).  "
+        "Enter volumetric proportions — these are converted to mass fractions "
+        "using each component's density, and mixture properties are computed as "
+        "mass-weighted averages."
+    )
+
+    # Helper: get properties for any fluid name (solvent or custom) at 25 °C
+    def _get_fluid_props(fname: str, T: float = 25.0) -> dict | None:
+        """Return {rho, mu, D_mol, sigma} for a solvent or custom fluid."""
+        if is_known_solvent(fname):
+            p = get_properties(fname, T)
+            return {
+                "rho_kg_m3": p["rho_kg_m3"],
+                "mu_Pa_s": p["mu_Pa_s"],
+                "D_mol_m2_s": p["D_mol_m2_s"],
+                "surface_tension_N_m": p["surface_tension_N_m"],
+            }
+        cust = st.session_state.fluid_db
+        if not cust.empty and fname in cust["fluid_name"].values:
+            row = cust[cust["fluid_name"] == fname].iloc[0]
+            return {
+                "rho_kg_m3": float(row["rho_kg_m3"]),
+                "mu_Pa_s": float(row["mu_Pa_s"]),
+                "D_mol_m2_s": float(row["D_mol_m2_s"]),
+                "surface_tension_N_m": float(row["surface_tension_N_m"]),
+            }
+        return None
+
+    # Available fluid names: solvents + custom
+    _solvent_list = sorted(SOLVENT_DB.keys())
+    _custom_list = (
+        st.session_state.fluid_db["fluid_name"].tolist()
+        if not st.session_state.fluid_db.empty else []
+    )
+    _available = _solvent_list + _custom_list
+
+    blend_components = st.multiselect(
+        "Select component fluids", _available,
+        default=None, key="blend_components",
+        help="Choose two or more fluids to blend.",
+    )
+
+    blend_T = st.number_input(
+        "Temperature for solvent properties (°C)", value=25.0, step=1.0,
+        format="%.1f", key="blend_T",
+        help="Built-in solvent properties are evaluated at this temperature.  "
+             "Custom fluids use their fixed values regardless.",
+    )
+
+    if len(blend_components) >= 2:
+        # Collect volumetric proportions
+        st.subheader("Volumetric Proportions")
+        st.caption(
+            "Enter the volume fraction of each component (they will be "
+            "normalised automatically so they sum to 1)."
+        )
+
+        vol_fracs: dict[str, float] = {}
+        cols = st.columns(min(len(blend_components), 4))
+        for i, comp in enumerate(blend_components):
+            with cols[i % len(cols)]:
+                vol_fracs[comp] = st.number_input(
+                    f"{comp}", min_value=0.0, value=1.0, step=0.1,
+                    format="%.2f", key=f"blend_vf_{comp}",
+                )
+
+        total_vol = sum(vol_fracs.values())
+        if total_vol <= 0:
+            st.warning("Total volume must be > 0.")
+        else:
+            # Normalise volume fractions
+            vol_norm = {k: v / total_vol for k, v in vol_fracs.items()}
+
+            # Gather component properties
+            comp_props: list[dict] = []
+            _missing = []
+            for comp in blend_components:
+                p = _get_fluid_props(comp, blend_T)
+                if p is None:
+                    _missing.append(comp)
+                else:
+                    comp_props.append({"name": comp, "vol_frac": vol_norm[comp], **p})
+            if _missing:
+                st.error(f"Could not find properties for: {', '.join(_missing)}")
+            else:
+                # Convert volumetric to mass fractions
+                # mass_i = vol_frac_i * rho_i (per unit total volume)
+                masses = [cp["vol_frac"] * cp["rho_kg_m3"] for cp in comp_props]
+                total_mass = sum(masses)
+                for cp, m in zip(comp_props, masses):
+                    cp["mass_frac"] = m / total_mass
+
+                # Mass-weighted average properties
+                blend_rho = sum(cp["mass_frac"] * cp["rho_kg_m3"] for cp in comp_props)
+                blend_mu = sum(cp["mass_frac"] * cp["mu_Pa_s"] for cp in comp_props)
+                blend_D = sum(cp["mass_frac"] * cp["D_mol_m2_s"] for cp in comp_props)
+                blend_sig = sum(cp["mass_frac"] * cp["surface_tension_N_m"] for cp in comp_props)
+
+                # Display composition table
+                st.subheader("Blend Composition")
+                comp_table = pd.DataFrame([{
+                    "Component": cp["name"],
+                    "Vol %": f"{cp['vol_frac'] * 100:.1f}",
+                    "Mass %": f"{cp['mass_frac'] * 100:.1f}",
+                    "ρ (kg/m³)": f"{cp['rho_kg_m3']:.1f}",
+                    "μ (Pa·s)": f"{cp['mu_Pa_s']:.6f}",
+                } for cp in comp_props])
+                st.dataframe(comp_table, use_container_width=False, hide_index=True)
+
+                # Display blended properties
+                st.subheader("Blended Properties (mass-weighted)")
+                bm1, bm2, bm3, bm4 = st.columns(4)
+                bm1.metric("ρ (kg/m³)", f"{blend_rho:.2f}")
+                bm2.metric("μ (Pa·s)", f"{blend_mu:.6f}")
+                bm3.metric("σ (N/m)", f"{blend_sig:.4f}")
+                bm4.metric("D_mol (m²/s)", f"{blend_D:.3e}")
+
+                # Auto-generate name from actual normalised volume fractions
+                _parts = [
+                    f"{cp['vol_frac'] * 100:.0f}% {cp['name']}"
+                    for cp in comp_props
+                ]
+                _auto_name = " / ".join(_parts) + f" ({blend_T:.0f} °C)"
+                _comp_notes = ", ".join(
+                    f"{cp['name']} {cp['vol_frac']*100:.0f}vol%"
+                    for cp in comp_props
+                )
+
+                # Push the computed name into session state whenever it changes
+                if st.session_state.get("_blend_auto_name") != _auto_name:
+                    st.session_state["_blend_auto_name"] = _auto_name
+                    st.session_state["blend_name"] = _auto_name
+
+                blend_name = st.text_input(
+                    "Blend name for database",
+                    key="blend_name",
+                )
+
+                if st.button("➕ Add blend to custom fluids", key="blend_add_btn"):
+                    if not blend_name:
+                        st.warning("Enter a name for the blend.")
+                    elif is_known_solvent(blend_name):
+                        st.warning(f"**{blend_name}** conflicts with a built-in solvent name.")
+                    else:
+                        new_row = pd.DataFrame([{
+                            "fluid_name": blend_name,
+                            "rho_kg_m3": round(blend_rho, 2),
+                            "mu_Pa_s": round(blend_mu, 8),
+                            "D_mol_m2_s": blend_D,
+                            "surface_tension_N_m": round(blend_sig, 5),
+                            "notes": f"Blend at {blend_T:.0f} °C: {_comp_notes}",
+                        }])
+                        st.session_state.fluid_db = pd.concat(
+                            [st.session_state.fluid_db, new_row], ignore_index=True)
+                        _save_custom_fluids(st.session_state.fluid_db)
+                        st.success(f"Added **{blend_name}** to the custom fluid database.")
+                        st.rerun()
+    elif len(blend_components) == 1:
+        st.info("Select at least two fluids to create a blend.")
 
 # ── Import / Export ───────────────────────────────────────────────────────
 with tab_import:
+    st.markdown("Import / export **custom fluids** (CSV).  Built-in solvents are always available.")
     st.download_button(
-        "⬇️ Download fluid database (CSV)",
+        "⬇️ Download custom fluids (CSV)",
         data=st.session_state.fluid_db.to_csv(index=False).encode("utf-8"),
-        file_name="fluids_export.csv",
+        file_name="custom_fluids_export.csv",
         mime="text/csv",
     )
     uploaded = st.file_uploader("Upload CSV", type=["csv"], key="fluid_upload")
@@ -230,7 +384,7 @@ with tab_import:
                 else:
                     st.session_state.fluid_db = pd.concat(
                         [st.session_state.fluid_db, new_df], ignore_index=True)
-                _save_fluids(st.session_state.fluid_db)
-                st.success("Fluid database updated.")
+                _save_custom_fluids(st.session_state.fluid_db)
+                st.success("Custom fluid database updated.")
         except Exception as e:
             st.error(f"Error: {e}")

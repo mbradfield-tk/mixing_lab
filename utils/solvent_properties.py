@@ -392,3 +392,55 @@ def solvent_info_table() -> list[dict]:
             "D₂₅ (m²/s)": f"{s.D_ref_25:.2e}",
         })
     return rows
+
+
+def is_known_solvent(name: str) -> bool:
+    """Return True if *name* is a solvent with temperature-dependent correlations."""
+    return name in SOLVENT_DB
+
+
+# Alias map: common abbreviation → canonical SOLVENT_DB key
+_SOLVENT_ALIAS_MAP: dict[str, str] = {}
+
+def _build_alias_map():
+    """Populate the alias map from SOLVENT_DB names."""
+    for key in SOLVENT_DB:
+        _SOLVENT_ALIAS_MAP[key.lower()] = key
+        # Add common short forms
+        base = key.split("(")[0].strip().lower()
+        if base not in _SOLVENT_ALIAS_MAP:
+            _SOLVENT_ALIAS_MAP[base] = key
+
+_build_alias_map()
+# Manual additions
+_SOLVENT_ALIAS_MAP.update({
+    "water": "Water", "h2o": "Water",
+    "meoh": "Methanol", "methanol": "Methanol",
+    "etoh": "Ethanol", "ethanol": "Ethanol",
+    "ipa": "Isopropanol (IPA)", "isopropanol": "Isopropanol (IPA)",
+    "thf": "THF", "tetrahydrofuran": "THF",
+    "dcm": "DCM (Dichloromethane)", "dichloromethane": "DCM (Dichloromethane)",
+    "dmf": "DMF", "dimethylformamide": "DMF",
+    "dmso": "DMSO", "dimethyl sulfoxide": "DMSO",
+    "toluene": "Toluene",
+    "heptane": "Heptane",
+    "hexane": "Hexane",
+    "acetonitrile": "Acetonitrile",
+    "ethyl acetate": "Ethyl Acetate",
+    "mek": "MEK (2-Butanone)", "2-butanone": "MEK (2-Butanone)",
+    "acetone": "Acetone",
+    "chloroform": "Chloroform",
+    "mtbe": "MTBE",
+    "acetic acid": "Acetic Acid",
+    "nmp": "NMP",
+    "2-methf": "2-MeTHF", "2-methyltetrahydrofuran": "2-MeTHF",
+    "1,4-dioxane": "1,4-Dioxane", "dioxane": "1,4-Dioxane",
+    "diethyl ether": "Diethyl Ether",
+})
+
+
+def resolve_solvent_name(name: str) -> str | None:
+    """Return the canonical SOLVENT_DB key for a name/alias, or None."""
+    if name in SOLVENT_DB:
+        return name
+    return _SOLVENT_ALIAS_MAP.get(name.strip().lower())

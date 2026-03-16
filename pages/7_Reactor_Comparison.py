@@ -10,10 +10,12 @@ import streamlit as st
 
 import pandas as pd
 import numpy as np
-import re
 import pathlib
 import plotly.graph_objects as go
 
+from utils.solvent_properties import (
+    SOLVENT_DB, get_properties, is_known_solvent, resolve_solvent_name,
+)
 from utils.calculations import (
     compute_reactor_hydro, compute_damkohler_numbers,
     settling_velocity, particle_reynolds, zwietering_njs,
@@ -53,9 +55,14 @@ def _safe_float(val, default=0.0):
 
 
 reactors = _load("reactor_db", "reactors.csv")
-fluids = _load("fluid_db", "fluids.csv")
+custom_fluids = _load("fluid_db", "fluids.csv")
 reactions = _load("reaction_db", "reactions.csv")
 particles_db = _load("particle_db", "particles.csv")
+
+# Build combined fluid list: built-in solvents + custom fluids
+_solvent_names = sorted(SOLVENT_DB.keys())
+_custom_names = custom_fluids["fluid_name"].tolist() if not custom_fluids.empty else []
+_all_fluid_names = _solvent_names + _custom_names
 
 st.title("📈 Reactor Comparison")
 
@@ -89,79 +96,8 @@ if not selected_names:
     st.info("Select at least one reactor above.")
     st.stop()
 
-def _parse_fluid_temp(name: str, fallback: float = 25.0) -> float:
-    """Extract temperature from fluid name like 'Water (25 °C)'."""
-    m = re.search(r'\(([-\d.]+)\s*°?C\)', name)
-    return float(m.group(1)) if m else fallback
-
-
-def _find_fluid_for_reaction(solvent: str, T_C: float,
-                              fluid_names: list[str]) -> tuple[str | None, str | None]:
-    """Find the best matching fluid name for a reaction's solvent and temperature.
-
-    Returns (matched_fluid_name, warning_message_or_None).
-    """
-    if not solvent or not fluid_names:
-        return None, None
-
-    solvent_lower = solvent.strip().lower()
-
-    # Map of common reaction-solvent names → fluid-DB base names
-    _SOLVENT_ALIASES: dict[str, list[str]] = {
-        "meoh":  ["methanol"],
-        "etoh":  ["ethanol"],
-        "water": ["water"],
-        "h2o":   ["water"],
-        "thf":   ["thf", "tetrahydrofuran"],
-        "dcm":   ["dcm", "dichloromethane"],
-        "dmf":   ["dmf", "dimethylformamide"],
-        "dmso":  ["dmso", "dimethyl sulfoxide"],
-        "toluene": ["toluene"],
-        "heptane": ["heptane"],
-        "acetonitrile": ["acetonitrile"],
-        "ipa": ["ipa", "isopropanol"],
-        "ethyl acetate": ["ethyl acetate"],
-        "mek": ["mek"],
-        "acetone": ["acetone"],
-    }
-
-    # Build a list of base-name candidates for matching
-    base_candidates = [solvent_lower]
-    for alias, targets in _SOLVENT_ALIASES.items():
-        if alias in solvent_lower:
-            base_candidates.extend(targets)
-
-    # 1) Try exact temperature match
-    for base in base_candidates:
-        for fn in fluid_names:
-            fn_lower = fn.lower()
-            fn_base = re.sub(r"\s*\(.*?\)\s*$", "", fn_lower).strip()
-            if fn_base in base_candidates or base in fn_base:
-                fn_T = _parse_fluid_temp(fn, 25.0)
-                if abs(fn_T - T_C) < 0.5:
-                    return fn, None
-
-    # 2) Fallback to 25 °C
-    for base in base_candidates:
-        for fn in fluid_names:
-            fn_lower = fn.lower()
-            fn_base = re.sub(r"\s*\(.*?\)\s*$", "", fn_lower).strip()
-            if fn_base in base_candidates or base in fn_base:
-                fn_T = _parse_fluid_temp(fn, 25.0)
-                if abs(fn_T - 25.0) < 0.5:
-                    warn = (f"Fluid \"{fn}\" at 25 °C selected – "
-                            f"reaction specifies {solvent} at {T_C:.0f} °C "
-                            f"which is not in the fluid database.")
-                    return fn, warn
-
-    return None, None
-
-
-# -- Auto-select fluid when reaction changes --------------------------------
-_fluid_names = fluids["fluid_name"].tolist() if not fluids.empty else []
-
-if not reactions.empty and _fluid_names:
-    # Detect reaction change
+# -- Auto-select fluid & temperature when reaction changes -------------------
+if not reactions.empty and _all_fluid_names:
     _prev_rxn = st.session_state.get("_prev_cmp_rxn")
     _cur_rxn = st.session_state.get("cmp_rxn", None)
     if _cur_rxn is not None and _cur_rxn != _prev_rxn:
@@ -170,15 +106,13 @@ if not reactions.empty and _fluid_names:
         if not _rxn_row.empty:
             _rxn_solvent = str(_rxn_row.iloc[0].get("solvent", ""))
             _rxn_T = _safe_float(_rxn_row.iloc[0].get("T_C"), 25.0)
-            _matched, _fluid_warn = _find_fluid_for_reaction(
-                _rxn_solvent, _rxn_T, _fluid_names)
-            if _matched and _matched != st.session_state.get("cmp_fluid"):
-                st.session_state["cmp_fluid"] = _matched
-                st.session_state["_sel_cmp_fluid"] = _matched
-                if _fluid_warn:
-                    st.session_state["_fluid_auto_warn"] = _fluid_warn
-                else:
-                    st.session_state.pop("_fluid_auto_warn", None)
+            _resolved = resolve_solvent_name(_rxn_solvent)
+            if _resolved and _resolved in _all_fluid_names:
+                if _resolved != st.session_state.get("cmp_fluid"):
+                    st.session_state["cmp_fluid"] = _resolved
+                    st.session_state["_sel_cmp_fluid"] = _resolved
+                # Also set temperature from reaction
+                st.session_state["cmp_fluid_T"] = _rxn_T
                 st.rerun()
 
 def _sel_idx(lst, key, default=0):
@@ -189,22 +123,31 @@ def _sel_idx(lst, key, default=0):
 
 col1, col2 = st.columns(2)
 with col1:
-    if not fluids.empty:
-        fluid_name = st.selectbox("Fluid system", _fluid_names, index=_sel_idx(_fluid_names, "_sel_cmp_fluid"), key="cmp_fluid")
-        st.session_state["_sel_cmp_fluid"] = fluid_name
-        fluid = fluids[fluids["fluid_name"] == fluid_name].iloc[0]
-        rho = float(fluid["rho_kg_m3"])
-        mu = float(fluid["mu_Pa_s"])
-        D_mol = float(fluid["D_mol_m2_s"])
-        fluid_T_C = _parse_fluid_temp(fluid_name)
+    fluid_name = st.selectbox("Fluid system", _all_fluid_names,
+                              index=_sel_idx(_all_fluid_names, "_sel_cmp_fluid"),
+                              key="cmp_fluid")
+    st.session_state["_sel_cmp_fluid"] = fluid_name
+
+    _is_solvent = is_known_solvent(fluid_name)
+    if _is_solvent:
+        fluid_T_C = st.number_input("Temperature (°C)", value=25.0, step=1.0,
+                                     format="%.1f", key="cmp_fluid_T")
+        _fprops = get_properties(fluid_name, fluid_T_C)
+        rho = _fprops["rho_kg_m3"]
+        mu = _fprops["mu_Pa_s"]
+        D_mol = _fprops["D_mol_m2_s"]
+        if not _fprops["in_range"]:
+            _sd = SOLVENT_DB[fluid_name]
+            st.warning(f"⚠️ {fluid_T_C:.1f} °C is outside the liquid range "
+                       f"({_sd.mp_C:.0f} – {_sd.bp_C:.0f} °C) for {fluid_name}.")
     else:
-        st.info("No fluids in database – using water defaults.")
-        fluid_name = ""
-        rho, mu, D_mol = 997.0, 0.00089, 2.3e-9
+        _cust = custom_fluids[custom_fluids["fluid_name"] == fluid_name].iloc[0]
+        rho = float(_cust["rho_kg_m3"])
+        mu = float(_cust["mu_Pa_s"])
+        D_mol = float(_cust["D_mol_m2_s"])
         fluid_T_C = 25.0
-# Show auto-match warning if present
-if st.session_state.get("_fluid_auto_warn"):
-    st.warning(st.session_state.pop("_fluid_auto_warn"))
+        st.caption("Custom fluid — fixed properties")
+
 with col2:
     if not reactions.empty:
         _rxn_list = reactions["reaction_name"].tolist()
@@ -297,7 +240,7 @@ elif include_particles and particles_db.empty:
     st.warning("Particle database is empty.")
 
 # ── Heat balance options ──────────────────────────────────────────────────────
-_heat_context = f"{fluid_name}|{rxn_name if not reactions.empty else ''}"
+_heat_context = f"{fluid_name}|{fluid_T_C:.1f}|{rxn_name if not reactions.empty else ''}"
 
 # Deactivate heat balance when fluid or reaction selection changes
 if st.session_state.get("_heat_context") != _heat_context:
@@ -1084,7 +1027,8 @@ if st.button("📌 Save results for all selected reactors", key="cmp_save_all"):
         _result_row = {
             "reactor": rname,
             "reaction": rxn_name if not reactions.empty else "",
-            "fluid": fluid_name if not fluids.empty else "",
+            "fluid": fluid_name,
+            "fluid_T_C": fluid_T_C,
             "RPM": _c["RPM"],
             "Volume (L)": _c["V_L"],
             "Re": _c.get("Re", ""),

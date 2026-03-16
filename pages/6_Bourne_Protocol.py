@@ -30,6 +30,9 @@ import pandas as pd
 import numpy as np
 import pathlib
 
+from utils.solvent_properties import (
+    SOLVENT_DB, get_properties, is_known_solvent,
+)
 from utils.calculations import (
     compute_reactor_hydro,
     reynolds_number,
@@ -54,7 +57,12 @@ def _load(key, fn):
 
 
 reactors = _load("reactor_db", "reactors.csv")
-fluids = _load("fluid_db", "fluids.csv")
+custom_fluids = _load("fluid_db", "fluids.csv")
+
+# Build combined fluid list: built-in solvents + custom fluids
+_solvent_names = sorted(SOLVENT_DB.keys())
+_custom_names = custom_fluids["fluid_name"].tolist() if not custom_fluids.empty else []
+_all_fluid_names = _solvent_names + _custom_names
 
 # ══════════════════════════════════════════════════════════════════════════
 st.title("🧐 Bourne Protocol – Mixing Sensitivity Screening")
@@ -87,7 +95,6 @@ st.header("0 · Define Your System")
 
 # Persist selections across page navigations
 _reactor_list = reactors["reactor_name"].tolist() if not reactors.empty else []
-_fluid_list = fluids["fluid_name"].tolist() if not fluids.empty else []
 
 def _sel_idx(lst, key, default=0):
     val = st.session_state.get(key)
@@ -120,16 +127,21 @@ with col_r:
         V_L = np.pi / 4 * D_tank**2 * H * 1000
 
 with col_f:
-    if not fluids.empty:
-        fluid_name = st.selectbox("Fluid system", _fluid_list, index=_sel_idx(_fluid_list, "_sel_bp_fluid"), key="bp_fluid")
-        st.session_state["_sel_bp_fluid"] = fluid_name
-        fl = fluids[fluids["fluid_name"] == fluid_name].iloc[0]
-        rho = float(fl["rho_kg_m3"])
-        mu = float(fl["mu_Pa_s"])
+    fluid_name = st.selectbox("Fluid system", _all_fluid_names,
+                              index=_sel_idx(_all_fluid_names, "_sel_bp_fluid"),
+                              key="bp_fluid")
+    st.session_state["_sel_bp_fluid"] = fluid_name
+    _is_solvent = is_known_solvent(fluid_name)
+    if _is_solvent:
+        _bp_T_C = st.number_input("Temperature (°C)", value=25.0, step=1.0,
+                                    format="%.1f", key="bp_fluid_T")
+        _fprops = get_properties(fluid_name, _bp_T_C)
+        rho = _fprops["rho_kg_m3"]
+        mu = _fprops["mu_Pa_s"]
     else:
-        st.info("No fluids in database — enter manually.")
-        rho = st.number_input("Density ρ (kg/m³)", value=997.0)
-        mu = st.number_input("Viscosity μ (Pa·s)", value=0.00089, format="%.6f")
+        _cust = custom_fluids[custom_fluids["fluid_name"] == fluid_name].iloc[0]
+        rho = float(_cust["rho_kg_m3"])
+        mu = float(_cust["mu_Pa_s"])
 
 nu = mu / rho
 V_m3 = V_L / 1000.0  # m³
@@ -700,7 +712,7 @@ st.header("7 · Save Protocol Record")
 if st.button("📌 Save Bourne Protocol result to Recorded Results", key="bp_save"):
     result_row = {
         "reactor": reactor_name if not reactors.empty else "Manual entry",
-        "fluid": fluid_name if not fluids.empty else "Manual entry",
+        "fluid": fluid_name,
         "reaction": "Bourne Protocol",
         "Re": round(reynolds_number(N_center_calc, D_imp, rho, mu), 0),
         "P/V (W/L)": round(power_per_volume(impeller_power(Np_val, rho, N_center_calc, D_imp), V_m3) / 1000, 4),

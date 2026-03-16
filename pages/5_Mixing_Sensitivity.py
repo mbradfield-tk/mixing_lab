@@ -9,10 +9,12 @@ import streamlit as st
 
 import pandas as pd
 import numpy as np
-import re
 import pathlib
 import plotly.graph_objects as go
 
+from utils.solvent_properties import (
+    SOLVENT_DB, get_properties, list_solvents, is_known_solvent,
+)
 from utils.calculations import (
     compute_reactor_hydro,
     compute_damkohler_numbers,
@@ -70,13 +72,18 @@ def _load_csv(key, filename, columns):
 
 reactors = _load_csv("reactor_db", "reactors.csv", ["reactor_name"])
 reactions = _load_csv("reaction_db", "reactions.csv", ["reaction_name"])
-fluids = _load_csv("fluid_db", "fluids.csv", ["fluid_name"])
+custom_fluids = _load_csv("fluid_db", "fluids.csv", ["fluid_name"])
 particles = _load_csv("particle_db", "particles.csv", ["particle_name"])
+
+# Build combined fluid list: built-in solvents + custom fluids
+_solvent_names = sorted(SOLVENT_DB.keys())
+_custom_names = custom_fluids["fluid_name"].tolist() if not custom_fluids.empty else []
+_all_fluid_names = _solvent_names + _custom_names
 
 st.title("🌀 Mixing Assessment")
 
-if reactors.empty or reactions.empty or fluids.empty:
-    st.warning("Please populate the Reactor, Reaction, and Fluid databases first.")
+if reactors.empty or reactions.empty:
+    st.warning("Please populate the Reactor and Reaction databases first.")
     st.stop()
 
 # ── Step 1: Select system ────────────────────────────────────────────────
@@ -85,7 +92,6 @@ st.header("1 · Select System")
 # Persist selections across page navigations
 _reactor_list = reactors["reactor_name"].tolist()
 _reaction_list = reactions["reaction_name"].tolist()
-_fluid_list = fluids["fluid_name"].tolist()
 
 def _idx(lst, key, default=0):
     """Return list index of session_state[key] if present, else default."""
@@ -94,7 +100,7 @@ def _idx(lst, key, default=0):
         return lst.index(val)
     return default
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
     reactor_name = st.selectbox("Reactor", _reactor_list, index=_idx(_reactor_list, "_sel_reactor"), key="ms_reactor")
@@ -102,13 +108,38 @@ with col1:
 with col2:
     reaction_name = st.selectbox("Reaction", _reaction_list, index=_idx(_reaction_list, "_sel_reaction"), key="ms_reaction")
     st.session_state["_sel_reaction"] = reaction_name
-with col3:
-    fluid_name = st.selectbox("Fluid", _fluid_list, index=_idx(_fluid_list, "_sel_fluid"), key="ms_fluid")
+
+fc1, fc2 = st.columns(2)
+with fc1:
+    fluid_name = st.selectbox("Fluid", _all_fluid_names, index=_idx(_all_fluid_names, "_sel_fluid"), key="ms_fluid")
     st.session_state["_sel_fluid"] = fluid_name
+with fc2:
+    _is_solvent = is_known_solvent(fluid_name)
+    if _is_solvent:
+        fluid_T_C = st.number_input("Temperature (°C)", value=25.0, step=1.0, format="%.1f", key="ms_fluid_T")
+    else:
+        st.caption("Custom fluid — fixed properties (no T dependence)")
+        fluid_T_C = 25.0
+
+# Compute fluid properties
+if _is_solvent:
+    _fprops = get_properties(fluid_name, fluid_T_C)
+    _rho_default = _fprops["rho_kg_m3"]
+    _mu_default = _fprops["mu_Pa_s"]
+    _D_mol_default = _fprops["D_mol_m2_s"]
+    if not _fprops["in_range"]:
+        _sd = SOLVENT_DB[fluid_name]
+        st.warning(f"⚠️ {fluid_T_C:.1f} °C is outside the liquid range "
+                   f"({_sd.mp_C:.0f} – {_sd.bp_C:.0f} °C) for {fluid_name}. "
+                   f"Values are extrapolated.")
+else:
+    _cust = custom_fluids[custom_fluids["fluid_name"] == fluid_name].iloc[0]
+    _rho_default = float(_cust["rho_kg_m3"])
+    _mu_default = float(_cust["mu_Pa_s"])
+    _D_mol_default = float(_cust["D_mol_m2_s"])
 
 reactor = reactors[reactors["reactor_name"] == reactor_name].iloc[0]
 reaction = reactions[reactions["reaction_name"] == reaction_name].iloc[0]
-fluid = fluids[fluids["fluid_name"] == fluid_name].iloc[0]
 
 # ── Helper: safely read a numeric field with a fallback ──────────────────
 def _safe(series_val, default):
@@ -121,7 +152,7 @@ def _safe(series_val, default):
 
 # Use selection names in widget keys so they reset automatically on change
 _rk = reactor_name   # reactor key fragment
-_fk = fluid_name     # fluid key fragment
+_fk = f"{fluid_name}_{fluid_T_C:.1f}"  # fluid key fragment (includes T)
 _xk = reaction_name  # reaction key fragment
 
 # ── Step 2: Allow overrides ──────────────────────────────────────────────
@@ -175,10 +206,12 @@ if V_L_min > 0 and V_L_max > 0:
 H = liquid_height_from_volume(V_L, D_tank, H_max, _bottom_dish)
 
 with st.expander("Fluid properties", expanded=False):
+    if _is_solvent:
+        st.caption(f"Computed from **{fluid_name}** correlations at **{fluid_T_C:.1f} °C**")
     fc1, fc2, fc3 = st.columns(3)
-    rho = fc1.number_input("ρ (kg/m³)", value=float(fluid["rho_kg_m3"]), format="%.1f", key=f"ov_rho_{_fk}")
-    mu = fc2.number_input("μ (Pa·s)", value=float(fluid["mu_Pa_s"]), format="%.6f", key=f"ov_mu_{_fk}")
-    D_mol = fc3.number_input("D_mol (m²/s)", value=float(fluid["D_mol_m2_s"]), format="%.2e", key=f"ov_Dmol_{_fk}")
+    rho = fc1.number_input("ρ (kg/m³)", value=_rho_default, format="%.1f", key=f"ov_rho_{_fk}")
+    mu = fc2.number_input("μ (Pa·s)", value=_mu_default, format="%.6f", key=f"ov_mu_{_fk}")
+    D_mol = fc3.number_input("D_mol (m²/s)", value=_D_mol_default, format="%.2e", key=f"ov_Dmol_{_fk}")
 
 # ── Particle (solid) phase ────────────────────────────────────────────────
 include_particles = st.checkbox("Include solid particles", value=False, key="include_particles")
@@ -267,16 +300,11 @@ _active_modes = active_modes_set(corr_selections)
 # ── Heat balance options ──────────────────────────────────────────────────────
 st.divider()
 st.header("4 · Heat Balance Options")
-def _parse_fluid_temp(name: str, fallback: float = 25.0) -> float:
-    m = re.search(r'\(([-\d.]+)\s*°?C\)', name)
-    return float(m.group(1)) if m else fallback
-
-fluid_T_C = _parse_fluid_temp(fluid_name)
 rxn_T_C = _safe(reaction.get("T_C"), 25.0)
 rxn_delta_H = _safe(reaction.get("delta_H_kJ_mol"), 0.0)
 rxn_order = str(reaction.get("order", "1"))
 
-_ms_heat_context = f"{fluid_name}|{reaction_name}"
+_ms_heat_context = f"{fluid_name}|{fluid_T_C:.1f}|{reaction_name}"
 if st.session_state.get("_ms_heat_context") != _ms_heat_context:
     if st.session_state.get("_ms_heat_active", False):
         st.session_state["_ms_heat_active"] = False
@@ -859,6 +887,7 @@ if st.button("📌 Save this result to Recorded Results"):
         "reactor": reactor_name,
         "reaction": reaction_name,
         "fluid": fluid_name,
+        "fluid_T_C": fluid_T_C,
         "RPM": _N_rpm_input,
         "Volume (L)": V_L,
         "Re": hydro["Re"],
