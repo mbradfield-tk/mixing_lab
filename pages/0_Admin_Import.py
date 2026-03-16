@@ -14,6 +14,7 @@ Workflow
 """
 
 import streamlit as st
+import hmac
 
 import pandas as pd
 import numpy as np
@@ -24,7 +25,37 @@ DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 ALT_CSV = DATA_DIR / "reactors_alt.csv"
 REACTOR_CSV = DATA_DIR / "reactors.csv"
 
-st.title("⚙️ Admin – Reactor Import")
+st.title("🛠️ Admin Tools")
+
+# ── Authentication gate ──────────────────────────────────────────────────
+_ADMIN_USER = "admin"
+_ADMIN_PASS = "admin_tak_2026"
+
+
+def _check_password() -> bool:
+    """Return True if the user has entered valid credentials."""
+    if st.session_state.get("admin_authenticated"):
+        return True
+
+    with st.form("admin_login"):
+        st.subheader("🔒 Admin login required")
+        user = st.text_input("Username")
+        pwd = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Log in", type="primary")
+
+    if submitted:
+        if (hmac.compare_digest(user, _ADMIN_USER)
+                and hmac.compare_digest(pwd, _ADMIN_PASS)):
+            st.session_state["admin_authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Invalid username or password.")
+    return False
+
+
+if not _check_password():
+    st.stop()
+
 st.caption(
     "Convert the transposed master file **reactors_alt.csv** into the "
     "row-per-reactor format used by the Reactor Database."

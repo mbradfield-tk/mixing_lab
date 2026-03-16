@@ -48,7 +48,7 @@ reference = [
 ]
 
 admin = [
-    st.Page("pages/0_Admin_Import.py", title="Admin Import", icon="🛠️"),
+    st.Page("pages/0_Admin_Import.py", title="Admin Tools", icon="🛠️"),
 ]
 
 nav = st.navigation({
