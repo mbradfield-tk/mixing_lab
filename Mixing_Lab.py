@@ -60,11 +60,19 @@ nav = st.navigation({
     "Admin": admin,
 })
 
-# On a fresh session (first load / browser refresh), always start on the home page
-# to ensure the sidebar renders correctly (icons + grouped menu items).
+# On a fresh session (browser refresh / initial load), redirect the browser to the
+# root URL so that st.navigation() selects the default home page.  This ensures
+# Mixing_Lab.py fully executes (including nav.run()) on every load.
 if "_app_initialized" not in st.session_state:
-    st.session_state._app_initialized = True
-    if nav != home:
-        st.switch_page(home)
+    st.session_state["_app_initialized"] = True
+    import streamlit.components.v1 as _components
+    _components.html(
+        """<script>
+        if (window.parent.location.pathname !== '/') {
+            window.parent.location.href = window.parent.location.origin + '/';
+        }
+        </script>""",
+        height=0,
+    )
 
 nav.run()

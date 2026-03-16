@@ -32,7 +32,7 @@ def _save_particles(df: pd.DataFrame):
 if "particle_db" not in st.session_state:
     st.session_state.particle_db = _load_particles()
 
-st.title("❉ Particle Database")
+st.title("❇️ Particle Database")
 
 tab_browse, tab_add, tab_import = st.tabs([
     "Browse & Edit", "Add Particle", "Import / Export",
