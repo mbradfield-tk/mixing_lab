@@ -136,7 +136,7 @@ with tab_browse:
                     p for p in folder.iterdir()
                     if p.is_file()
                     and p.suffix.lower() in IMG_SUFFIXES
-                    and p.name.startswith(prefix)
+                    and (p.stem == prefix or p.name.startswith(prefix + "_"))
                 ])
 
             reactor_imgs = _find_images(REACTOR_IMG_DIR)
@@ -175,7 +175,9 @@ with tab_browse:
                     # Dish depth heuristics (fraction of R)
                     def _dish_depth(dish_type: str, radius: float) -> float:
                         dt = dish_type.lower()
-                        if "elliptical" in dt or "2:1" in dt:
+                        if "round" in dt or "hemi" in dt:
+                            return radius  # full hemisphere: depth = R
+                        elif "elliptical" in dt or "2:1" in dt:
                             return radius / 2.0
                         elif "torispherical" in dt or "din" in dt:
                             return radius * 0.25
@@ -316,6 +318,11 @@ with tab_browse:
                                 # Linear cone: r shrinks linearly, z deepens linearly
                                 r_profile = radius * (1 - t_param)
                                 z_profile = depth * t_param
+                            elif "round" in dt or "hemi" in dt:
+                                # Hemisphere: r² + z² = R² (depth = radius)
+                                phi = np.linspace(0, np.pi / 2, _n_d)
+                                r_profile = radius * np.cos(phi)
+                                z_profile = radius * np.sin(phi)
                             elif "elliptical" in dt or "2:1" in dt:
                                 # True 2:1 ellipse: r² / R² + z² / depth² = 1
                                 phi = np.linspace(0, np.pi / 2, _n_d)
@@ -481,7 +488,7 @@ with tab_browse:
                     for idx, img_path in enumerate(reactor_imgs):
                         with cols[idx % len(cols)]:
                             label = img_path.stem.removeprefix(prefix).lstrip("_") or img_path.stem
-                            st.image(str(img_path), caption=label, width='content')
+                            st.image(str(img_path), caption=label, width=250)
 
                 if cfd_imgs:
                     st.markdown("#### CFD Results")
@@ -501,7 +508,7 @@ with tab_browse:
                                 st.image(
                                     str(img_path),
                                     caption=img_path.stem.split("_CFD_")[-1],
-                                    width='content',
+                                    width=300,
                                 )
 
     else:
@@ -510,6 +517,82 @@ with tab_browse:
 # ── Add Reactor ───────────────────────────────────────────────────────────
 with tab_add:
     st.markdown("Add a new reactor to the database.")
+
+    # ── Template selector (outside form so rerun populates fields) ────
+    _all_reactor_names = st.session_state.reactor_db["reactor_name"].dropna().tolist()
+    template_reactor = st.selectbox(
+        "Use existing reactor as template",
+        options=["(none)"] + _all_reactor_names,
+        key="add_reactor_template",
+    )
+
+    _TYPE_OPTIONS = ["Batch", "Continuous", "Semi-batch", "Fed-batch"]
+    _SCALE_OPTIONS = ["Lab", "Pilot", "Manufacturing"]
+    _BAFFLE_OPTIONS = ["", "Yes", "No"]
+    _IMP_TYPE_OPTIONS = [
+        "Pitched-blade turbine", "Rushton turbine", "Retreat-curve impeller",
+        "Anchor", "Magnetic stir bar", "A310 hydrofoil", "A320 hydrofoil", "Other",
+    ]
+
+    if template_reactor != "(none)" and st.session_state.get("_applied_template") != template_reactor:
+        st.session_state["_applied_template"] = template_reactor
+        _tpl = st.session_state.reactor_db[
+            st.session_state.reactor_db["reactor_name"] == template_reactor
+        ].iloc[0]
+
+        def _tv(col, default=0.0):
+            v = _tpl.get(col)
+            return float(v) if pd.notna(v) else default
+
+        def _ts(col, default=""):
+            v = _tpl.get(col)
+            return str(v).strip() if pd.notna(v) else default
+
+        def _tsel(col, options, default_idx=0):
+            v = _ts(col)
+            return v if v in options else options[default_idx]
+
+        # Push template values into widget session-state keys
+        st.session_state["add_name"] = _ts("reactor_name")
+        st.session_state["add_owner"] = _ts("owner")
+        st.session_state["add_type"] = _tsel("type", _TYPE_OPTIONS)
+        st.session_state["add_scale"] = _tsel("scale", _SCALE_OPTIONS)
+        st.session_state["add_D_tank"] = _tv("D_tank_m", 0.10)
+        st.session_state["add_H"] = _tv("H_m", 0.13)
+        st.session_state["add_OD"] = _tv("OD_m")
+        st.session_state["add_wall"] = _tv("wall_thickness_mm")
+        st.session_state["add_V_min"] = _tv("V_L_min")
+        st.session_state["add_V_max"] = _tv("V_L_max", 1.0)
+        st.session_state["add_bottom_dish"] = _ts("bottom_dish")
+        st.session_state["add_top_dish"] = _ts("top_dish")
+        st.session_state["add_material"] = _ts("material")
+        st.session_state["add_baffles"] = _tsel("baffles", _BAFFLE_OPTIONS)
+        st.session_state["add_knuckle"] = _tv("knuckle_radius_m")
+        st.session_state["add_rpm_min"] = _tv("N_rpm_min")
+        st.session_state["add_rpm_max"] = _tv("N_rpm_max", 400.0)
+        st.session_state["add_rps"] = _tv("N_rps")
+        _imp_count = max(1, min(3, int(_tv("impeller_count", 1))))
+        st.session_state["add_reactor_imp_count"] = _imp_count
+        st.session_state["imp1_d"] = _tv("D_imp_m", 0.05)
+        st.session_state["imp1_type"] = _tsel("impeller_type", _IMP_TYPE_OPTIONS)
+        st.session_state["imp1_np"] = _tv("Np")
+        st.session_state["imp1_nq"] = _tv("Nq")
+        st.session_state["imp1_clr"] = _tv("imp1_clearance_m")
+        st.session_state["imp1_h"] = _tv("imp1_height_m")
+        st.session_state["imp2_d"] = _tv("D_imp2_m")
+        st.session_state["imp2_np"] = _tv("Np2")
+        st.session_state["imp2_clr"] = _tv("imp2_clearance_m")
+        st.session_state["imp2_h"] = _tv("imp2_height_m")
+        st.session_state["imp3_d"] = _tv("D_imp3_m")
+        st.session_state["imp3_np"] = _tv("Np3")
+        st.session_state["imp3_clr"] = _tv("imp3_clearance_m")
+        st.session_state["imp3_h"] = _tv("imp3_height_m")
+        st.session_state["add_zwietering"] = _tv("Zwietering_S")
+        st.session_state["add_gmb"] = _tv("GMB_z")
+        st.session_state["add_notes"] = _ts("notes")
+        st.rerun()
+    elif template_reactor == "(none)":
+        st.session_state.pop("_applied_template", None)
 
     # Impeller count selector OUTSIDE the form so it triggers an immediate rerun
     impeller_count = st.number_input(
@@ -523,45 +606,42 @@ with tab_add:
         st.markdown("##### Identity & Vessel Geometry")
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            name = st.text_input("Reactor name *")
-            owner = st.text_input("Owner / site")
-            rtype = st.selectbox("Type", ["Batch", "Continuous", "Semi-batch", "Fed-batch"])
-            scale = st.selectbox("Scale", ["Lab", "Pilot", "Manufacturing"])
+            name = st.text_input("Reactor name *", key="add_name")
+            owner = st.text_input("Owner / site", key="add_owner")
+            rtype = st.selectbox("Type", _TYPE_OPTIONS, key="add_type")
+            scale = st.selectbox("Scale", _SCALE_OPTIONS, key="add_scale")
         with c2:
-            D_tank = st.number_input("Tank ID (m)", min_value=0.0, value=0.10, format="%.4f")
-            H = st.number_input("Height tan-tan (m)", min_value=0.0, value=0.13, format="%.4f")
-            OD = st.number_input("Outside diameter (m)", min_value=0.0, value=0.0, format="%.4f")
-            wall_thickness = st.number_input("Wall thickness (mm)", min_value=0.0, value=0.0, format="%.2f")
+            D_tank = st.number_input("Tank ID (m)", min_value=0.0, value=0.10, format="%.4f", key="add_D_tank")
+            H = st.number_input("Height tan-tan (m)", min_value=0.0, value=0.13, format="%.4f", key="add_H")
+            OD = st.number_input("Outside diameter (m)", min_value=0.0, value=0.0, format="%.4f", key="add_OD")
+            wall_thickness = st.number_input("Wall thickness (mm)", min_value=0.0, value=0.0, format="%.2f", key="add_wall")
         with c3:
-            V_L_min = st.number_input("Volume min (L)", min_value=0.0, value=0.0, format="%.2f")
-            V_L_max = st.number_input("Volume max (L)", min_value=0.0, value=1.0, format="%.2f")
-            bottom_dish = st.text_input("Bottom dish type", "")
-            top_dish = st.text_input("Top dish type", "")
+            V_L_min = st.number_input("Volume min (L)", min_value=0.0, value=0.0, format="%.2f", key="add_V_min")
+            V_L_max = st.number_input("Volume max (L)", min_value=0.0, value=1.0, format="%.2f", key="add_V_max")
+            bottom_dish = st.text_input("Bottom dish type", "", key="add_bottom_dish")
+            top_dish = st.text_input("Top dish type", "", key="add_top_dish")
         with c4:
-            material = st.text_input("Material of construction", "")
-            baffles = st.selectbox("Baffles", ["", "Yes", "No"])
-            knuckle_radius = st.number_input("Knuckle radius (m)", min_value=0.0, value=0.0, format="%.4f")
+            material = st.text_input("Material of construction", "", key="add_material")
+            baffles = st.selectbox("Baffles", _BAFFLE_OPTIONS, key="add_baffles")
+            knuckle_radius = st.number_input("Knuckle radius (m)", min_value=0.0, value=0.0, format="%.4f", key="add_knuckle")
 
         # ── Row 2: Agitation ──────────────────────────────────────────────
         st.markdown("##### Agitation")
         a1, a2, a3 = st.columns(3)
         with a1:
-            N_rpm_min = st.number_input("RPM min", min_value=0.0, value=0.0, format="%.0f")
+            N_rpm_min = st.number_input("RPM min", min_value=0.0, value=0.0, format="%.0f", key="add_rpm_min")
         with a2:
-            N_rpm_max = st.number_input("RPM max", min_value=0.0, value=400.0, format="%.0f")
+            N_rpm_max = st.number_input("RPM max", min_value=0.0, value=400.0, format="%.0f", key="add_rpm_max")
         with a3:
             N_rps = st.number_input("Default speed (rev/s)", min_value=0.0, value=0.0, format="%.2f",
-                                    help="Leave at 0 to auto-compute from RPM midpoint.")
+                                    key="add_rps", help="Leave at 0 to auto-compute from RPM midpoint.")
 
         # ── Impeller 1 (always shown) ────────────────────────────────────
         st.markdown("##### Impeller 1 (primary)")
         i1a, i1b, i1c, i1d = st.columns(4)
         with i1a:
             D_imp = st.number_input("Diameter (m)", min_value=0.0, value=0.05, format="%.4f", key="imp1_d")
-            impeller_type = st.selectbox("Type", [
-                "Pitched-blade turbine", "Rushton turbine", "Retreat-curve impeller",
-                "Anchor", "Magnetic stir bar", "A310 hydrofoil", "A320 hydrofoil", "Other",
-            ], key="imp1_type")
+            impeller_type = st.selectbox("Type", _IMP_TYPE_OPTIONS, key="imp1_type")
         with i1b:
             Np_val = st.number_input("Np", min_value=0.0, value=0.0, format="%.2f", key="imp1_np")
             Nq_val = st.number_input("Nq", min_value=0.0, value=0.0, format="%.2f", key="imp1_nq")
@@ -602,11 +682,11 @@ with tab_add:
         st.markdown("##### Scale-up Parameters")
         s1, s2 = st.columns(2)
         with s1:
-            zwietering_s = st.number_input("Zwietering S parameter", min_value=0.0, value=0.0, format="%.2f")
+            zwietering_s = st.number_input("Zwietering S parameter", min_value=0.0, value=0.0, format="%.2f", key="add_zwietering")
         with s2:
-            gmb_z = st.number_input("GMB z parameter", min_value=0.0, value=0.0, format="%.4f")
+            gmb_z = st.number_input("GMB z parameter", min_value=0.0, value=0.0, format="%.4f", key="add_gmb")
 
-        notes = st.text_area("Notes")
+        notes = st.text_area("Notes", key="add_notes")
         submitted = st.form_submit_button("Add reactor")
 
         def _or_nan(v):
