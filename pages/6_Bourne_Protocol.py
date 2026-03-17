@@ -136,7 +136,9 @@ with col_r:
         D_imp = float(r["D_imp_m"])
         Np_val = float(r["Np"])
         Nq_val = float(r["Nq"])
-        V_L = float(r["V_L"])
+        V_L_min = float(r["V_L_min"]) if pd.notna(r.get("V_L_min")) else float(r["V_L"])
+        V_L_max = float(r["V_L_max"]) if pd.notna(r.get("V_L_max")) else float(r["V_L"])
+        V_L_avg = (V_L_min + V_L_max) / 2.0
         # RPM bounds from reactor database
         N_rpm_min = float(r["N_rpm_min"]) if pd.notna(r.get("N_rpm_min")) else None
         N_rpm_max = float(r["N_rpm_max"]) if pd.notna(r.get("N_rpm_max")) else None
@@ -155,7 +157,9 @@ with col_r:
         N_center = st.number_input("Centerpoint speed (rev/s)", value=5.0, format="%.2f")
         Np_val = st.number_input("Power number Np", value=1.27, format="%.2f")
         Nq_val = st.number_input("Pumping number Nq", value=0.79, format="%.2f")
-        V_L = np.pi / 4 * D_tank**2 * H * 1000
+        V_L_avg = np.pi / 4 * D_tank**2 * H * 1000
+        V_L_min = V_L_avg
+        V_L_max = V_L_avg
         N_rpm_min = None
         N_rpm_max = None
         N_rps_min = None
@@ -187,6 +191,16 @@ with col_f:
         mu = float(_cust["mu_Pa_s"])
 
 nu = mu / rho
+
+# ── Volume selection ──────────────────────────────────────────────────────
+st.subheader("Working Volume")
+if V_L_min != V_L_max:
+    st.caption(f"Reactor volume range: {V_L_min:.1f} – {V_L_max:.1f} L  •  Average: {V_L_avg:.1f} L")
+V_L = st.number_input(
+    "Working volume (L)", min_value=0.1, value=V_L_avg,
+    step=1.0, format="%.1f", key=_bk("vol_L"),
+    help="Defaults to the average of V_L_min and V_L_max from the reactor database.",
+)
 V_m3 = V_L / 1000.0  # m³
 
 st.divider()
@@ -283,6 +297,7 @@ def _hydro_row(label, N):
     pv_rel = pv_wkg / PV_center_wkg if PV_center_wkg > 0 else 0
     return {
         "Condition": label,
+        "Volume (L)": round(V_L, 1),
         "N (rev/s)": round(N, 3),
         "N (RPM)": round(N * 60, 1),
         "P/V (W/kg)": round(pv_wkg, 4),
