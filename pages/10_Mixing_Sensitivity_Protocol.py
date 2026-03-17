@@ -45,9 +45,13 @@ fluids = _load("fluid_db", "fluids.csv")
 # Session-state key prefix for this page
 _PFX = "_msp_"
 
+# ── Generation counter for reliable widget reset ─────────────────────────
+if "_msp_gen" not in st.session_state:
+    st.session_state["_msp_gen"] = 0
+
 
 def _key(name: str) -> str:
-    return f"{_PFX}{name}"
+    return f"{_PFX}{st.session_state['_msp_gen']}_{name}"
 
 
 def _get(name: str, default=None):
@@ -73,13 +77,20 @@ with st.expander("📋 Protocol overview", expanded=True):
     if _MSP_IMG.exists():
         st.image(str(_MSP_IMG), caption="Mixing Sensitivity Protocol – Decision Tree")
     else:
-        st.info("Protocol overview image not found. Generate it from the ⚙️ Admin page.")
+        st.info("Protocol overview image not found. Generate it from the 🛠️ Admin page.")
 
-if st.button("🔄 Restart protocol", key=_key("restart")):
+def _reset_msp():
+    """Increment generation counter and clear old MSP state."""
+    old_gen = st.session_state.get("_msp_gen", 0)
     for k in list(st.session_state.keys()):
-        if k.startswith(_PFX) and k != _key("restart"):
+        if k == "_msp_gen" or k == _key("restart"):
+            continue
+        if k.startswith(_PFX):
             del st.session_state[k]
-    st.rerun()
+    st.session_state["_msp_gen"] = old_gen + 1
+
+
+st.button("🔄 Restart protocol", key=_key("restart"), on_click=_reset_msp)
 
 st.divider()
 
@@ -105,7 +116,12 @@ bourne_screen = st.radio(
         "Skip for now – proceed with protocol",
     ],
     key=_key("bourne_screen"),
+    index=None,
 )
+
+if bourne_screen is None:
+    st.info("👆 Please select an option above to continue.")
+    st.stop()
 
 if bourne_screen == "Already done – results show mixing sensitivity":
     st.warning(
@@ -125,7 +141,7 @@ else:
     st.info(
         "💡 **Recommendation:** Performing Bourne Part 1 before this "
         "protocol provides a direct experimental answer.  You can run it "
-        "from the **🧫 Bourne Protocol** page.\n\n"
+        "from the **� Bourne Protocol** page.\n\n"
         "Proceeding with the theoretical assessment for now."
     )
     _bourne_sensitive = None
@@ -156,8 +172,12 @@ kinetics_choice = st.radio(
         "No – I need to measure them",
     ],
     key=_key("kinetics_choice"),
-    index=0 if _get("kinetics_choice") is None else None,
+    index=None,
 )
+
+if kinetics_choice is None:
+    st.info("👆 Please select an option above to continue.")
+    st.stop()
 
 if kinetics_choice == "No – I need to measure them":
     st.warning(
@@ -259,9 +279,13 @@ with st.expander("ℹ️ Background — interphase mass transfer", expanded=Fals
 phases = st.multiselect(
     "Which phases are present in the reaction system?",
     ["Liquid", "Solid", "Gas"],
-    default=["Liquid"],
+    default=[],
     key=_key("phases"),
 )
+
+if not phases:
+    st.info("👆 Please select at least one phase above to continue.")
+    st.stop()
 
 _multiphase = len(phases) > 1
 _has_solid = "Solid" in phases
@@ -303,7 +327,7 @@ if _multiphase:
 
     _mass_transfer_notes.extend([
         "It is **highly recommended** to characterise each vessel's "
-        "hydrodynamics (see ⚙️ Mixing Sensitivity and 📊 Reactor Comparison pages) "
+        "hydrodynamics (see 🌀 Mixing Assessment and 📈 Reactor Comparison pages) "
         "to understand how each transport mechanism varies with scale.",
         "If the intrinsic reaction is fast relative to any mass-transfer step, "
         "the observed rate will be transport-limited and mixing-sensitive.",
@@ -381,7 +405,7 @@ if _multiphase:
         "The remaining steps of this protocol will still assess micro/meso/macromixing "
         "and heat transfer, but keep in mind that interphase transport may dominate.\n\n"
         "👉 Compute Da_GL and/or Da_LS for your specific reactor on the "
-        "**⚙️ Mixing Sensitivity** or **📊 Reactor Comparison** pages."
+        "**🌀 Mixing Assessment** or **📈 Reactor Comparison** pages."
     )
 else:
     st.success(
@@ -420,7 +444,12 @@ competing = st.radio(
     "reduce yield or increase impurity formation?",
     ["Yes", "No", "Not sure"],
     key=_key("competing"),
+    index=None,
 )
+
+if competing is None:
+    st.info("👆 Please select an option above to continue.")
+    st.stop()
 
 if competing == "Yes":
     st.warning(
@@ -468,7 +497,7 @@ if competing == "Yes":
         )
 
     st.info(
-        "👉 **Recommendation:** Use the **🧫 Bourne Protocol** page to "
+        "👉 **Recommendation:** Use the **� Bourne Protocol** page to "
         "experimentally screen for micro- and mesomixing sensitivity by varying "
         "impeller speed (changes *ε*), feed time, and feed location.  "
         "The Villermaux–Dushman (iodide–iodate) test reaction is a classic "
@@ -485,7 +514,7 @@ elif competing == "Not sure":
         "- Check the literature or process-chemistry knowledge for known "
         "by-products or degradation pathways.\n"
         "- If in doubt, treat the system as potentially sensitive and "
-        "use the **🧫 Bourne Protocol** to screen."
+        "use the **� Bourne Protocol** to screen."
     )
     _meso_sensitive = True
 else:
@@ -517,7 +546,12 @@ if not _has_enthalpy:
             "Estimate ΔH from a similar reaction",
         ],
         key=_key("dh_action"),
+        index=None,
     )
+
+    if dh_action is None:
+        st.info("👆 Please select an option above to continue.")
+        st.stop()
 
     if dh_action == "Perform calorimetry – measure ΔH experimentally (recommended)":
         st.info(
@@ -618,7 +652,7 @@ if _has_enthalpy:
             )
         st.info(
             "👉 **Recommendation:** Run the heat balance on the "
-            "**⚙️ Mixing Sensitivity** or **📊 Reactor Comparison** page "
+            "**🌀 Mixing Assessment** or **📈 Reactor Comparison** page "
             "to quantify Q_gen vs Q_cool for your specific reactor(s)."
         )
         _heat_sensitive = True
@@ -688,7 +722,7 @@ elif t_rxn < 1.0:
         f"🟡 **Fast reaction** (t_rxn = {t_rxn:.4g} s).  "
         "Micromixing likely relevant in larger vessels where local ε "
         "at the feed point decreases.  Confirm with Damköhler analysis "
-        "on the ⚙️ Mixing Sensitivity page."
+        "on the 🌀 Mixing Assessment page."
     )
     _micro_likely = True
 elif t_rxn < 10:
@@ -757,8 +791,8 @@ st.markdown(
 if t_rxn < 30:
     st.info(
         "👉 **Recommendation:** Compute Damköhler numbers for your specific "
-        "reactor(s) on the **⚙️ Mixing Sensitivity** page or compare "
-        "multiple vessels on the **📊 Reactor Comparison** page."
+        "reactor(s) on the **🌀 Mixing Assessment** page or compare "
+        "multiple vessels on the **📈 Reactor Comparison** page."
     )
 
 st.divider()
@@ -893,7 +927,7 @@ _steps = []
 if _bourne_sensitive is None:
     _steps.append(
         "Run **Bourne Protocol Part 1** (quick screen) on the "
-        "**🧫 Bourne Protocol** page to confirm whether mixing sensitivity "
+        "**🧐 Bourne Protocol** page to confirm whether mixing sensitivity "
         "exists experimentally."
     )
 
@@ -906,12 +940,12 @@ if _using_approximate:
 if _micro_likely or (t_rxn < 60):
     _steps.append(
         "Compute **Damköhler numbers** (Da_macro, Da_micro) for your specific "
-        "reactor on the **⚙️ Mixing Sensitivity** page."
+        "reactor on the **🌀 Mixing Assessment** page."
     )
 
 if _meso_sensitive:
     _steps.append(
-        "Run the **🧫 Bourne Protocol** to experimentally screen micro- and "
+        "Run the **🧐 Bourne Protocol** to experimentally screen micro- and "
         "mesomixing sensitivity (vary impeller speed to probe micromixing, "
         "vary feed time/location to probe mesomixing)."
     )
@@ -919,20 +953,20 @@ if _meso_sensitive:
 if _multiphase:
     _steps.append(
         "Assess interphase **mass-transfer coefficients** (kLa, k_SL) on "
-        "the ⚙️ Mixing Sensitivity or 📊 Reactor Comparison pages."
+        "the 🌀 Mixing Assessment or 📈 Reactor Comparison pages."
     )
 
 if _has_enthalpy and _heat_sensitive:
     _steps.append(
-        "Run a full **heat balance** (🔥 button on ⚙️ Mixing Sensitivity or "
-        "📊 Reactor Comparison) to evaluate Q_gen vs Q_cool."
+        "Run a full **heat balance** (🔥 button on 🌀 Mixing Assessment or "
+        "📈 Reactor Comparison) to evaluate Q_gen vs Q_cool."
     )
 
 if not _steps:
     _steps.append(
         "The reaction appears **low risk** for mixing sensitivity.  "
         "Standard scale-up practices should be sufficient, but consider "
-        "a quick check on the 📊 Reactor Comparison page for completeness."
+        "a quick check on the 🌀 Mixing Assessment page for completeness."
     )
 
 for i, step in enumerate(_steps, 1):
