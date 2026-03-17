@@ -104,31 +104,37 @@ def _idx(lst, key, default=0):
         return lst.index(val)
     return default
 
-col1, col2 = st.columns(2)
+col_r, col_rx, col_f = st.columns(3)
 
-with col1:
+with col_r:
     reactor_name = st.selectbox("Reactor", _reactor_list, index=_idx(_reactor_list, "_sel_reactor"), key="ms_reactor")
     st.session_state["_sel_reactor"] = reactor_name
-with col2:
+with col_rx:
     reaction_name = st.selectbox("Reaction", _reaction_list, index=_idx(_reaction_list, "_sel_reaction"), key="ms_reaction")
     st.session_state["_sel_reaction"] = reaction_name
 
-fc1, fc2, fc3 = st.columns(3)
-with fc1:
+col_T, col_P, col_cw = st.columns(3)
+with col_f:
     fluid_name = st.selectbox("Fluid", _all_fluid_names, index=_idx(_all_fluid_names, "_sel_fluid"), key="ms_fluid")
     st.session_state["_sel_fluid"] = fluid_name
-with fc2:
+with col_T:
     _is_solvent = is_known_solvent(fluid_name)
     if _is_solvent:
         fluid_T_C = st.number_input("Temperature (°C)", value=25.0, step=1.0, format="%.1f", key="ms_fluid_T")
     else:
         st.caption("Custom fluid — fixed properties (no T dependence)")
         fluid_T_C = 25.0
-with fc3:
+with col_P:
     if _is_solvent:
         fluid_P_atm = st.number_input("Pressure (atm)", value=1.0, min_value=0.01, step=0.1, format="%.2f", key="ms_fluid_P")
     else:
         fluid_P_atm = 1.0
+with col_cw:
+    ms_T_coolant = st.number_input(
+        "Coolant temperature (°C)", value=15.0, step=1.0,
+        format="%.1f", key="ms_T_cool",
+        help="Jacket coolant inlet temperature",
+    )
 
 # Compute fluid properties
 if _is_solvent:
@@ -334,51 +340,16 @@ _priority_mode = priority_mode_dict(corr_selections)
 _active_modes = active_modes_set(corr_selections)
 
 
-# ── Heat balance options ──────────────────────────────────────────────────────
-st.divider()
-st.header("4 · Heat Balance Options")
+# ── Reaction thermodynamics (used later for auto heat balance) ────────────────
 rxn_T_C = _safe(reaction.get("T_C"), 25.0)
 rxn_delta_H = _safe(reaction.get("delta_H_kJ_mol"), 0.0)
 rxn_order = str(reaction.get("order", "1"))
-
-_ms_heat_context = f"{fluid_name}|{fluid_T_C:.1f}|{reaction_name}"
-if st.session_state.get("_ms_heat_context") != _ms_heat_context:
-    if st.session_state.get("_ms_heat_active", False):
-        st.session_state["_ms_heat_active"] = False
-        st.session_state["_ms_heat_stale"] = True
-    st.session_state["_ms_heat_context"] = _ms_heat_context
-
-if st.button("🔥 Run Heat Balance"):
-    st.session_state["_ms_heat_active"] = True
-    st.session_state.pop("_ms_heat_stale", None)
-    st.session_state["ms_T_cool"] = fluid_T_C - 20.0
-    st.rerun()
-
-if st.session_state.get("_ms_heat_stale"):
-    st.info("Fluid or reaction changed — click **🔥 Run Heat Balance** to update.")
-
-include_heat = st.session_state.get("_ms_heat_active", False)
 ms_T_process = fluid_T_C
-ms_T_coolant = fluid_T_C - 20.0
-if include_heat:
-    hcol1, hcol2, hcol3 = st.columns(3)
-    with hcol1:
-        st.metric("Process temperature", f"{fluid_T_C:.1f} °C")
-    with hcol2:
-        ms_T_coolant = st.number_input(
-            "Coolant temperature (°C)",
-            format="%.1f", key="ms_T_cool",
-            help="Jacket coolant inlet temperature",
-            step=1.0)
-    with hcol3:
-        st.markdown(f"**ΔH** = {rxn_delta_H:.0f} kJ/mol  ")
-        st.markdown(f"**ΔT** = {ms_T_process - ms_T_coolant:.1f} °C")
-    if rxn_delta_H == 0:
-        st.info("Selected reaction has no enthalpy value – add ΔH in the Reaction Database.")
+include_heat = rxn_delta_H != 0
 
-# ── Step 5: Compute ──────────────────────────────────────────────────────
+# ── Step 4: Compute ──────────────────────────────────────────────────────
 st.divider()
-st.header("5 · Centerpoint Results")
+st.header("4 · Centerpoint Results")
 
 # Compute reaction time if needed
 t_rxn = t_rxn_input
@@ -416,9 +387,22 @@ if rom_sources:
         + "\n".join(_src_lines)
     )
 
-# ── Display ──────────────────────────────────────────────────────────────
+# Assessment banners — helper
+def _da_banner(label: str, Da: float) -> None:
+    if Da < 0.01:
+        st.success(f"🟢 **{label}:** Not sensitive (Da = {Da:.3g})")
+    elif Da < 0.1:
+        st.success(f"🟢 **{label}:** Likely not sensitive (Da = {Da:.3g})")
+    elif Da < 1:
+        st.warning(f"🟡 **{label}:** Potentially sensitive (Da = {Da:.3g})")
+    elif Da < 10:
+        st.error(f"🔴 **{label}:** Likely sensitive (Da = {Da:.3g})")
+    else:
+        st.error(f"🔴 **{label}:** Highly sensitive (Da = {Da:.3g})")
 
-# Key metrics row
+# ── 4a · Mixing ──────────────────────────────────────────────────────────
+st.subheader("4a · Mixing")
+
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Re", f"{hydro['Re']:.0f}")
 m2.metric("P/V (W/L)", f"{hydro['P/V (W/L)']:.3g}")
@@ -431,63 +415,111 @@ m6.metric("Kolmogorov η (µm)", f"{hydro['Kolmogorov η (µm)']:.1f}")
 m7.metric("Da_macro", f"{da['Da_macro']:.3g}")
 m8.metric("Da_micro", f"{da['Da_micro']:.3g}")
 
-# New parameters row
 m9, m10, m11, m12 = st.columns(4)
 m9.metric("Avg shear rate (1/s)", f"{hydro['Avg shear rate (1/s)']:.1f}")
 m10.metric("Max shear rate (1/s)", f"{hydro['Max shear rate (1/s)']:.0f}")
 m11.metric("Avg shear stress (Pa)", f"{hydro['Avg shear stress (Pa)']:.3g}")
 m12.metric("t_E local (s)", f"{hydro['Micromix time t_E_local (s)']:.4g}")
 
-# Additional hydrodynamic parameters row
 m9b, m10b, m11b, m12b = st.columns(4)
 m9b.metric("Circulation time (s)", f"{hydro['Circulation time (s)']:.2f}")
 m10b.metric("Froude number", f"{hydro['Froude number']:.4g}")
 m11b.metric("EDCF (W/kg/s)", f"{hydro['EDCF (W/kg/s)']:.3g}")
 m12b.metric("Torque (N·m)", f"{hydro['Torque (N·m)']:.3g}")
 
-if v_s > 0:
-    m13, m14, m15, _ = st.columns(4)
-    m13.metric("kLa sparged (1/s)", f"{hydro['kLa (1/s)']:.4g}")
-    m14.metric("kLa surface (1/s)", f"{hydro['kLa_surface (1/s)']:.4g}")
-    m15.metric("Da_GL", f"{da['Da_GL']:.3g}")
-else:
-    m13, m14, _, _ = st.columns(4)
-    m13.metric("kLa surface (1/s)", f"{hydro['kLa_surface (1/s)']:.4g}")
-    da_gl_val = da['Da_GL']
-    if da_gl_val > 0:
-        m14.metric("Da_GL (surface)", f"{da_gl_val:.3g}")
-    st.caption("Sparged kLa not shown (set v_s > 0 in *Gas sparging* section). "
-               "Surface kLa uses the Lamont-Scott free-surface model.")
+_da_banner("Macromixing", da["Da_macro"])
+_da_banner("Micromixing", da["Da_micro"])
 
-# Assessment banners – one per sensitivity type
-def _da_banner(label: str, Da: float, thresholds: dict[str, tuple[float, float]]) -> None:
-    """Display a coloured banner for a single Damköhler-based assessment."""
-    if Da < 0.01:
-        st.success(f"🟢 **{label}:** Not sensitive (Da = {Da:.3g})")
-    elif Da < 0.1:
-        st.success(f"🟢 **{label}:** Likely not sensitive (Da = {Da:.3g})")
-    elif Da < 1:
-        st.warning(f"🟡 **{label}:** Potentially sensitive (Da = {Da:.3g})")
-    elif Da < 10:
-        st.error(f"🔴 **{label}:** Likely sensitive (Da = {Da:.3g})")
-    else:
-        st.error(f"🔴 **{label}:** Highly sensitive (Da = {Da:.3g})")
-
-_da_banner("Macromixing", da["Da_macro"], {})
-_da_banner("Micromixing", da["Da_micro"], {})
-if da["Da_GL"] > 0:
-    _da_banner("Gas-liquid mass transfer", da["Da_GL"], {})
-
-# Batchelor length
 lam_B = batchelor_length(mu / rho, hydro["P/V (W/kg)"], D_mol)
 st.info(f"Batchelor microscale λ_B = {lam_B * 1e6:.2f} µm  |  Reaction time t_rxn = {t_rxn:.4g} s")
 
-# ── Particle (solid-phase) results ──────────────────────────────────────
+# ── 4b · Mass Transfer ───────────────────────────────────────────────────
+st.subheader("4b · Mass Transfer")
+
+if v_s > 0:
+    mt1, mt2, mt3, _ = st.columns(4)
+    mt1.metric("kLa sparged (1/s)", f"{hydro['kLa (1/s)']:.4g}")
+    mt2.metric("kLa surface (1/s)", f"{hydro['kLa_surface (1/s)']:.4g}")
+    mt3.metric("Da_GL", f"{da['Da_GL']:.3g}")
+else:
+    mt1, mt2, _, _ = st.columns(4)
+    mt1.metric("kLa surface (1/s)", f"{hydro['kLa_surface (1/s)']:.4g}")
+    da_gl_val = da['Da_GL']
+    if da_gl_val > 0:
+        mt2.metric("Da_GL (surface)", f"{da_gl_val:.3g}")
+    st.caption("Sparged kLa not shown (set v_s > 0 in *Gas sparging* section). "
+               "Surface kLa uses the Lamont-Scott free-surface model.")
+
+if da["Da_GL"] > 0:
+    _da_banner("Gas-liquid mass transfer", da["Da_GL"])
+
+# ── 4c · Heat Transfer ───────────────────────────────────────────────────
+st.subheader("4c · Heat Transfer")
+
+heat_results = {}
+if include_heat:
+    _r_material = str(reactor.get("material", ""))
+    _r_U_override = _safe(reactor.get("U_W_m2K"), 0.0)
+    _r_A_override = _safe(reactor.get("A_ht_m2"), 0.0)
+    _r_wall_mm = _safe(reactor.get("wall_thickness_mm"), 0.0)
+
+    _r_mol_s = reaction_rate_mol_per_s(rxn_order, k_val, C0, V_L)
+    _Q_gen = heat_generation_rate(rxn_delta_H, _r_mol_s)
+    _A_ht = _r_A_override if _r_A_override > 0 else estimate_jacket_area(D_tank, H, _bottom_dish)
+    if _r_U_override > 0:
+        _U_ht = _r_U_override
+        _u_warns = []
+    else:
+        _U_ht, _u_warns = estimate_U_detailed(
+            N_rps=N_rps, D_imp=D_imp, D_tank=D_tank,
+            rho=rho, mu=mu,
+            material=_r_material,
+            wall_thickness_mm=_r_wall_mm,
+            fluid_name=fluid_name,
+        )
+    _dT = ms_T_process - ms_T_coolant
+    _Q_cool = heat_removal_capacity(_U_ht, _A_ht, _dT)
+    _ratio_pct = _Q_gen / _Q_cool * 100 if _Q_cool > 0 else np.inf
+
+    hm1, hm2, hm3, hm4 = st.columns(4)
+    hm1.metric("Q_gen (W)", f"{_Q_gen:.1f}")
+    hm2.metric("Q_cool (W)", f"{_Q_cool:.1f}")
+    hm3.metric("U (W/m²·K)", f"{_U_ht:.0f}")
+    hm4.metric("A_ht (m²)", f"{_A_ht:.3f}")
+
+    hm5, hm6, _, _ = st.columns(4)
+    hm5.metric("ΔT process–coolant (°C)", f"{_dT:.1f}")
+    hm6.metric("ΔH (kJ/mol)", f"{rxn_delta_H:.1f}")
+
+    _assessment = heat_balance_assessment(_Q_gen, _Q_cool)
+    if _ratio_pct < 100:
+        st.success(f"🟢 Q_gen/Q_cool = {_ratio_pct:.1f}% — **{_assessment}**")
+    elif _ratio_pct < 10000:
+        st.error(f"🔴 Q_gen/Q_cool = {_ratio_pct:.1f}% — **{_assessment}**")
+    else:
+        st.error(f"🔴 Q_gen/Q_cool = ∞ — **{_assessment}**")
+
+    if _u_warns:
+        with st.expander("ℹ️ U estimation notes", expanded=False):
+            for _w in _u_warns:
+                st.markdown(f"- {_w}")
+
+    heat_results = {
+        "Q_gen (W)": _Q_gen,
+        "Q_cool (W)": _Q_cool,
+        "U (W/m²·K)": _U_ht,
+        "A_ht (m²)": _A_ht,
+        "Q_gen/Q_cool (%)": _ratio_pct,
+    }
+else:
+    st.caption("No enthalpy data (ΔH) for the selected reaction — heat balance skipped.")
+
+# ── 4d · Solids ──────────────────────────────────────────────────────────
 particle_results = {}
 particle_meta = {}
 if include_particles and not particles.empty:
-    st.subheader("Solid-Phase Parameters")
-    d_p_m = d50_um * 1e-6  # convert µm → m
+    st.subheader("4d · Solids")
+    d_p_m = d50_um * 1e-6
     nu = mu / rho
     delta_rho = abs(rho_p - rho)
 
@@ -496,7 +528,7 @@ if include_particles and not particles.empty:
     N_js_zw = zwietering_njs(S_zw, nu, d_p_m, delta_rho, rho, X_wt, D_imp)
     N_js_gmb = gmb_njs(gmb_z, Np_in if Np_in else 1.27, D_imp, d_p_m,
                        delta_rho, rho, X_vol, C_D_ratio)
-    N_js = max(N_js_zw, N_js_gmb)  # conservative: use the higher estimate
+    N_js = max(N_js_zw, N_js_gmb)
     k_SL = solid_liquid_mass_transfer(d_p_m, v_t, rho, mu, D_mol)
     susp = particle_suspension_criterion(N_rps, N_js)
 
@@ -532,7 +564,6 @@ if include_particles and not particles.empty:
               help="Higher of Zwietering and GMB estimates")
     sp6.metric("k_SL (m/s)", f"{k_SL:.3e}")
 
-    # Suspension assessment (based on conservative N_js)
     if "Poorly" in susp:
         st.error(f"🔴 **{susp}** — current speed is below just-suspended speed")
     elif "Partially" in susp:
@@ -542,63 +573,9 @@ if include_particles and not particles.empty:
     else:
         st.success(f"🟢 **{susp}** — particles are well suspended")
 
-# ── Heat Balance Results ─────────────────────────────────────────────────
-heat_results = {}
-if include_heat and rxn_delta_H != 0:
-    st.subheader("🌡️ Heat Balance")
-    _r_material = str(reactor.get("material", ""))
-    _r_U_override = _safe(reactor.get("U_W_m2K"), 0.0)
-    _r_A_override = _safe(reactor.get("A_ht_m2"), 0.0)
-    _r_wall_mm = _safe(reactor.get("wall_thickness_mm"), 0.0)
-
-    _r_mol_s = reaction_rate_mol_per_s(rxn_order, k_val, C0, V_L)
-    _Q_gen = heat_generation_rate(rxn_delta_H, _r_mol_s)
-    _A_ht = _r_A_override if _r_A_override > 0 else estimate_jacket_area(D_tank, H, _bottom_dish)
-    if _r_U_override > 0:
-        _U_ht = _r_U_override
-        _u_warns = []
-    else:
-        _U_ht, _u_warns = estimate_U_detailed(
-            N_rps=N_rps, D_imp=D_imp, D_tank=D_tank,
-            rho=rho, mu=mu,
-            material=_r_material,
-            wall_thickness_mm=_r_wall_mm,
-            fluid_name=fluid_name,
-        )
-    _dT = ms_T_process - ms_T_coolant
-    _Q_cool = heat_removal_capacity(_U_ht, _A_ht, _dT)
-    _ratio_pct = _Q_gen / _Q_cool * 100 if _Q_cool > 0 else np.inf
-
-    hm1, hm2, hm3, hm4 = st.columns(4)
-    hm1.metric("Q_gen (W)", f"{_Q_gen:.1f}")
-    hm2.metric("Q_cool (W)", f"{_Q_cool:.1f}")
-    hm3.metric("U (W/m²·K)", f"{_U_ht:.0f}")
-    hm4.metric("A_ht (m²)", f"{_A_ht:.3f}")
-
-    _assessment = heat_balance_assessment(_Q_gen, _Q_cool)
-    if _ratio_pct < 100:
-        st.success(f"🟢 Q_gen/Q_cool = {_ratio_pct:.1f}% — **{_assessment}**")
-    elif _ratio_pct < 10000:
-        st.error(f"🔴 Q_gen/Q_cool = {_ratio_pct:.1f}% — **{_assessment}**")
-    else:
-        st.error(f"🔴 Q_gen/Q_cool = ∞ — **{_assessment}**")
-
-    if _u_warns:
-        with st.expander("ℹ️ U estimation notes", expanded=False):
-            for _w in _u_warns:
-                st.markdown(f"- {_w}")
-
-    heat_results = {
-        "Q_gen (W)": _Q_gen,
-        "Q_cool (W)": _Q_cool,
-        "U (W/m²·K)": _U_ht,
-        "A_ht (m²)": _A_ht,
-        "Q_gen/Q_cool (%)": _ratio_pct,
-    }
-
 # ── Operating Envelope Charts ────────────────────────────────────────────
 st.divider()
-st.header("6. Operating Envelopes")
+st.header("5 · Operating Envelopes")
 st.caption("Parameter variation across the reactor's full RPM and volume range.")
 
 # Read RPM range
@@ -936,7 +913,7 @@ if particle_results:
     st.caption(f"Particle: **{particle_meta['Particle']}**  ·  {particle_meta['Suspension']}")
 
 # ── Step 4: Save to recorded results ────────────────────────────────────
-st.header("4 · Save Result")
+st.header("6 · Save Result")
 
 if st.button("📌 Save this result to Recorded Results"):
     result_row = {

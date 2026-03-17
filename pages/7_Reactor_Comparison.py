@@ -182,7 +182,7 @@ with col2:
         t_rxn = 1.0
         rxn_k, rxn_C0, rxn_order, rxn_T_C, rxn_delta_H = 0.0, 0.0, "1", 25.0, 0.0
 
-col5, col6 = st.columns(2)
+col5, col6, col7 = st.columns(3)
 with col5:
     v_s = st.number_input("Superficial gas velocity v_s (m/s)", value=0.0, min_value=0.0,
                           format="%.4f", key="cmp_vs",
@@ -192,6 +192,13 @@ with col6:
                                ["Coalescing (pure liquid)", "Non-coalescing (electrolyte)"],
                                key="cmp_coal")
     is_coalescing = coal_choice.startswith("Coalescing")
+
+with col7:
+    cmp_T_coolant = st.number_input(
+        "Coolant temperature (°C)", value=15.0, step=1.0,
+        format="%.1f", key="cmp_T_cool",
+        help="Jacket coolant inlet temperature",
+    )
 
 st.divider()
 
@@ -270,43 +277,9 @@ if include_particles and not particles_db.empty:
 elif include_particles and particles_db.empty:
     st.warning("Particle database is empty.")
 
-# ── Heat balance options ──────────────────────────────────────────────────────
-_heat_context = f"{fluid_name}|{fluid_T_C:.1f}|{rxn_name if not reactions.empty else ''}"
-
-# Deactivate heat balance when fluid or reaction selection changes
-if st.session_state.get("_heat_context") != _heat_context:
-    if st.session_state.get("_heat_active", False):
-        st.session_state["_heat_active"] = False
-        st.session_state["_heat_stale"] = True
-    st.session_state["_heat_context"] = _heat_context
-
-if st.button("🔥 Run Heat Balance"):
-    st.session_state["_heat_active"] = True
-    st.session_state.pop("_heat_stale", None)
-    st.session_state["cmp_T_cool"] = fluid_T_C - 20.0
-    st.rerun()
-
-if st.session_state.get("_heat_stale"):
-    st.info("Fluid or reaction changed — click **🔥 Run Heat Balance** to update.")
-
-include_heat = st.session_state.get("_heat_active", False)
+# ── Heat balance: auto-compute when ΔH is available ─────────────────────────
 cmp_T_process = fluid_T_C
-cmp_T_coolant = fluid_T_C - 20.0
-if include_heat:
-    hcol1, hcol2, hcol3 = st.columns(3)
-    with hcol1:
-        st.metric("Process temperature", f"{fluid_T_C:.1f} °C")
-    with hcol2:
-        cmp_T_coolant = st.number_input(
-            "Coolant temperature (°C)",
-            format="%.1f", key="cmp_T_cool",
-            help="Jacket coolant inlet temperature",
-            step=1.0)
-    with hcol3:
-        st.markdown(f"**ΔH** = {rxn_delta_H:.0f} kJ/mol  ")
-        st.markdown(f"**ΔT** = {cmp_T_process - cmp_T_coolant:.1f} °C")
-    if rxn_delta_H == 0:
-        st.info("Selected reaction has no enthalpy value – add ΔH in the Reaction Database.")
+include_heat = rxn_delta_H != 0
 
 
 # ── Compute 4 corners per reactor ────────────────────────────────────────
