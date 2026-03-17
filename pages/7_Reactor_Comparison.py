@@ -72,6 +72,13 @@ if reactors.empty:
     st.warning("Populate the Reactor Database first.")
     st.stop()
 
+# ── Step gating: track confirmed input sections ──────────────────────────
+if "_p7_step" not in st.session_state:
+    st.session_state["_p7_step"] = 0
+
+def _reset_p7():
+    st.session_state["_p7_step"] = 0
+
 # ── Selection ────────────────────────────────────────────────────────────
 st.header("1 · Select Reactors & Conditions")
 
@@ -91,6 +98,7 @@ selected_names = st.multiselect(
     _all_reactor_names,
     default=_initial,
     key="cmp_reactors",
+    on_change=_reset_p7,
 )
 st.session_state["_sel_cmp_reactors"] = selected_names
 
@@ -128,7 +136,7 @@ col3, col4 = st.columns(2)
 with col1:
     fluid_name = st.selectbox("Fluid", _all_fluid_names,
                               index=_sel_idx(_all_fluid_names, "_sel_cmp_fluid"),
-                              key="cmp_fluid")
+                              key="cmp_fluid", on_change=_reset_p7)
     st.session_state["_sel_cmp_fluid"] = fluid_name
 
     _is_solvent = is_known_solvent(fluid_name)
@@ -155,7 +163,7 @@ with col1:
 with col2:
     if not reactions.empty:
         _rxn_list = reactions["reaction_name"].tolist()
-        rxn_name = st.selectbox("Reaction (for Da numbers)", _rxn_list, index=_sel_idx(_rxn_list, "_sel_cmp_rxn"), key="cmp_rxn")
+        rxn_name = st.selectbox("Reaction (for Da numbers)", _rxn_list, index=_sel_idx(_rxn_list, "_sel_cmp_rxn"), key="cmp_rxn", on_change=_reset_p7)
         st.session_state["_sel_cmp_rxn"] = rxn_name
         rxn = reactions[reactions["reaction_name"] == rxn_name].iloc[0]
         t_rxn = float(rxn["t_rxn_s"])
@@ -200,6 +208,36 @@ with col7:
         help="Jacket coolant inlet temperature",
     )
 
+# ── Gate 1: confirm system selection ─────────────────────────────────────
+if st.session_state["_p7_step"] < 1:
+    st.info("👆 Review the selections above, then confirm to continue.")
+    if st.button("✅ Confirm selections", key="p7_gate1", type="primary"):
+        st.session_state["_p7_step"] = 1
+        st.rerun()
+    st.stop()
+
+# ── Show iso images of selected reactors ─────────────────────────────────
+_IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "reactors"
+_IMG_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+
+def _find_iso(reactor_name: str) -> pathlib.Path | None:
+    prefix = reactor_name.replace(" – ", "_").replace(" - ", "_")
+    if not _IMG_DIR.exists():
+        return None
+    for p in _IMG_DIR.iterdir():
+        if p.is_file() and p.suffix.lower() in _IMG_SUFFIXES:
+            if p.stem == prefix + "_iso" or p.stem == prefix:
+                return p
+    return None
+
+_iso_imgs = [(rname, _find_iso(rname)) for rname in selected_names]
+_iso_imgs = [(rname, p) for rname, p in _iso_imgs if p is not None]
+if _iso_imgs:
+    cols = st.columns(min(len(_iso_imgs), 5))
+    for idx, (rname, img_path) in enumerate(_iso_imgs):
+        with cols[idx % len(cols)]:
+            st.image(str(img_path), caption=rname, width=200)
+
 st.divider()
 
 # ── Per-reactor correlation mode selector ─────────────────────────────────
@@ -224,6 +262,14 @@ if _any_has_alt:
 else:
     for rname in selected_names:
         corr_modes[rname] = "Literature"
+
+# ── Gate 2: confirm correlations ────────────────────────────────────────
+if st.session_state["_p7_step"] < 2:
+    st.info("👆 Review the correlation sources above, then confirm to continue.")
+    if st.button("✅ Confirm correlations", key="p7_gate2", type="primary"):
+        st.session_state["_p7_step"] = 2
+        st.rerun()
+    st.stop()
 
 st.divider()
 
@@ -280,6 +326,14 @@ elif include_particles and particles_db.empty:
 # ── Heat balance: auto-compute when ΔH is available ─────────────────────────
 cmp_T_process = fluid_T_C
 include_heat = rxn_delta_H != 0
+
+# ── Gate 3: confirm options & compute ───────────────────────────────────
+if st.session_state["_p7_step"] < 3:
+    st.info("👆 Review the additional options above, then confirm to compute results.")
+    if st.button("🔬 Confirm & Compute", key="p7_gate3", type="primary"):
+        st.session_state["_p7_step"] = 3
+        st.rerun()
+    st.stop()
 
 
 # ── Compute 4 corners per reactor ────────────────────────────────────────

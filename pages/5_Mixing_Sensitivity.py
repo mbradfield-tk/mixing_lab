@@ -90,6 +90,13 @@ if reactors.empty or reactions.empty:
     st.warning("Please populate the Reactor and Reaction databases first.")
     st.stop()
 
+# ── Step gating: track confirmed input sections ──────────────────────────
+if "_p5_step" not in st.session_state:
+    st.session_state["_p5_step"] = 0
+
+def _reset_p5():
+    st.session_state["_p5_step"] = 0
+
 # ── Step 1: Select system ────────────────────────────────────────────────
 st.header("1 · Select System")
 
@@ -107,15 +114,15 @@ def _idx(lst, key, default=0):
 col_r, col_rx, col_f = st.columns(3)
 
 with col_r:
-    reactor_name = st.selectbox("Reactor", _reactor_list, index=_idx(_reactor_list, "_sel_reactor"), key="ms_reactor")
+    reactor_name = st.selectbox("Reactor", _reactor_list, index=_idx(_reactor_list, "_sel_reactor"), key="ms_reactor", on_change=_reset_p5)
     st.session_state["_sel_reactor"] = reactor_name
 with col_rx:
-    reaction_name = st.selectbox("Reaction", _reaction_list, index=_idx(_reaction_list, "_sel_reaction"), key="ms_reaction")
+    reaction_name = st.selectbox("Reaction", _reaction_list, index=_idx(_reaction_list, "_sel_reaction"), key="ms_reaction", on_change=_reset_p5)
     st.session_state["_sel_reaction"] = reaction_name
 
 col_T, col_P, col_cw = st.columns(3)
 with col_f:
-    fluid_name = st.selectbox("Fluid", _all_fluid_names, index=_idx(_all_fluid_names, "_sel_fluid"), key="ms_fluid")
+    fluid_name = st.selectbox("Fluid", _all_fluid_names, index=_idx(_all_fluid_names, "_sel_fluid"), key="ms_fluid", on_change=_reset_p5)
     st.session_state["_sel_fluid"] = fluid_name
 with col_T:
     _is_solvent = is_known_solvent(fluid_name)
@@ -168,6 +175,37 @@ def _safe(series_val, default):
 _rk = reactor_name   # reactor key fragment
 _fk = f"{fluid_name}_{fluid_T_C:.1f}"  # fluid key fragment (includes T)
 _xk = reaction_name  # reaction key fragment
+
+# ── Gate 1: confirm system selection ─────────────────────────────────────
+if st.session_state["_p5_step"] < 1:
+    st.info("👆 Review the system selection above, then confirm to continue.")
+    if st.button("✅ Confirm system selection", key="p5_gate1", type="primary"):
+        st.session_state["_p5_step"] = 1
+        st.rerun()
+    st.stop()
+
+# ── Show iso image of selected reactor ───────────────────────────────────
+_IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "reactors"
+_IMG_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+
+def _find_image(name: str, suffix: str) -> pathlib.Path | None:
+    prefix = name.replace(" – ", "_").replace(" - ", "_")
+    if not _IMG_DIR.exists():
+        return None
+    for p in _IMG_DIR.iterdir():
+        if p.is_file() and p.suffix.lower() in _IMG_SUFFIXES:
+            if p.stem == prefix + "_" + suffix:
+                return p
+    return None
+
+_iso_path = _find_image(reactor_name, "iso")
+_side_path = _find_image(reactor_name, "side")
+if _iso_path or _side_path:
+    _imgs = [(p, lbl) for p, lbl in [(_iso_path, "Iso view"), (_side_path, "Side view")] if p]
+    _cols = st.columns([1] * len(_imgs) + [4 - len(_imgs)])
+    for _i, (_path, _lbl) in enumerate(_imgs):
+        with _cols[_i]:
+            st.image(str(_path), caption=_lbl, width=200)
 
 # ── Step 2: Allow overrides ──────────────────────────────────────────────
 st.divider()
@@ -314,6 +352,14 @@ with st.expander("Reaction parameters", expanded=False):
     t_rxn_input = rc3.number_input("t_rxn (s)", value=float(reaction["t_rxn_s"]), format="%.4g", key=f"ov_trxn_{_xk}",
                                     help="Characteristic reaction time. 0 = auto-compute.")
 
+# ── Gate 2: confirm parameter overrides ──────────────────────────────────
+if st.session_state["_p5_step"] < 2:
+    st.info("👆 Review the parameter overrides above, then confirm to continue.")
+    if st.button("✅ Confirm parameters", key="p5_gate2", type="primary"):
+        st.session_state["_p5_step"] = 2
+        st.rerun()
+    st.stop()
+
 # ── Step 3: Correlations ─────────────────────────────────────────────
 st.divider()
 st.header("3 · Correlation Source Selection")
@@ -346,6 +392,14 @@ rxn_delta_H = _safe(reaction.get("delta_H_kJ_mol"), 0.0)
 rxn_order = str(reaction.get("order", "1"))
 ms_T_process = fluid_T_C
 include_heat = rxn_delta_H != 0
+
+# ── Gate 3: confirm correlations & compute ───────────────────────────────
+if st.session_state["_p5_step"] < 3:
+    st.info("👆 Review the correlation sources above, then confirm to compute results.")
+    if st.button("🔬 Confirm & Compute", key="p5_gate3", type="primary"):
+        st.session_state["_p5_step"] = 3
+        st.rerun()
+    st.stop()
 
 # ── Step 4: Compute ──────────────────────────────────────────────────────
 st.divider()
