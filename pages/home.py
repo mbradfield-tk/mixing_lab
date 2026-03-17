@@ -18,7 +18,7 @@ mixing sensitivities across different reactor scales.
 | **🧪 Reaction Database** | Manage reactions with kinetic parameters (rate constants, orders, temps) |
 | **💧 Fluid Database** | Define or import fluid properties (density, viscosity, diffusivity) |
 | **❇️ Particle Database** | Define solid-particle properties (density, PSD, shape factor) |
-| **🧭 Sensitivity Protocol** | Interactive decision tree to assess which mixing mechanisms may limit your reaction at scale |
+| **🧭 Reaction Sensitivity Protocol** | Interactive decision tree to assess which mixing mechanisms may limit your reaction at scale |
 | **🌀 Mixing Assessment** | Calculate hydrodynamic parameters and Damköhler numbers to estimate mixing sensitivity |
 | **🧐 Bourne Protocol** | Step-by-step Bourne mixing-sensitivity screening protocol (Sarafinas modification) |
 | **📈 Reactor Comparison** | Side-by-side comparison of hydrodynamics across selected reactors |
@@ -30,7 +30,7 @@ mixing sensitivities across different reactor scales.
 ### Quick-start guide
 
 1. **Populate your databases** – Add reactors, reactions, fluids, and particles via the Database pages (or import reactors from the Admin page).
-2. **Screen for mixing sensitivity** – Use the *Sensitivity Protocol* to walk through a structured decision tree and identify which mixing mechanisms may limit your process.
+2. **Screen for mixing sensitivity** – Use the *Reaction Sensitivity Protocol* or *Crystallization Sensitivity Protocol* to walk through a structured decision tree and identify which mixing mechanisms may limit your process.
 3. **Run the Bourne Protocol** – If mixing sensitivity is suspected, use the *Bourne Protocol* page to experimentally determine whether micro-, meso-, or macromixing controls your process.
 4. **Analyse a single system** – On the *Mixing Assessment* page, select a reactor, fluid, reaction, and operating conditions to compute hydrodynamic parameters, Damköhler numbers, and mixing-sensitivity flags.
 5. **Compare across scales** – Use the *Reactor Comparison* page to evaluate operating envelopes and scale-up impacts across multiple reactors side-by-side.

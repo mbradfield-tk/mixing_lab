@@ -14,8 +14,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-render_sidebar()
-
 # ── Page navigation ───────────────────────────────────────────────────────
 home = st.Page("pages/home.py", title="Mixing Lab", icon="🔬", default=True)
 
@@ -27,7 +25,8 @@ databases = [
 ]
 
 analysis = [
-    st.Page("pages/10_Mixing_Sensitivity_Protocol.py", title="Sensitivity Protocol", icon="🧭"),
+    st.Page("pages/10_Mixing_Sensitivity_Protocol.py", title="Reaction Sensitivity Protocol", icon="🧭"),
+    st.Page("pages/11_Crystallization_Sensitivity_Protocol.py", title="Crystallization Sensitivity Protocol", icon="💎"),
     st.Page("pages/5_Mixing_Sensitivity.py", title="Mixing Assessment", icon="🌀"),
     st.Page("pages/6_Bourne_Protocol.py",    title="Bourne Protocol",    icon="🧐"),
     st.Page("pages/7_Reactor_Comparison.py", title="Reactor Comparison", icon="📈"),
@@ -49,6 +48,7 @@ reference = [
     st.Page("pages/equations_particles.py",      title="Solid Particles",         icon="📐"),
     st.Page("pages/equations_scaleup.py",        title="Scale-Up & Properties",   icon="📐"),
     st.Page("pages/equations_rom.py",            title="ROM & Experimental",      icon="📐"),
+    st.Page("pages/equations_crystallization.py", title="Crystallization",         icon="📐"),
 ]
 
 admin = [
@@ -66,5 +66,7 @@ nav = st.navigation({
 },
 position="sidebar",
 expanded=False)
+
+render_sidebar()
 
 nav.run()

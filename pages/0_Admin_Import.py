@@ -622,3 +622,197 @@ if st.session_state.get("_show_msp_tree"):
             file_name="mixing_sensitivity_protocol.svg",
             mime="image/svg+xml",
         )
+
+# ─────────────────────────────────────────────────────────────────────────
+# 9. Crystallization Sensitivity Protocol Decision Tree
+# ─────────────────────────────────────────────────────────────────────────
+st.divider()
+st.header("7 · Crystallization Sensitivity Protocol – Decision Tree")
+st.caption(
+    "Generate an interactive decision-tree diagram of the Crystallization "
+    "Sensitivity Protocol (pre-screening → crystallization parameters → "
+    "type & supersaturation → nucleation/growth competition → heat transfer → "
+    "Damköhler analysis → summary)."
+)
+
+_CSP_DOT = """
+    digraph cryst_protocol {
+        rankdir=TB
+        fontname="Arial"
+        node [fontname="Arial" fontsize=10 style=filled shape=box
+              fillcolor="#F5F5F5" color="#BDBDBD" margin="0.15,0.08"]
+        edge [fontname="Arial" fontsize=9 color="#616161"]
+
+        /* Start / End */
+        START [label="💎  Start Crystallization\\nSensitivity Protocol" shape=Mrecord
+               fillcolor="#4CAF50" fontcolor=white fontsize=11]
+        SUM   [label="6 · Summary &\\nRecommendations" shape=Mrecord
+               fillcolor="#2196F3" fontcolor=white fontsize=11]
+
+        /* Step 0 – Bourne pre-screening */
+        BOURNE [label="0 · Bourne Pre-Screen\\n(vary impeller speed/feed rate)" shape=diamond
+                fillcolor="#E3F2FD" color="#90CAF9"]
+        B_SENS [label="🔴 Mixing sensitivity\\nconfirmed experimentally"
+                fillcolor="#FFEBEE" color="#EF9A9A"]
+        B_OK   [label="🟢 No sensitivity\\nobserved at lab scale"
+                fillcolor="#E8F5E9" color="#81C784"]
+        B_SKIP [label="⚪ Skipped\\n(proceed with theory)"
+                fillcolor="#F5F5F5" color="#BDBDBD"]
+
+        /* Step 1 – Crystallization parameters */
+        CP [label="1 · Crystallization\\nParameters" shape=diamond
+            fillcolor="#E3F2FD" color="#90CAF9"]
+        CP_DB  [label="Select from\\nCrystallization DB"
+                fillcolor="#E8F5E9" color="#81C784"]
+        CP_MAN [label="Enter parameters\\nmanually"
+                fillcolor="#FFF3E0" color="#FFB74D"]
+        CP_OK  [label="Parameters loaded:\\nt_ind, k_g, σ, MSZW,\\nΔH_cryst, polymorph info"
+                fillcolor="#E8F5E9" color="#81C784"]
+        CP_DER [label="Derived times:\\nt_G = L_target / G\\nG = k_g · σ^g"
+                fillcolor="#FFF8E1" color="#FFD54F"]
+
+        /* Step 2 – Type & supersaturation */
+        TY [label="2 · Crystallization Type\\n& Supersaturation" shape=diamond
+            fillcolor="#E3F2FD" color="#90CAF9"]
+        TY_COOL [label="🟢 Cooling / Evap\\nLow inherent risk\\n→ macromixing concern"
+                 fillcolor="#E8F5E9" color="#81C784"]
+        TY_FEED [label="🔴 Anti-solvent /\\nReactive / pH-shift\\nHigh inherent risk\\n→ micro/mesomixing"
+                 fillcolor="#FFEBEE" color="#EF9A9A"]
+        SIG [label="σ / σ_max\\nratio?" shape=diamond
+             fillcolor="#E3F2FD" color="#90CAF9"]
+        SIG_HI [label="⚠️ Near metastable\\nlimit — σ spike risk"
+                fillcolor="#FFF8E1" color="#FFD54F"]
+        SIG_OK [label="🟢 Well within\\nmetastable zone"
+                fillcolor="#E8F5E9" color="#81C784"]
+
+        /* Step 3 – Nucleation / growth competition */
+        NG [label="3 · Nucleation / Growth\\nCompetition" shape=diamond
+            fillcolor="#E3F2FD" color="#90CAF9"]
+        NG_INFO [label="B ∝ σ^n  (n ~ 2–10)\\nG ∝ σ^g  (g ~ 1–2)\\nn >> g → nucleation\\nmore σ-sensitive"
+                 fillcolor="#FFF8E1" color="#FFD54F"]
+        NG_MICRO [label="🔴 Feed-sensitive:\\nmicro/mesomixing\\ncontrols local σ"
+                  fillcolor="#FFEBEE" color="#EF9A9A"]
+        NG_FAST  [label="🟡 Fast t_ind\\n(< 10 s) — sensitive\\neven without feed"
+                  fillcolor="#FFF8E1" color="#FFD54F"]
+        NG_OK    [label="🟢 Slow nucleation\\n→ low mixing risk"
+                  fillcolor="#E8F5E9" color="#81C784"]
+        POLY [label="Polymorphism?" shape=diamond
+              fillcolor="#E3F2FD" color="#90CAF9"]
+        POLY_Y [label="⚠️ Ostwald's rule:\\nmetastable form may\\nnucleate at high σ"
+                fillcolor="#FFF8E1" color="#FFD54F"]
+        SEED [label="Seeded?" shape=diamond
+              fillcolor="#E3F2FD" color="#90CAF9"]
+        SEED_Y [label="🟢 Seed surface area\\nreduces nucleation\\ndependence (2–5× less\\nmixing-sensitive)"
+                fillcolor="#E8F5E9" color="#81C784"]
+        SEED_N [label="🟡 Unseeded:\\nall nucleation is\\nprimary/secondary"
+                fillcolor="#FFF8E1" color="#FFD54F"]
+
+        /* Step 4 – Heat transfer */
+        HT [label="4 · Heat Transfer\\nScreening" shape=diamond
+            fillcolor="#E3F2FD" color="#90CAF9"]
+        HT_HI  [label="🔴 |ΔH| ≥ 40 kJ/mol\\nHeat removal may limit\\ncooling/feed rates"
+                fillcolor="#FFEBEE" color="#EF9A9A"]
+        HT_MED [label="🟡 |ΔH| 20–40 kJ/mol\\nCheck at scale"
+                fillcolor="#FFF8E1" color="#FFD54F"]
+        HT_LO  [label="🟢 |ΔH| < 20 kJ/mol\\nHeat not limiting"
+                fillcolor="#E8F5E9" color="#81C784"]
+
+        /* Step 5 – Damköhler analysis */
+        DA [label="5 · Damköhler Analysis\\nt_mix vs t_cryst" shape=diamond
+            fillcolor="#E3F2FD" color="#90CAF9"]
+        DA_INFO [label="Da_micro = t_E / t_ind\\nDa_macro = θ₉₅ / t_G"
+                 fillcolor="#FFF8E1" color="#FFD54F"]
+        DA_HI  [label="🔴 Da > 1\\nMixing-sensitive"
+                fillcolor="#FFEBEE" color="#EF9A9A"]
+        DA_MED [label="🟡 Da 0.1 – 1\\nPotentially sensitive"
+                fillcolor="#FFF8E1" color="#FFD54F"]
+        DA_LO  [label="🟢 Da < 0.1\\nNot sensitive"
+                fillcolor="#E8F5E9" color="#81C784"]
+
+        /* Edges — Step 0 */
+        START -> BOURNE
+
+        BOURNE -> B_SENS [label="Sensitivity\\nconfirmed"]
+        BOURNE -> B_OK   [label="No change\\nobserved"]
+        BOURNE -> B_SKIP [label="Skip"]
+        B_SENS -> CP
+        B_OK   -> CP
+        B_SKIP -> CP
+
+        /* Edges — Step 1 */
+        CP -> CP_DB  [label="From DB"]
+        CP -> CP_MAN [label="Manual"]
+        CP_DB  -> CP_OK
+        CP_MAN -> CP_OK
+        CP_OK  -> CP_DER
+        CP_DER -> TY
+
+        /* Edges — Step 2 */
+        TY -> TY_COOL [label="Cooling /\\nEvaporative"]
+        TY -> TY_FEED [label="Anti-solvent /\\nReactive / pH-shift"]
+        TY_COOL -> SIG
+        TY_FEED -> SIG
+        SIG -> SIG_HI [label="σ/σ_max > 0.4"]
+        SIG -> SIG_OK [label="σ/σ_max ≤ 0.4"]
+        SIG_HI -> NG
+        SIG_OK -> NG
+
+        /* Edges — Step 3 */
+        NG -> NG_INFO [style=dashed label="Background"]
+        NG -> NG_MICRO [label="Feed-sensitive\\ntype"]
+        NG -> NG_FAST  [label="t_ind < 10 s"]
+        NG -> NG_OK    [label="Slow nucleation\\n& no feed"]
+        NG_MICRO -> POLY
+        NG_FAST  -> POLY
+        NG_OK    -> POLY
+        POLY -> POLY_Y [label="Yes"]
+        POLY -> SEED   [label="No"]
+        POLY_Y -> SEED
+        SEED -> SEED_Y [label="Yes"]
+        SEED -> SEED_N [label="No"]
+        SEED_Y -> HT
+        SEED_N -> HT
+
+        /* Edges — Step 4 */
+        HT -> HT_HI  [label="|ΔH| ≥ 40"]
+        HT -> HT_MED [label="20–40"]
+        HT -> HT_LO  [label="< 20 or\\nunknown"]
+        HT_HI  -> DA
+        HT_MED -> DA
+        HT_LO  -> DA
+
+        /* Edges — Step 5 */
+        DA -> DA_INFO [style=dashed label="Definitions"]
+        DA -> DA_HI  [label="Da > 1"]
+        DA -> DA_MED [label="0.1 – 1"]
+        DA -> DA_LO  [label="Da < 0.1"]
+
+        DA_HI  -> SUM
+        DA_MED -> SUM
+        DA_LO  -> SUM
+    }
+"""
+
+if st.button("💎 Generate Crystallization Sensitivity Protocol Decision Tree", key="gen_csp_tree"):
+    st.session_state["_show_csp_tree"] = True
+
+if st.session_state.get("_show_csp_tree"):
+    st.graphviz_chart(_CSP_DOT, width='content')
+
+    # Export buttons
+    _csp_graph = graphviz.Source(_CSP_DOT)
+    _col_png3, _col_svg3, _ = st.columns([1, 1, 4])
+    with _col_png3:
+        st.download_button(
+            "⬇️ Download PNG",
+            data=_csp_graph.pipe(format="png"),
+            file_name="crystallization_sensitivity_protocol.png",
+            mime="image/png",
+        )
+    with _col_svg3:
+        st.download_button(
+            "⬇️ Download SVG",
+            data=_csp_graph.pipe(format="svg"),
+            file_name="crystallization_sensitivity_protocol.svg",
+            mime="image/svg+xml",
+        )

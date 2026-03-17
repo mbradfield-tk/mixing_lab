@@ -63,7 +63,7 @@ def _set(name: str, value):
 
 
 # ── Page header ──────────────────────────────────────────────────────────
-st.title("🧭 Mixing Sensitivity Protocol")
+st.title("🧭 Reaction Sensitivity Protocol")
 st.caption(
     "An interactive decision tree to assess which mixing mechanisms "
     "may limit your reaction at scale."
@@ -73,7 +73,7 @@ st.caption(
 _IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "general"
 _MSP_IMG = _IMG_DIR / "mixing_sensitivity_protocol-2.png"
 
-with st.expander("📋 Protocol overview", expanded=True):
+with st.expander("📋 Protocol overview", expanded=False):
     if _MSP_IMG.exists():
         st.image(str(_MSP_IMG), caption="Mixing Sensitivity Protocol – Decision Tree")
     else:
