@@ -8,7 +8,6 @@ Includes key metrics, operating envelope plots, and sensitivity assessment.
 import streamlit as st
 import pathlib
 import io
-import tempfile
 import datetime
 import numpy as np
 import plotly.graph_objects as go
@@ -19,7 +18,6 @@ _ROOT = pathlib.Path(__file__).resolve().parent.parent
 _LOGO = _ROOT / "images" / "general" / "logo.png"
 
 # DejaVu Sans – Unicode-capable TTF bundled with matplotlib
-_FONT_DIR = pathlib.Path(__file__).resolve().parent.parent  # searched below
 def _find_dejavu() -> pathlib.Path | None:
     """Locate DejaVuSans.ttf from the matplotlib package."""
     try:
@@ -32,6 +30,29 @@ def _find_dejavu() -> pathlib.Path | None:
     return None
 
 _DEJAVU_DIR = _find_dejavu()
+
+# Unicode → ASCII substitution map (used when falling back to Helvetica)
+_UNICODE_MAP = str.maketrans({
+    "\u2014": "--",   # em dash
+    "\u2013": "-",    # en dash
+    "\u00b7": ".",    # middle dot
+    "\u00b0": "deg",  # degree
+    "\u00b2": "2",    # superscript 2
+    "\u00b3": "3",    # superscript 3
+    "\u00b5": "u",    # micro sign
+    "\u03b7": "eta",  # eta
+    "\u03b5": "eps",  # epsilon
+    "\u03bb": "lambda",
+    "\u03c1": "rho",
+    "\u03c6": "phi",
+    "\u0394": "D",    # Delta
+})
+
+def _safe_text(text: str, is_unicode_font: bool) -> str:
+    """If using a non-Unicode font, replace special characters with ASCII."""
+    if is_unicode_font:
+        return text
+    return text.translate(_UNICODE_MAP).encode("latin-1", errors="replace").decode("latin-1")
 
 st.title("📄 Mixing Assessment Report")
 
@@ -195,27 +216,33 @@ class MixingReport(FPDF):
     """Custom FPDF subclass with header/footer branding."""
 
     _FONT = "DejaVu"   # registered family name
+    _unicode_font = True
 
     def __init__(self, logo_path: str | None, report_title: str, **kw):
         super().__init__(**kw)
         self._logo_path = logo_path
         self._report_title = report_title
         self.set_auto_page_break(auto=True, margin=25)
-        # Register DejaVu Sans (Unicode-capable)
+        # Register DejaVu Sans (Unicode-capable), fall back to Helvetica
         if _DEJAVU_DIR:
-            self.add_font("DejaVu", "",  str(_DEJAVU_DIR / "DejaVuSans.ttf"))
-            self.add_font("DejaVu", "B", str(_DEJAVU_DIR / "DejaVuSans-Bold.ttf"))
-            self.add_font("DejaVu", "I", str(_DEJAVU_DIR / "DejaVuSans-Oblique.ttf"))
-            self.add_font("DejaVu", "BI", str(_DEJAVU_DIR / "DejaVuSans-BoldOblique.ttf"))
+            try:
+                self.add_font("DejaVu", "",  str(_DEJAVU_DIR / "DejaVuSans.ttf"))
+                self.add_font("DejaVu", "B", str(_DEJAVU_DIR / "DejaVuSans-Bold.ttf"))
+                self.add_font("DejaVu", "I", str(_DEJAVU_DIR / "DejaVuSans-Oblique.ttf"))
+                self.add_font("DejaVu", "BI", str(_DEJAVU_DIR / "DejaVuSans-BoldOblique.ttf"))
+            except Exception:
+                self._FONT = "Helvetica"
+                self._unicode_font = False
         else:
-            self._FONT = "Helvetica"  # fallback
+            self._FONT = "Helvetica"
+            self._unicode_font = False
 
     def header(self):
         if self._logo_path and pathlib.Path(self._logo_path).exists():
             self.image(self._logo_path, x=10, y=8, h=12)
         self.set_font(self._FONT, "B", 10)
         self.set_text_color(100, 100, 100)
-        self.cell(0, 10, self._report_title, align="R")
+        self.cell(0, 10, self._s(self._report_title), align="R")
         self.ln(14)
         # Thin line under header
         self.set_draw_color(200, 200, 200)
@@ -234,26 +261,30 @@ class MixingReport(FPDF):
         self.cell(0, 10, f"Page {self.page_no()}/{{nb}}", align="R")
 
     # ── convenience methods ──────────────────────────────────────────────
+    def _s(self, text: str) -> str:
+        """Sanitise text for the active font."""
+        return _safe_text(text, self._unicode_font)
+
     def section_title(self, text: str):
         self.set_font(self._FONT, "B", 13)
         self.set_text_color(30, 30, 80)
-        self.cell(0, 9, text)
+        self.cell(0, 9, self._s(text))
         self.ln(10)
 
     def sub_title(self, text: str):
         self.set_font(self._FONT, "B", 11)
         self.set_text_color(50, 50, 50)
-        self.cell(0, 8, text)
+        self.cell(0, 8, self._s(text))
         self.ln(8)
 
     def kv(self, key: str, value: str, bold_val: bool = False):
         self.set_font(self._FONT, "", 10)
         self.set_text_color(60, 60, 60)
-        self.cell(70, 6, key)
+        self.cell(70, 6, self._s(key))
         style = "B" if bold_val else ""
         self.set_font(self._FONT, style, 10)
         self.set_text_color(20, 20, 20)
-        self.cell(0, 6, value)
+        self.cell(0, 6, self._s(value))
         self.ln(6)
 
     def metric_table(self, rows: list[tuple[str, str]], cols: int = 2):
@@ -264,10 +295,10 @@ class MixingReport(FPDF):
             if i > 0 and i % cols == 0:
                 self.ln(6)
             self.set_text_color(80, 80, 80)
-            self.cell(col_w, 6, k)
+            self.cell(col_w, 6, self._s(k))
             self.set_text_color(20, 20, 20)
             self.set_font(self._FONT, "B", 9)
-            self.cell(col_w, 6, v)
+            self.cell(col_w, 6, self._s(v))
             self.set_font(self._FONT, "", 9)
         self.ln(8)
 
@@ -285,7 +316,7 @@ class MixingReport(FPDF):
         self.set_fill_color(br, bg, bb)
         self.set_text_color(r, g, b)
         self.set_font(self._FONT, "B", 10)
-        self.cell(0, 8, f"  {text}", fill=True)
+        self.cell(0, 8, f"  {self._s(text)}", fill=True)
         self.ln(9)
         self.set_text_color(0, 0, 0)
 
@@ -300,7 +331,7 @@ def _build_pdf() -> bytes:
     pdf.add_page()
     pdf.set_font(pdf._FONT, "B", 20)
     pdf.set_text_color(30, 30, 80)
-    pdf.cell(0, 14, "Mixing Assessment Report", align="C")
+    pdf.cell(0, 14, pdf._s("Mixing Assessment Report"), align="C")
     pdf.ln(18)
 
     pdf.section_title("System Configuration")
@@ -421,9 +452,9 @@ def _build_pdf() -> bytes:
         pdf.set_font(pdf._FONT, "", 9)
         pdf.set_text_color(80, 80, 80)
         env_info = envelope
-        pdf.cell(0, 6,
+        pdf.cell(0, 6, pdf._s(
                  f"RPM range: {env_info['rpm_min']:.0f} - {env_info['rpm_max']:.0f}  |  "
-                 f"Volume range: {env_info['env_V_min']:.1f} - {env_info['env_V_max']:.1f} L")
+                 f"Volume range: {env_info['env_V_min']:.1f} - {env_info['env_V_max']:.1f} L"))
         pdf.ln(10)
 
         _chart_count_on_page = 0
@@ -435,14 +466,13 @@ def _build_pdf() -> bytes:
                 png = _fig_to_png_bytes(fig)
             except Exception:
                 continue
+            if not png or png[:4] != b"\x89PNG":
+                continue
             # Each chart: ~90mm tall. Fit 2 per page
             if _chart_count_on_page >= 2:
                 pdf.add_page()
                 _chart_count_on_page = 0
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                tmp.write(png)
-                tmp.flush()
-                pdf.image(tmp.name, x=15, w=180)
+            pdf.image(io.BytesIO(png), x=15, w=180)
             pdf.ln(5)
             _chart_count_on_page += 1
 
