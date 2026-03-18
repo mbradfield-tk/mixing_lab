@@ -966,6 +966,45 @@ st.dataframe(hydro_df, width='content')
 if particle_results:
     st.caption(f"Particle: **{particle_meta['Particle']}**  ·  {particle_meta['Suspension']}")
 
+# ── Persist snapshot for report page ─────────────────────────────────────
+def _serialise_envelope() -> dict | None:
+    """Convert envelope data (with numpy arrays) to JSON-safe form."""
+    if not _can_envelope:
+        return None
+    cd_serial = {}
+    for ml, vols in curve_data.items():
+        cd_serial[ml] = {}
+        for vk, params in vols.items():
+            cd_serial[ml][vk] = {p: arr.tolist() for p, arr in params.items()}
+    return {
+        "curve_data": cd_serial,
+        "pct_arr": pct_arr.tolist(),
+        "active_modes": list(_active_modes),
+        "priority_mode_label": _priority_mode_label,
+        "current_pct": _current_pct,
+        "env_V_max": _env_V_max,
+        "env_V_min": _env_V_min,
+        "rpm_max": _rpm_max,
+        "rpm_min": _rpm_min,
+    }
+
+st.session_state["_ms_report_snapshot"] = {
+    "reactor": reactor_name,
+    "reaction": reaction_name,
+    "fluid": fluid_name,
+    "fluid_T_C": fluid_T_C,
+    "N_rpm": _N_rpm_input,
+    "V_L": V_L,
+    "hydro": dict(hydro),
+    "da": dict(da),
+    "t_rxn": t_rxn,
+    "heat_results": dict(heat_results) if heat_results else {},
+    "particle_results": dict(particle_results) if particle_results else {},
+    "particle_meta": dict(particle_meta) if particle_meta else {},
+    "batchelor_um": lam_B * 1e6,
+    "envelope": _serialise_envelope(),
+}
+
 # ── Step 4: Save to recorded results ────────────────────────────────────
 st.header("6 · Save Result")
 

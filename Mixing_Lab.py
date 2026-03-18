@@ -38,6 +38,7 @@ tools = [
 
 results = [
     st.Page("pages/8_Recorded_Results.py", title="Recorded Results", icon="📋"),
+    st.Page("pages/12_Mixing_Report.py",   title="Mixing Report",   icon="📄"),
 ]
 
 reference = [
