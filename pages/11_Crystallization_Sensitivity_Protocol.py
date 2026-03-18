@@ -101,7 +101,7 @@ def _reset_csp():
 # ═══════════════════════════════════════════════════════════════════════
 # PAGE HEADER
 # ═══════════════════════════════════════════════════════════════════════
-st.title("🔬 Crystallization Sensitivity Protocol")
+st.title("💎 Crystallization Sensitivity Protocol")
 st.caption(
     "An interactive decision tree to assess which mixing mechanisms "
     "may limit a pharmaceutical crystallization at scale."
