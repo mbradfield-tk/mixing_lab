@@ -54,6 +54,7 @@ reference = [
 
 admin = [
     st.Page("pages/0_Admin_Import.py", title="Admin Tools", icon="🛠️"),
+    st.Page("pages/13_ROM_Fitting.py", title="ROM / Correlation Fitting", icon="🔧"),
 ]
 
 nav = st.navigation({

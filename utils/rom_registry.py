@@ -525,3 +525,53 @@ register(_DEMO_REACTOR, Correlation(
         "eps_kg": "Mass-specific energy dissipation rate (W/kg)",
     },
 ))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Auto-load saved fitted correlations from JSON
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _load_saved_correlations() -> None:
+    """Load fitted correlations persisted by the ROM Fitting page."""
+    import json
+    import pathlib
+
+    saved_file = (
+        pathlib.Path(__file__).resolve().parent.parent
+        / "data" / "fitted_correlations.json"
+    )
+    if not saved_file.exists():
+        return
+
+    # Late import to avoid circular dependency
+    from utils.rom_templates import template_by_id
+
+    try:
+        with open(saved_file, "r") as f:
+            entries = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return
+
+    for entry in entries:
+        tmpl = template_by_id(entry.get("template_id", ""))
+        if tmpl is None:
+            continue
+        coeffs = np.array(entry["coeffs"])
+        func = tmpl.build_func(coeffs)
+        latex = tmpl.latex_filled(coeffs)
+        register(
+            entry["reactor_name"],
+            Correlation(
+                name=entry["name"],
+                param=entry["param"],
+                corr_type=entry["corr_type"],
+                func=func,
+                latex=latex,
+                source=entry.get("source", "Fitted in Mixing Lab"),
+                description=entry.get("description", ""),
+                input_params=tmpl.column_labels,
+            ),
+        )
+
+
+_load_saved_correlations()

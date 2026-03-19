@@ -534,7 +534,7 @@ env_df["RPM_pct"] = env_df["RPM"] / env_df["RPM_max"] * 100
 
 # ── Aggregate min / max per reactor for plotting ─────────────────────────
 PLOT_PARAMS = [
-    "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)",
+    "Power (W)", "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)",
     "Circulation time (s)",
     "Micromix time t_E (s)", "Micromix time t_E_local (s)",
     "Kolmogorov η (µm)", "Re",

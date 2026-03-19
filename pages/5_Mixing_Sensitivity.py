@@ -971,7 +971,7 @@ if _can_envelope:
     _r_wall_mm_env = _safe(reactor.get("wall_thickness_mm"), 0.0)
 
     PLOT_PARAMS = [
-        "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)",
+        "Power (W)", "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)",
         "Circulation time (s)",
         "Micromix time t_E (s)", "Micromix time t_E_local (s)",
         "Kolmogorov η (µm)", "Re",
