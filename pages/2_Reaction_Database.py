@@ -15,6 +15,7 @@ def _load_reactions() -> pd.DataFrame:
     return pd.DataFrame(columns=[
         "reaction_name", "type", "order", "k_value", "k_units",
         "C0_mol_L", "t_rxn_s", "T_C", "solvent", "delta_H_kJ_mol", "notes",
+        "reaction_scheme",
     ])
 
 
@@ -35,6 +36,23 @@ tab_browse, tab_add, tab_import = st.tabs(["Browse & Edit", "Add Reaction", "Imp
 # ── Browse & Edit ─────────────────────────────────────────────────────────
 with tab_browse:
     st.markdown("Edit kinetic data inline.  Click **Save changes** when done.")
+
+    # ── Reaction scheme display ───────────────────────────────────────────
+    rxn_names = st.session_state.reaction_db["reaction_name"].dropna().tolist()
+    selected_rxn = st.selectbox("Select reaction to view scheme", ["— none —"] + rxn_names, key="rxn_scheme_select")
+    if selected_rxn != "— none —":
+        row = st.session_state.reaction_db[st.session_state.reaction_db["reaction_name"] == selected_rxn]
+        if not row.empty:
+            scheme = row.iloc[0].get("reaction_scheme", "")
+            if pd.notna(scheme) and str(scheme).strip():
+                st.markdown(
+                    f'<div style="background:#f0f2f6; border-left:4px solid #4e8cff; '
+                    f'padding:12px 16px; border-radius:6px; font-size:1.15em; '
+                    f'font-family:monospace; margin-bottom:12px;">{scheme}</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.info("No reaction scheme available for this reaction.")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -127,6 +145,11 @@ with tab_add:
         with c5:
             notes = st.text_area("Notes",
                                  value=str(_tpl("notes", "")))
+        rxn_scheme = st.text_input(
+            "Reaction scheme",
+            value=str(_tpl("reaction_scheme", "")),
+            help="Text-based reaction scheme, e.g. A + B → C + D",
+        )
         submitted = st.form_submit_button("Add reaction")
 
         if submitted and name:
@@ -143,6 +166,7 @@ with tab_add:
                 "k_value": k_val, "k_units": k_units, "C0_mol_L": C0,
                 "t_rxn_s": t_rxn, "T_C": T, "solvent": solvent,
                 "delta_H_kJ_mol": delta_H, "notes": notes,
+                "reaction_scheme": rxn_scheme,
             }])
             st.session_state.reaction_db = pd.concat(
                 [st.session_state.reaction_db, new], ignore_index=True)

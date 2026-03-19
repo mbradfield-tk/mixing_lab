@@ -1,14 +1,14 @@
-reaction_name,type,order,k_value,k_units,C0_mol_L,t_rxn_s,T_C,solvent,delta_H_kJ_mol,notes
-Grignard addition,Nucleophilic addition,2,0.5,L/(mol·s),1.0,2.0,25,THF,-80.0,Typical Grignard – fast and exothermic
-Suzuki coupling,Cross-coupling,pseudo-1,0.005,1/s,0.1,139.0,80,DMF/H2O,-50.0,Pd-catalyzed; moderate rate at reflux
-Amide bond formation (EDC),Coupling,2,0.02,L/(mol·s),0.2,250.0,25,DCM,-30.0,Standard peptide coupling
-Buchwald–Hartwig amination,Cross-coupling,pseudo-1,0.002,1/s,0.05,347.0,100,Toluene,-45.0,Pd/ligand catalyzed C–N coupling
-Diazotization,Electrophilic,2,50.0,L/(mol·s),0.5,0.04,0,Water/HCl,-65.0,Very fast – highly mixing-sensitive
-Nitration (aromatic),Electrophilic substitution,2,5.0,L/(mol·s),2.0,0.1,5,H2SO4/HNO3,-150.0,Fast exothermic – mixing-sensitive
-Hydrogenation (Pd/C),Heterogeneous,pseudo-1,0.01,1/s,0.3,69.0,25,MeOH,-120.0,Gas–liquid–solid system
-Ester hydrolysis (base),Nucleophilic acyl sub.,2,0.1,L/(mol·s),0.5,20.0,25,Water/THF,-10.0,Moderate rate
-Curtius rearrangement,Rearrangement,1,0.001,1/s,0.2,693.0,80,Toluene,-60.0,Slow thermal rearrangement
-Aldol condensation,Addition,2,0.3,L/(mol·s),0.8,4.2,−20,THF,-25.0,Low-temp enolate chemistry
-Crystallization (anti-solvent),Phase change,,0.0,,0.0,5.0,25,Various,0.0,Mixing-sensitive nucleation event
-Bromination (electrophilic),Electrophilic addition,2,8.0,L/(mol·s),1.0,0.125,25,DCM,-100.0,Fast – selectivity depends on mixing
-Hydrogenation (Pd/C) TAK-279,Heterogeneous,pseudo-1,0.01,1/s,0.3,69.0,30,MeOH,-10.0,Gas–liquid–solid system
+reaction_name,type,order,k_value,k_units,C0_mol_L,t_rxn_s,T_C,solvent,delta_H_kJ_mol,notes,reaction_scheme
+Grignard addition,Nucleophilic addition,2,0.5,L/(mol·s),1.0,2.0,25,THF,-80.0,Typical Grignard – fast and exothermic,R-MgBr + R'C(=O)R'' → R'R''(R)C-OMgBr → R'R''(R)C-OH
+Suzuki coupling,Cross-coupling,pseudo-1,0.005,1/s,0.1,139.0,80,DMF/H2O,-50.0,Pd-catalyzed; moderate rate at reflux,Ar-X + Ar'-B(OH)₂ —[Pd]→ Ar-Ar' + X-B(OH)₂
+Amide bond formation (EDC),Coupling,2,0.02,L/(mol·s),0.2,250.0,25,DCM,-30.0,Standard peptide coupling,R-COOH + H₂N-R' —[EDC/HOBt]→ R-C(=O)-NH-R' + Urea
+Buchwald–Hartwig amination,Cross-coupling,pseudo-1,0.002,1/s,0.05,347.0,100,Toluene,-45.0,Pd/ligand catalyzed C–N coupling,Ar-X + HN(R)R' —[Pd/Ligand/Base]→ Ar-N(R)R' + HX
+Diazotization,Electrophilic,2,50.0,L/(mol·s),0.5,0.04,0,Water/HCl,-65.0,Very fast – highly mixing-sensitive,Ar-NH₂ + NaNO₂ + HCl → [Ar-N≡N]⁺ Cl⁻ + NaCl + H₂O
+Nitration (aromatic),Electrophilic substitution,2,5.0,L/(mol·s),2.0,0.1,5,H2SO4/HNO3,-150.0,Fast exothermic – mixing-sensitive,Ar-H + HNO₃ —[H₂SO₄]→ Ar-NO₂ + H₂O
+Hydrogenation (Pd/C),Heterogeneous,pseudo-1,0.01,1/s,0.3,69.0,25,MeOH,-120.0,Gas–liquid–solid system,R₁C=CR₂ + H₂ —[Pd/C]→ R₁CH-CHR₂
+Ester hydrolysis (base),Nucleophilic acyl sub.,2,0.1,L/(mol·s),0.5,20.0,25,Water/THF,-10.0,Moderate rate,R-C(=O)-OR' + NaOH → R-COO⁻ Na⁺ + R'-OH
+Curtius rearrangement,Rearrangement,1,0.001,1/s,0.2,693.0,80,Toluene,-60.0,Slow thermal rearrangement,R-C(=O)-N₃ —[Δ]→ R-N=C=O + N₂ → R-NH₂ (+ CO₂)
+Aldol condensation,Addition,2,0.3,L/(mol·s),0.8,4.2,−20,THF,-25.0,Low-temp enolate chemistry,R-CH₂-C(=O)-R' —[Base]→ R-CH=C(OH)-R' + R''-CHO → β-hydroxy ketone
+Crystallization (anti-solvent),Phase change,,0.0,,0.0,5.0,25,Various,0.0,Mixing-sensitive nucleation event,Solute (dissolved) + Anti-solvent → Supersaturation → Nucleation → Crystal Growth
+Bromination (electrophilic),Electrophilic addition,2,8.0,L/(mol·s),1.0,0.125,25,DCM,-100.0,Fast – selectivity depends on mixing,Ar-H + Br₂ —[cat.]→ Ar-Br + HBr
+Hydrogenation (Pd/C) TAK-279,Heterogeneous,pseudo-1,0.01,1/s,0.3,69.0,30,MeOH,-10.0,Gas–liquid–solid system,Substrate + H₂ —[Pd/C]→ Reduced product
