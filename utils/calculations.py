@@ -1248,3 +1248,232 @@ def time_to_cool_or_heat(rho: float, V_L: float, Cp: float,
     if ratio <= 0 or ratio <= 1:
         return np.inf  # unreachable target or already there
     return (rho * V_L * Cp) / (U * A) * np.log(ratio)
+
+
+# ---------------------------------------------------------------------------
+# Gas-liquid: gas holdup, Sauter mean bubble diameter, flooding speed
+# ---------------------------------------------------------------------------
+
+def gas_holdup_hughmark(v_s: float, P_V: float, mu: float,
+                        sigma: float, rho: float) -> float:
+    """Gas holdup (volume fraction) — simplified Hughmark (1967) / Yawalkar.
+
+    ε_G = 0.505 · v_s^0.47 · (P/V)^0.4 · (µ/σ)^0.08
+
+    Parameters
+    ----------
+    v_s   : float – superficial gas velocity (m/s)
+    P_V   : float – gassed power per unit volume (W/m³)
+    mu    : float – liquid viscosity (Pa·s)
+    sigma : float – surface tension (N/m)
+    rho   : float – liquid density (kg/m³)  (unused here, kept for API consistency)
+
+    Returns  ε_G (dimensionless, 0–1).
+    Reference: Hughmark, G. A. (1967). Ind. Eng. Chem. Process Des. Dev.
+    """
+    if v_s <= 0 or P_V <= 0 or sigma <= 0:
+        return 0.0
+    eps_G = 0.505 * v_s**0.47 * P_V**0.4 * (mu / sigma)**0.08
+    return min(eps_G, 0.95)
+
+
+def sauter_bubble_diameter(P_V: float, v_s: float, sigma: float,
+                           rho: float) -> float:
+    """Sauter mean bubble diameter d₃₂ — Calderbank (1958).
+
+    d₃₂ = 4.15 · [σ^0.6 / (ε^0.4 · ρ_L^0.2)] · ε_G^0.5 + 0.0009
+
+    Simplified form for mechanically agitated vessels:
+        d₃₂ = 4.15 · σ^0.6 / [(P/V)^0.4 · ρ_L^0.2] + 0.0009
+
+    Parameters
+    ----------
+    P_V   : float – power per unit volume (W/m³)
+    v_s   : float – superficial gas velocity (m/s)
+    sigma : float – surface tension (N/m)
+    rho   : float – liquid density (kg/m³)
+
+    Returns  d₃₂ in metres.
+    Reference: Calderbank, P. H. (1958). Trans. Inst. Chem. Engrs., 36, 443.
+    """
+    if P_V <= 0 or sigma <= 0 or rho <= 0:
+        return 0.0
+    d32 = 4.15 * sigma**0.6 / (P_V**0.4 * rho**0.2) + 0.0009
+    return max(d32, 1e-6)
+
+
+def gas_flooding_speed(Nq: float, D_imp: float, Q_gas: float) -> float:
+    """Estimate the minimum impeller speed for complete gas dispersion.
+
+    Uses the simplified criterion  Fl_G = Q_gas / (N · D³)  < 0.035
+    → N_flood ≈ Q_gas / (0.035 · D³)
+
+    Parameters
+    ----------
+    Nq     : float – pumping number (dimensionless)
+    D_imp  : float – impeller diameter (m)
+    Q_gas  : float – volumetric gas flow rate (m³/s)
+
+    Returns  N_flood in rev/s;  0 if Q_gas ≤ 0.
+    Reference: Nienow, A.W. et al., Chem. Eng. Sci., 1977.
+    """
+    if Q_gas <= 0 or D_imp <= 0:
+        return 0.0
+    Fl_crit = 0.035
+    return Q_gas / (Fl_crit * D_imp**3)
+
+
+def gas_flow_rate_from_vs(v_s: float, D_tank: float) -> float:
+    """Convert superficial gas velocity to volumetric flow rate.
+
+    Q_gas = v_s · (π/4) · D_tank²
+
+    Returns  Q_gas in m³/s.
+    """
+    if v_s <= 0 or D_tank <= 0:
+        return 0.0
+    return v_s * np.pi / 4 * D_tank**2
+
+
+# ---------------------------------------------------------------------------
+# Liquid-liquid: Weber number, drop size, dispersion, phase separation
+# ---------------------------------------------------------------------------
+
+def weber_number(rho_c: float, N: float, D_imp: float,
+                 sigma_LL: float) -> float:
+    """Impeller Weber number for liquid-liquid systems.
+
+    We = ρ_c · N² · D³ / σ
+
+    Parameters
+    ----------
+    rho_c    : float – continuous-phase density (kg/m³)
+    N        : float – impeller speed (rev/s)
+    D_imp    : float – impeller diameter (m)
+    sigma_LL : float – interfacial tension between the two liquids (N/m)
+
+    Returns We (dimensionless).
+    """
+    if sigma_LL <= 0:
+        return 0.0
+    return rho_c * N**2 * D_imp**3 / sigma_LL
+
+
+def sauter_drop_diameter(We: float, D_imp: float,
+                         phi_d: float = 0.0) -> float:
+    """Sauter mean drop diameter d₃₂ — Hinze-Kolmogorov / Chen & Middleman.
+
+    d₃₂ / D = C₁ · We^{-0.6} · (1 + C₂ · φ_d)
+
+    C₁ = 0.053,  C₂ = 3.0  (typical for Rushton turbine; reasonable for PBT)
+
+    Parameters
+    ----------
+    We    : float – impeller Weber number
+    D_imp : float – impeller diameter (m)
+    phi_d : float – dispersed-phase volume fraction (0–1)
+
+    Returns  d₃₂ in metres.
+    Reference: Hinze (1955); Chen & Middleman (1967).
+    """
+    if We <= 0 or D_imp <= 0:
+        return 0.0
+    C1, C2 = 0.053, 3.0
+    return C1 * D_imp * We**(-0.6) * (1.0 + C2 * phi_d)
+
+
+def phase_separation_check(N: float, D_imp: float, D_tank: float,
+                           rho_c: float, rho_d: float, mu_c: float,
+                           sigma_LL: float, phi_d: float,
+                           g: float = 9.81) -> dict:
+    """Evaluate whether a liquid-liquid dispersion will separate at rest.
+
+    Returns a dict with:
+    - settling_velocity : Stokes settling velocity of mean drop (m/s)
+    - separation_time   : estimated time for complete separation (s)
+    - We                : Weber number
+    - d32               : Sauter mean drop diameter (m)
+    - d32_um            : d32 in µm
+    - assessment        : qualitative description
+
+    Parameters
+    ----------
+    N        : float – impeller speed (rev/s)
+    D_imp    : float – impeller diameter (m)
+    D_tank   : float – tank diameter (m)
+    rho_c    : float – continuous-phase density (kg/m³)
+    rho_d    : float – dispersed-phase density (kg/m³)
+    mu_c     : float – continuous-phase viscosity (Pa·s)
+    sigma_LL : float – interfacial tension (N/m)
+    phi_d    : float – dispersed-phase volume fraction (0–1)
+    g        : float – gravitational acceleration (m/s²)
+    """
+    We = weber_number(rho_c, N, D_imp, sigma_LL)
+    d32 = sauter_drop_diameter(We, D_imp, phi_d)
+    delta_rho = abs(rho_d - rho_c)
+
+    # Stokes settling of mean drop
+    if mu_c > 0 and d32 > 0:
+        v_drop = delta_rho * g * d32**2 / (18.0 * mu_c)
+    else:
+        v_drop = 0.0
+
+    # Rough separation time: liquid height / settling velocity
+    H_est = D_tank  # approximate fill height ~ tank diameter
+    t_sep = H_est / v_drop if v_drop > 0 else np.inf
+
+    if t_sep < 60:
+        assessment = "Rapid separation (< 1 min) — unstable dispersion"
+    elif t_sep < 600:
+        assessment = "Moderate separation (1–10 min)"
+    elif t_sep < 3600:
+        assessment = "Slow separation (10–60 min) — reasonably stable"
+    else:
+        assessment = "Very stable dispersion (> 1 h)"
+
+    return {
+        "We": We,
+        "d32 (m)": d32,
+        "d32 (µm)": d32 * 1e6,
+        "Drop settling velocity (m/s)": v_drop,
+        "Separation time (s)": t_sep,
+        "Assessment": assessment,
+    }
+
+
+def minimum_dispersion_speed(D_imp: float, sigma_LL: float,
+                              rho_c: float, phi_d: float) -> float:
+    """Minimum impeller speed to maintain a dispersion (Skelland & Seksaria).
+
+    N_min ≈ C · [σ / (ρ_c · D³)]^0.5 · (1 + 2.5·φ_d)
+
+    C ≈ 1.03 for Rushton turbine; used as general estimate.
+
+    Returns N_min in rev/s.
+    """
+    if D_imp <= 0 or sigma_LL <= 0 or rho_c <= 0:
+        return 0.0
+    C = 1.03
+    return C * (sigma_LL / (rho_c * D_imp**3))**0.5 * (1.0 + 2.5 * phi_d)
+
+
+def liquid_liquid_mass_transfer(d32: float, D_mol: float,
+                                rho_c: float, mu_c: float,
+                                epsilon_kg: float) -> float:
+    """Liquid-liquid mass-transfer coefficient — Calderbank & Moo-Young (1961).
+
+    Sh = 2 + 0.31 · (Gr · Sc)^{1/3}  for small drops (creeping flow)
+    Simplified to Ranz-Marshall form with turbulent slip velocity:
+        v_slip ≈ (ε · d32)^{1/3}
+
+    k_LL = Sh · D_mol / d32
+
+    Returns k_LL in m/s.
+    """
+    if d32 <= 0 or D_mol <= 0 or mu_c <= 0 or rho_c <= 0:
+        return 0.0
+    v_slip = (max(epsilon_kg, 1e-12) * d32) ** (1.0 / 3.0)
+    Re_d = rho_c * v_slip * d32 / mu_c
+    Sc = mu_c / (rho_c * D_mol)
+    Sh = 2.0 + 0.6 * Re_d**0.5 * Sc**(1.0 / 3.0)
+    return Sh * D_mol / d32

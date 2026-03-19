@@ -82,6 +82,12 @@ class SolventData:
     antoine_B: float = 0.0
     antoine_C: float = 0.0
 
+    # Hansen Solubility Parameters (MPa^0.5) at 25 °C
+    # Sources: Hansen (2007) Handbook, Barton (1991), HSPiP database
+    hsp_d: float = 0.0                 # Dispersion component δ_d
+    hsp_p: float = 0.0                 # Polar component δ_p
+    hsp_h: float = 0.0                 # Hydrogen-bonding component δ_h
+
     # Optional
     aliases: tuple[str, ...] = ()      # Common synonyms / abbreviations
     notes: str = ""
@@ -107,6 +113,7 @@ _add(SolventData(
     Cp_25=4182.0, dCp_dT=0.4,
     k_25=0.607, dk_dT=0.0013,
     antoine_A=8.07131, antoine_B=1730.63, antoine_C=233.426,
+    hsp_d=15.5, hsp_p=16.0, hsp_h=42.3,
     aliases=("H2O", "DI Water", "Deionized Water", "Purified Water"),
 ))
 
@@ -121,6 +128,7 @@ _add(SolventData(
     Cp_25=2531.0, dCp_dT=3.5,
     k_25=0.200, dk_dT=-0.00020,
     antoine_A=8.08097, antoine_B=1582.27, antoine_C=239.726,
+    hsp_d=15.1, hsp_p=12.3, hsp_h=22.3,
     aliases=("MeOH", "Methyl Alcohol", "CH3OH"),
 ))
 
@@ -135,6 +143,7 @@ _add(SolventData(
     Cp_25=2440.0, dCp_dT=4.5,
     k_25=0.167, dk_dT=-0.00020,
     antoine_A=8.20417, antoine_B=1642.89, antoine_C=230.300,
+    hsp_d=15.8, hsp_p=8.8, hsp_h=19.4,
     aliases=("EtOH", "Ethyl Alcohol", "C2H5OH"),
 ))
 
@@ -149,6 +158,7 @@ _add(SolventData(
     Cp_25=2604.0, dCp_dT=5.0,
     k_25=0.135, dk_dT=-0.00018,
     antoine_A=8.11778, antoine_B=1580.92, antoine_C=219.610,
+    hsp_d=15.8, hsp_p=6.1, hsp_h=16.4,
     aliases=("IPA", "iPrOH", "2-Propanol", "Isopropyl Alcohol"),
 ))
 
@@ -163,6 +173,7 @@ _add(SolventData(
     Cp_25=2163.0, dCp_dT=4.0,
     k_25=0.161, dk_dT=-0.00020,
     antoine_A=7.11714, antoine_B=1210.595, antoine_C=229.664,
+    hsp_d=15.5, hsp_p=10.4, hsp_h=7.0,
     aliases=("Me2CO", "Propan-2-one", "Dimethyl Ketone"),
 ))
 
@@ -177,6 +188,7 @@ _add(SolventData(
     Cp_25=2140.0, dCp_dT=4.0,
     k_25=0.145, dk_dT=-0.00018,
     antoine_A=7.06356, antoine_B=1261.339, antoine_C=221.969,
+    hsp_d=16.0, hsp_p=9.0, hsp_h=5.1,
     aliases=("MEK", "Methyl Ethyl Ketone", "Butanone"),
 ))
 
@@ -191,6 +203,7 @@ _add(SolventData(
     Cp_25=2229.0, dCp_dT=2.5,
     k_25=0.188, dk_dT=-0.00018,
     antoine_A=7.09363, antoine_B=1314.400, antoine_C=230.000,
+    hsp_d=15.3, hsp_p=18.0, hsp_h=6.1,
     aliases=("MeCN", "ACN", "CH3CN"),
 ))
 
@@ -205,6 +218,7 @@ _add(SolventData(
     Cp_25=1190.0, dCp_dT=2.5,
     k_25=0.140, dk_dT=-0.00016,
     antoine_A=7.08030, antoine_B=1138.91, antoine_C=231.450,
+    hsp_d=18.2, hsp_p=6.3, hsp_h=6.1,
     aliases=("DCM", "Dichloromethane", "Methylene Chloride", "CH2Cl2"),
 ))
 
@@ -219,6 +233,7 @@ _add(SolventData(
     Cp_25=960.0, dCp_dT=2.0,
     k_25=0.117, dk_dT=-0.00015,
     antoine_A=6.95465, antoine_B=1170.966, antoine_C=226.232,
+    hsp_d=17.8, hsp_p=3.1, hsp_h=5.7,
     aliases=("CHCl3", "Trichloromethane"),
 ))
 
@@ -233,6 +248,7 @@ _add(SolventData(
     Cp_25=1930.0, dCp_dT=4.0,
     k_25=0.151, dk_dT=-0.00018,
     antoine_A=7.10179, antoine_B=1244.951, antoine_C=217.881,
+    hsp_d=15.8, hsp_p=5.3, hsp_h=7.2,
     aliases=("EtOAc", "EA"),
 ))
 
@@ -247,6 +263,7 @@ _add(SolventData(
     Cp_25=1720.0, dCp_dT=3.5,
     k_25=0.120, dk_dT=-0.00015,
     antoine_A=6.99515, antoine_B=1202.290, antoine_C=226.254,
+    hsp_d=16.8, hsp_p=5.7, hsp_h=8.0,
     aliases=("Tetrahydrofuran",),
 ))
 
@@ -261,6 +278,7 @@ _add(SolventData(
     Cp_25=1690.0, dCp_dT=3.0,
     k_25=0.131, dk_dT=-0.00018,
     antoine_A=6.95334, antoine_B=1343.943, antoine_C=219.377,
+    hsp_d=18.0, hsp_p=1.4, hsp_h=2.0,
     aliases=("PhMe", "Tol", "Methylbenzene"),
 ))
 
@@ -275,6 +293,7 @@ _add(SolventData(
     Cp_25=2060.0, dCp_dT=2.5,
     k_25=0.184, dk_dT=-0.00015,
     antoine_A=6.97780, antoine_B=1451.380, antoine_C=202.000,
+    hsp_d=17.4, hsp_p=13.7, hsp_h=11.3,
     aliases=("Dimethylformamide", "N,N-Dimethylformamide"),
 ))
 
@@ -289,6 +308,7 @@ _add(SolventData(
     Cp_25=1960.0, dCp_dT=2.0,
     k_25=0.200, dk_dT=-0.00015,
     antoine_A=7.91178, antoine_B=1956.140, antoine_C=199.820,
+    hsp_d=18.4, hsp_p=16.4, hsp_h=10.2,
     aliases=("Dimethyl Sulfoxide", "Dimethylsulfoxide"),
 ))
 
@@ -303,6 +323,7 @@ _add(SolventData(
     Cp_25=2240.0, dCp_dT=4.5,
     k_25=0.124, dk_dT=-0.00018,
     antoine_A=6.89385, antoine_B=1264.370, antoine_C=216.640,
+    hsp_d=15.3, hsp_p=0.0, hsp_h=0.0,
     aliases=("n-Heptane", "C7H16"),
 ))
 
@@ -317,6 +338,7 @@ _add(SolventData(
     Cp_25=2270.0, dCp_dT=5.0,
     k_25=0.120, dk_dT=-0.00020,
     antoine_A=6.87776, antoine_B=1171.530, antoine_C=224.366,
+    hsp_d=14.9, hsp_p=0.0, hsp_h=0.0,
     aliases=("n-Hexane", "C6H14"),
 ))
 
@@ -331,6 +353,7 @@ _add(SolventData(
     Cp_25=2120.0, dCp_dT=4.0,
     k_25=0.112, dk_dT=-0.00018,
     antoine_A=6.64473, antoine_B=1065.940, antoine_C=228.000,
+    hsp_d=15.2, hsp_p=4.3, hsp_h=5.0,
     aliases=("Methyl tert-Butyl Ether", "tert-Butyl Methyl Ether", "TBME"),
 ))
 
@@ -345,6 +368,7 @@ _add(SolventData(
     Cp_25=2050.0, dCp_dT=2.0,
     k_25=0.158, dk_dT=-0.00015,
     antoine_A=7.38782, antoine_B=1533.313, antoine_C=222.309,
+    hsp_d=14.5, hsp_p=8.0, hsp_h=13.5,
     aliases=("AcOH", "HOAc", "Glacial Acetic Acid", "CH3COOH"),
 ))
 
@@ -359,6 +383,7 @@ _add(SolventData(
     Cp_25=1680.0, dCp_dT=2.0,
     k_25=0.175, dk_dT=-0.00012,
     antoine_A=7.41282, antoine_B=1826.400, antoine_C=201.000,
+    hsp_d=18.0, hsp_p=12.3, hsp_h=7.2,
     aliases=("N-Methyl-2-pyrrolidone", "N-Methylpyrrolidone"),
 ))
 
@@ -373,6 +398,7 @@ _add(SolventData(
     Cp_25=1810.0, dCp_dT=3.5,
     k_25=0.118, dk_dT=-0.00015,
     antoine_A=6.97080, antoine_B=1228.550, antoine_C=221.380,
+    hsp_d=16.9, hsp_p=5.0, hsp_h=4.3,
     aliases=("2-Methyltetrahydrofuran", "MeTHF", "2-MeOTHF"),
 ))
 
@@ -387,6 +413,7 @@ _add(SolventData(
     Cp_25=1740.0, dCp_dT=2.0,
     k_25=0.159, dk_dT=-0.00012,
     antoine_A=7.43155, antoine_B=1554.679, antoine_C=240.337,
+    hsp_d=19.0, hsp_p=1.8, hsp_h=7.4,
     aliases=("Dioxane", "p-Dioxane"),
 ))
 
@@ -401,6 +428,7 @@ _add(SolventData(
     Cp_25=2320.0, dCp_dT=3.5,
     k_25=0.130, dk_dT=-0.00020,
     antoine_A=6.92032, antoine_B=1064.070, antoine_C=228.799,
+    hsp_d=14.5, hsp_p=2.9, hsp_h=5.1,
     aliases=("Et2O", "Ether", "DEE", "Ethoxyethane"),
 ))
 
@@ -499,6 +527,152 @@ def thermal_conductivity(T_C: float, solvent: SolventData) -> float:
     return solvent.k_25 + solvent.dk_dT * (T_C - 25.0)
 
 
+# ---------------------------------------------------------------------------
+# Hansen Solubility Parameters
+# ---------------------------------------------------------------------------
+
+def hansen_distance(
+    d1: float, p1: float, h1: float,
+    d2: float, p2: float, h2: float,
+) -> float:
+    """Hansen distance R_a between two solvents in Hansen space (MPa^0.5).
+
+    R_a = sqrt(4*(δd1-δd2)² + (δp1-δp2)² + (δh1-δh2)²)
+    """
+    return math.sqrt(
+        4.0 * (d1 - d2) ** 2 + (p1 - p2) ** 2 + (h1 - h2) ** 2
+    )
+
+
+def miscibility_assessment(
+    Ra: float,
+) -> dict:
+    """Assess miscibility based on Hansen distance R_a.
+
+    Returns dict with keys: Ra, miscible (bool), assessment (str), color (str).
+
+    Thresholds are calibrated for solvent–solvent pairs (larger than
+    the polymer–solvent thresholds in Hansen 2007).  Aqueous systems
+    involving water tend to produce high R_a values due to water's
+    extreme δ_h; experimental data should always be consulted.
+    """
+    if Ra < 15.0:
+        return {"Ra": Ra, "miscible": True,
+                "assessment": "Likely miscible",
+                "color": "red"}
+    elif Ra < 25.0:
+        return {"Ra": Ra, "miscible": True,
+                "assessment": "Partially miscible / borderline",
+                "color": "orange"}
+    else:
+        return {"Ra": Ra, "miscible": False,
+                "assessment": "Likely immiscible",
+                "color": "green"}
+
+
+def get_hsp(name: str) -> tuple[float, float, float] | None:
+    """Return (hsp_d, hsp_p, hsp_h) for a solvent name, or None if not found."""
+    s = SOLVENT_DB.get(name)
+    if s is None:
+        return None
+    if s.hsp_d == 0.0 and s.hsp_p == 0.0 and s.hsp_h == 0.0:
+        return None
+    return (s.hsp_d, s.hsp_p, s.hsp_h)
+
+
+# ---------------------------------------------------------------------------
+# Known miscibility lookup (experimental data)
+# ---------------------------------------------------------------------------
+# Encoding immiscible & partially-miscible pairs is more compact than
+# listing all miscible ones (most organic solvents are mutually miscible).
+# Source: Perry's 9e, CRC Handbook, Merck Index, practical experience.
+
+_IMMISCIBLE: set[frozenset[str]] = {
+    frozenset({a, b}) for a, b in [
+        # Water–organic immiscible pairs
+        ("Water", "Toluene"),
+        ("Water", "DCM"),
+        ("Water", "Chloroform"),
+        ("Water", "Hexane"),
+        ("Water", "Heptane"),
+        ("Water", "Diethyl Ether"),
+        # Hydrocarbon–polar aprotic
+        ("Hexane", "DMSO"),
+        ("Hexane", "DMF"),
+        ("Hexane", "NMP"),
+        ("Hexane", "Acetonitrile"),
+        ("Heptane", "DMSO"),
+        ("Heptane", "DMF"),
+        ("Heptane", "NMP"),
+        ("Heptane", "Acetonitrile"),
+    ]
+}
+
+_PARTIALLY_MISCIBLE: set[frozenset[str]] = {
+    frozenset({a, b}) for a, b in [
+        ("Water", "Ethyl Acetate"),     # ~8% mutual solubility
+        ("Water", "MTBE"),              # ~4% solubility
+        ("Water", "2-MeTHF"),           # limited miscibility
+        ("Water", "MEK"),               # ~24% in water at 20 °C
+        ("Hexane", "Methanol"),         # UCST ~34 °C
+        ("Heptane", "Methanol"),        # partial at RT
+        ("Toluene", "DMSO"),            # limited mutual solubility
+    ]
+}
+
+
+def solvent_miscibility(name1: str, name2: str) -> dict:
+    """Assess miscibility between two fluids.
+
+    Uses a known-pairs lookup for built-in solvents; falls back to
+    Hansen distance for custom / unknown pairs.
+
+    Returns dict with keys:
+        miscible (bool), assessment (str), source (str),
+        Ra (float | None), hsp_1 (tuple | None), hsp_2 (tuple | None)
+    """
+    # Resolve aliases to canonical names
+    _n1 = resolve_solvent_name(name1) or name1
+    _n2 = resolve_solvent_name(name2) or name2
+
+    pair = frozenset({_n1, _n2})
+    hsp1 = get_hsp(_n1)
+    hsp2 = get_hsp(_n2)
+    Ra = hansen_distance(*hsp1, *hsp2) if (hsp1 and hsp2) else None
+
+    # Same solvent → miscible
+    if _n1 == _n2:
+        return {"miscible": True, "assessment": "Same solvent — miscible",
+                "source": "identity", "Ra": 0.0, "hsp_1": hsp1, "hsp_2": hsp2}
+
+    # Check known lookup
+    if pair in _IMMISCIBLE:
+        return {"miscible": False, "assessment": "Immiscible (known pair)",
+                "source": "lookup", "Ra": Ra, "hsp_1": hsp1, "hsp_2": hsp2}
+    if pair in _PARTIALLY_MISCIBLE:
+        return {"miscible": False,
+                "assessment": "Partially miscible (known pair — limited mutual solubility)",
+                "source": "lookup", "Ra": Ra, "hsp_1": hsp1, "hsp_2": hsp2}
+
+    # Both solvents are built-in? Then if they're not in the immiscible/partial
+    # lists, they are known to be miscible.
+    both_builtin = (_n1 in SOLVENT_DB) and (_n2 in SOLVENT_DB)
+    if both_builtin:
+        return {"miscible": True,
+                "assessment": "Miscible (known pair)",
+                "source": "lookup", "Ra": Ra, "hsp_1": hsp1, "hsp_2": hsp2}
+
+    # Fall back to Hansen distance for custom fluids
+    if Ra is not None:
+        m = miscibility_assessment(Ra)
+        return {**m, "source": "Hansen estimate",
+                "hsp_1": hsp1, "hsp_2": hsp2}
+
+    # No data at all
+    return {"miscible": None, "assessment": "Unknown — no HSP data available",
+            "source": "none", "Ra": None, "hsp_1": None, "hsp_2": None}
+
+
 def get_properties(solvent_name: str, T_C: float, P_atm: float = 1.0) -> dict:
     """Return a dict of all physical properties at the given temperature and pressure.
 
@@ -532,6 +706,9 @@ def get_properties(solvent_name: str, T_C: float, P_atm: float = 1.0) -> dict:
         "mw": s.mw,
         "cas": s.cas,
         "vapor_pressure_atm": Pvap,
+        "hsp_d": s.hsp_d,
+        "hsp_p": s.hsp_p,
+        "hsp_h": s.hsp_h,
     }
 
 
@@ -557,6 +734,9 @@ def solvent_info_table() -> list[dict]:
             "D₂₅ (m²/s)": f"{s.D_ref_25:.2e}",
             "Cp₂₅ (J/kg·K)": f"{s.Cp_25:.0f}",
             "k₂₅ (W/m·K)": f"{s.k_25:.3f}",
+            "δd (MPa½)": f"{s.hsp_d:.1f}" if s.hsp_d else "—",
+            "δp (MPa½)": f"{s.hsp_p:.1f}" if s.hsp_p else "—",
+            "δh (MPa½)": f"{s.hsp_h:.1f}" if s.hsp_h else "—",
         })
     return rows
 

@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 
 from utils.solvent_properties import (
     SOLVENT_DB, get_properties, list_solvents, is_known_solvent,
+    hansen_distance, miscibility_assessment, get_hsp, solvent_miscibility,
 )
 from utils.calculations import (
     compute_reactor_hydro,
@@ -31,6 +32,8 @@ from utils.calculations import (
     particle_reynolds,
     zwietering_njs,
     solid_liquid_mass_transfer,
+    solid_liquid_kla,
+    archimedes_number,
     particle_suspension_criterion,
     liquid_height_from_volume,
     reaction_rate_mol_per_s,
@@ -44,6 +47,15 @@ from utils.calculations import (
     cooling_rate,
     time_to_cool_or_heat,
     gmb_njs,
+    gas_holdup_hughmark,
+    sauter_bubble_diameter,
+    gas_flooding_speed,
+    gas_flow_rate_from_vs,
+    weber_number,
+    sauter_drop_diameter,
+    phase_separation_check,
+    minimum_dispersion_speed,
+    liquid_liquid_mass_transfer,
 )
 from utils.rom_registry import (
     compute_reactor_hydro_with_mode,
@@ -98,7 +110,7 @@ def _reset_p5():
     st.session_state["_p5_step"] = 0
 
 # ── Step 1: Select system ────────────────────────────────────────────────
-st.header("1 · Select System")
+st.header("1 · Define System")
 
 # Persist selections across page navigations
 _reactor_list = reactors["reactor_name"].tolist()
@@ -122,7 +134,7 @@ with col_rx:
 
 col_T, col_P, col_cw = st.columns(3)
 with col_f:
-    fluid_name = st.selectbox("Fluid", _all_fluid_names, index=_idx(_all_fluid_names, "_sel_fluid"), key="ms_fluid", on_change=_reset_p5)
+    fluid_name = st.selectbox("Fluid (continuous phase)", _all_fluid_names, index=_idx(_all_fluid_names, "_sel_fluid"), key="ms_fluid", on_change=_reset_p5)
     st.session_state["_sel_fluid"] = fluid_name
 with col_T:
     _is_solvent = is_known_solvent(fluid_name)
@@ -143,12 +155,13 @@ with col_cw:
         help="Jacket coolant inlet temperature",
     )
 
-# Compute fluid properties
+# Compute fluid properties (continuous phase)
 if _is_solvent:
     _fprops = get_properties(fluid_name, fluid_T_C, fluid_P_atm)
     _rho_default = _fprops["rho_kg_m3"]
     _mu_default = _fprops["mu_Pa_s"]
     _D_mol_default = _fprops["D_mol_m2_s"]
+    _sigma_default = _fprops.get("surface_tension_N_m", 0.072)
     if not _fprops["in_range"]:
         st.warning(f"⚠️ {fluid_T_C:.1f} °C is outside the liquid range "
                    f"({_fprops['mp_C']:.0f} – {_fprops['bp_at_P_C']:.0f} °C) for {fluid_name}. "
@@ -158,6 +171,7 @@ else:
     _rho_default = float(_cust["rho_kg_m3"])
     _mu_default = float(_cust["mu_Pa_s"])
     _D_mol_default = float(_cust["D_mol_m2_s"])
+    _sigma_default = float(_cust.get("surface_tension_N_m", 0.072))
 
 reactor = reactors[reactors["reactor_name"] == reactor_name].iloc[0]
 reaction = reactions[reactions["reaction_name"] == reaction_name].iloc[0]
@@ -175,6 +189,270 @@ def _safe(series_val, default):
 _rk = reactor_name   # reactor key fragment
 _fk = f"{fluid_name}_{fluid_T_C:.1f}"  # fluid key fragment (includes T)
 _xk = reaction_name  # reaction key fragment
+
+# ── System type selection ────────────────────────────────────────────────
+st.subheader("System Type")
+st.caption(
+    "Define the multiphase nature of the system. Select all that apply. "
+    "Leave empty for a **single-phase (liquid-only)** system — the app will "
+    "compute hydrodynamics, mixing times, and Damköhler numbers for the "
+    "continuous liquid phase only."
+)
+_SYSTEM_OPTIONS = ["Gas-Liquid (GL)", "Liquid-Liquid (LL)", "Solid-Liquid (SL)"]
+system_types = st.multiselect(
+    "Multiphase system types",
+    _SYSTEM_OPTIONS,
+    default=st.session_state.get("_sel_sys_types", []),
+    key="ms_sys_types",
+    on_change=_reset_p5,
+    help="Select one or more. Leave empty for single-phase liquid.",
+)
+st.session_state["_sel_sys_types"] = system_types
+include_GL = "Gas-Liquid (GL)" in system_types
+include_LL = "Liquid-Liquid (LL)" in system_types
+include_SL = "Solid-Liquid (SL)" in system_types
+
+if not system_types:
+    st.info("**Liquid-only** — single-phase hydrodynamics, mixing, and Damköhler analysis.")
+
+# ── GL inputs ────────────────────────────────────────────────────────────
+v_s = 0.0
+is_coalescing = True
+gl_bubble_d_mm = 3.0
+gl_sparged = False
+if include_GL:
+    with st.expander("Gas-Liquid — sparging & gas phase", expanded=True):
+        st.caption("Define gas-liquid mass-transfer mode and sparging conditions.")
+        gl_mode = st.radio(
+            "Gas-liquid mass-transfer mode",
+            ["Sparged (gas fed through sparger)", "Headspace only (free-surface transfer)"],
+            horizontal=True, key="ov_gl_mode",
+            help="Sparged: gas is actively injected. Headspace: transfer occurs only through the liquid surface.",
+        )
+        gl_sparged = gl_mode.startswith("Sparged")
+        if gl_sparged:
+            gc1, gc2, gc3 = st.columns(3)
+            v_s = gc1.number_input(
+                "Superficial gas velocity v_s (m/s)", value=0.005, min_value=0.0,
+                format="%.4f", key=f"ov_vs_{_rk}",
+                help="Typical: 0.001 – 0.05 m/s.",
+            )
+            coalescing = gc2.selectbox(
+                "Liquid type",
+                ["Coalescing (pure liquid)", "Non-coalescing (electrolyte)"],
+                key=f"ov_coal_{_fk}",
+            )
+            is_coalescing = coalescing.startswith("Coalescing")
+            gl_bubble_d_mm = gc3.number_input(
+                "Estimated bubble diameter (mm)", value=3.0, min_value=0.1,
+                max_value=50.0, format="%.1f", key="ov_bubble_d",
+                help="Initial estimate; Calderbank d₃₂ will be computed.",
+            )
+        else:
+            st.caption("Mass transfer via the free liquid surface only (Lamont-Scott model). "
+                       "No sparger — kLa_surface will be computed.")
+
+# ── LL inputs ────────────────────────────────────────────────────────────
+ll_rho_d = 800.0
+ll_mu_d = 0.001
+ll_sigma_LL = 0.030
+ll_phi_d = 0.10
+ll_D_mol_LL = 1e-9
+if include_LL:
+    with st.expander("Liquid-Liquid — dispersed phase", expanded=True):
+        st.caption(
+            "Define the immiscible dispersed-phase liquid. The continuous "
+            "phase is the fluid selected above."
+        )
+        _ll_source = st.radio(
+            "Dispersed-phase definition",
+            ["Select from fluid database", "Enter properties manually"],
+            horizontal=True, key="ov_ll_source",
+        )
+        if _ll_source.startswith("Select"):
+            _ll_col1, _ll_col2 = st.columns(2)
+            _ll_fluid_name = _ll_col1.selectbox(
+                "Dispersed-phase fluid", _all_fluid_names,
+                key="ov_ll_fluid",
+            )
+            _ll_is_solvent = is_known_solvent(_ll_fluid_name)
+            if _ll_is_solvent:
+                _ll_T = _ll_col2.number_input(
+                    "Dispersed-phase T (°C)", value=fluid_T_C, step=1.0,
+                    format="%.1f", key="ov_ll_T",
+                )
+                _ll_fprops = get_properties(_ll_fluid_name, _ll_T, fluid_P_atm)
+                _ll_rho_val = _ll_fprops["rho_kg_m3"]
+                _ll_mu_val = _ll_fprops["mu_Pa_s"]
+            else:
+                _ll_cust = custom_fluids[custom_fluids["fluid_name"] == _ll_fluid_name].iloc[0]
+                _ll_rho_val = float(_ll_cust["rho_kg_m3"])
+                _ll_mu_val = float(_ll_cust["mu_Pa_s"])
+                _ll_col2.caption("Custom fluid — fixed properties")
+            _ll_ov1, _ll_ov2 = st.columns(2)
+            ll_rho_d = _ll_ov1.number_input(
+                "ρ_d (kg/m³)", value=_ll_rho_val, min_value=100.0,
+                format="%.1f", key="ov_ll_rho_d_db",
+                help="From database — override if needed",
+            )
+            ll_mu_d = _ll_ov2.number_input(
+                "μ_d (Pa·s)", value=_ll_mu_val, min_value=1e-6,
+                format="%.6f", key="ov_ll_mu_d_db",
+                help="From database — override if needed",
+            )
+        else:
+            _ll_m1, _ll_m2 = st.columns(2)
+            _ll_m1.text_input(
+                "Dispersed-phase name", value="Dispersed liquid",
+                key="ov_ll_name",
+            )
+            _ll_m2.caption("")  # spacer
+            _ll_m3, _ll_m4 = st.columns(2)
+            ll_rho_d = _ll_m3.number_input(
+                "ρ_d (kg/m³)", value=800.0, min_value=100.0,
+                format="%.1f", key="ov_ll_rho_d",
+                help="Dispersed-phase density",
+            )
+            ll_mu_d = _ll_m4.number_input(
+                "μ_d (Pa·s)", value=0.001, min_value=1e-6,
+                format="%.6f", key="ov_ll_mu_d",
+                help="Dispersed-phase viscosity",
+            )
+        ll_c1, ll_c2, ll_c3 = st.columns(3)
+        ll_sigma_LL = ll_c1.number_input(
+            "Interfacial tension σ (N/m)", value=0.030, min_value=1e-5,
+            format="%.4f", key="ov_ll_sigma",
+            help="Interfacial tension between continuous and dispersed phases",
+        )
+        ll_phi_d = ll_c2.number_input(
+            "Dispersed-phase volume fraction φ_d", value=0.10,
+            min_value=0.001, max_value=0.70, format="%.3f",
+            key="ov_ll_phi_d",
+            help="Volume fraction of the dispersed phase (0–0.7)",
+        )
+        ll_D_mol_LL = ll_c3.number_input(
+            "D_mol for LL transfer (m²/s)", value=1e-9,
+            format="%.2e", key="ov_ll_Dmol",
+            help="Molecular diffusivity of solute across the L-L interface",
+        )
+
+        # ── Miscibility screening ─────────────────────────────────────────
+        _cont_name = fluid_name
+        _disp_name = _ll_fluid_name if _ll_source.startswith("Select") else None
+
+        if _disp_name:
+            _misc = solvent_miscibility(_cont_name, _disp_name)
+            st.divider()
+            st.markdown("**Miscibility Screening**")
+            _hc1, _hc2 = st.columns(2)
+            _hc1.metric("Assessment", _misc["assessment"])
+            if _misc["Ra"] is not None:
+                _hc2.metric("Hansen R_a (MPa½)", f"{_misc['Ra']:.1f}")
+            else:
+                _hc2.metric("Hansen R_a (MPa½)", "—")
+
+            if _misc["hsp_1"] and _misc["hsp_2"]:
+                _hd1, _hd2 = st.columns(2)
+                _hd1.caption(f"δ ({_cont_name}): ({_misc['hsp_1'][0]:.1f}, {_misc['hsp_1'][1]:.1f}, {_misc['hsp_1'][2]:.1f}) MPa½")
+                _hd2.caption(f"δ ({_disp_name}): ({_misc['hsp_2'][0]:.1f}, {_misc['hsp_2'][1]:.1f}, {_misc['hsp_2'][2]:.1f}) MPa½")
+
+            if _misc["source"] == "lookup":
+                _src_note = "Based on experimental miscibility data."
+            elif _misc["source"] == "Hansen estimate":
+                _src_note = "Estimated via Hansen Solubility Parameters — verify experimentally."
+            else:
+                _src_note = ""
+
+            if _misc["miscible"] is True:
+                if "Partially" in _misc["assessment"]:
+                    st.warning(f"🟡 **{_misc['assessment']}** — "
+                               "these liquids have limited mutual solubility. "
+                               "L-L dispersion calculations may still apply at higher phase fractions.")
+                else:
+                    st.error(f"🔴 **{_misc['assessment']}** — "
+                             "these liquids form a single phase. L-L dispersion does not apply.")
+            elif _misc["miscible"] is False:
+                st.success(f"🟢 **{_misc['assessment']}** — "
+                           "suitable for L-L dispersion calculations.")
+            else:
+                st.info("Miscibility unknown — no data available for this pair.")
+
+            if _src_note:
+                st.caption(_src_note)
+        else:
+            st.caption("Miscibility screening available when dispersed phase is selected from the fluid database.")
+
+# ── SL inputs ────────────────────────────────────────────────────────────
+include_particles = include_SL
+if include_SL and not particles.empty:
+    with st.expander("Solid-Liquid — particle properties", expanded=True):
+        st.caption("Define the solid phase for suspension and S-L mass transfer calculations.")
+
+        def _on_particle_change():
+            """Reset override widgets when a new particle is selected."""
+            pname = st.session_state["sel_particle"]
+            p = particles[particles["particle_name"] == pname].iloc[0]
+            st.session_state["ov_rhop"] = float(p["rho_p_kg_m3"])
+            st.session_state["ov_d50"] = float(p["d50_um"])
+            st.session_state["ov_phi"] = float(p["shape_factor"])
+
+        particle_name = st.selectbox(
+            "Particle", particles["particle_name"].tolist(),
+            key="sel_particle", on_change=_on_particle_change,
+        )
+        particle = particles[particles["particle_name"] == particle_name].iloc[0]
+        # Initialise session state on very first render
+        if "ov_rhop" not in st.session_state:
+            st.session_state["ov_rhop"] = float(particle["rho_p_kg_m3"])
+        if "ov_d50" not in st.session_state:
+            st.session_state["ov_d50"] = float(particle["d50_um"])
+        if "ov_phi" not in st.session_state:
+            st.session_state["ov_phi"] = float(particle["shape_factor"])
+
+        pc1, pc2, pc3 = st.columns(3)
+        rho_p = pc1.number_input("ρ_p (kg/m³)", min_value=100.0, max_value=25000.0,
+                                 step=10.0, format="%.0f", key="ov_rhop")
+        d50_um = pc2.number_input("D50 (µm)", min_value=0.1, max_value=10000.0,
+                                  step=1.0, format="%.1f", key="ov_d50")
+        phi_p = pc3.number_input("Shape factor φ",
+                                 min_value=0.01, max_value=1.0, step=0.05,
+                                 format="%.2f", key="ov_phi")
+        # Solids loading
+        _solids_basis = st.radio("Solids loading basis",
+                                 ["Mass (wt-%)", "Volume (vol-%)"],
+                                 horizontal=True, key="ov_solids_basis")
+        pc4, pc5, pc6 = st.columns(3)
+        if _solids_basis == "Mass (wt-%)":
+            X_wt = pc4.number_input("Solids loading X (wt-%)", value=5.0,
+                                    min_value=0.01, format="%.2f", key="ov_Xwt",
+                                    help="Mass of solids / mass of liquid × 100")
+            X_vol = 100.0 * X_wt * rho_p / (X_wt * rho_p + 100.0 * _rho_default) if rho_p > 0 else 0.0
+            pc5.metric("Xv (vol-%)", f"{X_vol:.2f}")
+        else:
+            X_vol = pc4.number_input("Solids loading Xv (vol-%)", value=2.0,
+                                     min_value=0.01, max_value=99.0,
+                                     format="%.2f", key="ov_Xv",
+                                     help="Volume of solids / volume of slurry × 100")
+            X_wt = 100.0 * rho_p * X_vol / (_rho_default * (100.0 - X_vol)) if (100.0 - X_vol) > 0 and _rho_default > 0 else 0.0
+            pc5.metric("X (wt-%)", f"{X_wt:.2f}")
+        S_zw = pc6.number_input("Zwietering S constant", value=5.5, min_value=0.5,
+                                max_value=20.0, format="%.1f", key="ov_Szw",
+                                help="Geometry-dependent constant (typ. 1–10, PBT ≈ 5.5)")
+
+        st.markdown("**Grenville, Mak & Brown (GMB) parameters**")
+        _gmb_z_default = _safe(reactor.get("GMB_z"), 0.0)
+        _C_imp_default = _safe(reactor.get("imp1_clearance_m"), 0.0)
+        _C_D_default = _C_imp_default / _safe(reactor.get("D_imp_m"), 0.05) if _safe(reactor.get("D_imp_m"), 0.05) > 0 and _C_imp_default > 0 else 0.33
+        pc7, pc8 = st.columns(2)
+        gmb_z = pc7.number_input("GMB z constant", value=_gmb_z_default if _gmb_z_default > 0 else 3.0,
+                                  min_value=0.1, max_value=30.0, format="%.2f", key="ov_gmb_z",
+                                  help="Geometry constant (impeller-type dependent)")
+        C_D_ratio = pc8.number_input("C/D (clearance / impeller dia)",
+                                      value=_C_D_default, min_value=0.01,
+                                      max_value=2.0, format="%.3f", key="ov_CD",
+                                      help="Impeller clearance / impeller diameter")
+elif include_SL and particles.empty:
+    st.warning("Particle database is empty. Add particles on the Particle Database page.")
 
 # ── Gate 1: confirm system selection ─────────────────────────────────────
 if st.session_state["_p5_step"] < 1:
@@ -237,7 +515,6 @@ if V_L_min > 0 and V_L_max > 0:
 elif V_L_nom > 0:
     V_L_default = V_L_nom
 else:
-    # Fall back to geometric estimate
     V_L_default = np.pi / 4 * D_tank**2 * _safe(reactor.get("H_m"), 0.13) * 1000
 
 V_L = st.number_input(
@@ -246,7 +523,6 @@ V_L = st.number_input(
     help=f"Reactor range: {V_L_min:.1f} – {V_L_max:.1f} L" if V_L_max > 0 else None,
 )
 
-# Validate volume is within the reactor's operating range
 _vol_ok = True
 if V_L_min > 0 and V_L_max > 0:
     if V_L < V_L_min or V_L > V_L_max:
@@ -254,96 +530,17 @@ if V_L_min > 0 and V_L_max > 0:
                  f"({V_L_min:.1f} – {V_L_max:.1f} L).")
         _vol_ok = False
 
-# Derive liquid height from volume, accounting for bottom dish geometry
 H = liquid_height_from_volume(V_L, D_tank, H_max, _bottom_dish)
 
-with st.expander("Fluid properties", expanded=False):
+with st.expander("Fluid properties (continuous phase)", expanded=False):
     if _is_solvent:
         st.caption(f"Computed from **{fluid_name}** correlations at **{fluid_T_C:.1f} °C**")
-    fc1, fc2, fc3 = st.columns(3)
+    fc1, fc2, fc3, fc4 = st.columns(4)
     rho = fc1.number_input("ρ (kg/m³)", value=_rho_default, format="%.1f", key=f"ov_rho_{_fk}")
     mu = fc2.number_input("μ (Pa·s)", value=_mu_default, format="%.6f", key=f"ov_mu_{_fk}")
     D_mol = fc3.number_input("D_mol (m²/s)", value=_D_mol_default, format="%.2e", key=f"ov_Dmol_{_fk}")
-
-# ── Particle (solid) phase ────────────────────────────────────────────────
-include_particles = st.checkbox("Include solid particles", value=False, key="include_particles")
-if include_particles and not particles.empty:
-    with st.expander("Particle properties", expanded=True):
-        def _on_particle_change():
-            """Reset override widgets when a new particle is selected."""
-            pname = st.session_state["sel_particle"]
-            p = particles[particles["particle_name"] == pname].iloc[0]
-            st.session_state["ov_rhop"] = float(p["rho_p_kg_m3"])
-            st.session_state["ov_d50"] = float(p["d50_um"])
-            st.session_state["ov_phi"] = float(p["shape_factor"])
-
-        particle_name = st.selectbox(
-            "Particle", particles["particle_name"].tolist(),
-            key="sel_particle", on_change=_on_particle_change,
-        )
-        particle = particles[particles["particle_name"] == particle_name].iloc[0]
-        # Initialise session state on very first render
-        if "ov_rhop" not in st.session_state:
-            st.session_state["ov_rhop"] = float(particle["rho_p_kg_m3"])
-        if "ov_d50" not in st.session_state:
-            st.session_state["ov_d50"] = float(particle["d50_um"])
-        if "ov_phi" not in st.session_state:
-            st.session_state["ov_phi"] = float(particle["shape_factor"])
-
-        pc1, pc2, pc3 = st.columns(3)
-        rho_p = pc1.number_input("ρ_p (kg/m³)", min_value=100.0, max_value=25000.0,
-                                 step=10.0, format="%.0f", key="ov_rhop")
-        d50_um = pc2.number_input("D50 (µm)", min_value=0.1, max_value=10000.0,
-                                  step=1.0, format="%.1f", key="ov_d50")
-        phi_p = pc3.number_input("Shape factor φ",
-                                 min_value=0.01, max_value=1.0, step=0.05,
-                                 format="%.2f", key="ov_phi")
-        # Solids loading – single input with auto-conversion
-        _solids_basis = st.radio("Solids loading basis",
-                                 ["Mass (wt-%)", "Volume (vol-%)"],
-                                 horizontal=True, key="ov_solids_basis")
-        pc4, pc5, pc6 = st.columns(3)
-        if _solids_basis == "Mass (wt-%)":
-            X_wt = pc4.number_input("Solids loading X (wt-%)", value=5.0,
-                                    min_value=0.01, format="%.2f", key="ov_Xwt",
-                                    help="Mass of solids / mass of liquid × 100")
-            # Convert wt-% → vol-%
-            X_vol = 100.0 * X_wt * rho / (X_wt * rho + 100.0 * rho_p) if rho_p > 0 else 0.0
-            pc5.metric("Xv (vol-%)", f"{X_vol:.2f}")
-        else:
-            X_vol = pc4.number_input("Solids loading Xv (vol-%)", value=2.0,
-                                     min_value=0.01, max_value=99.0,
-                                     format="%.2f", key="ov_Xv",
-                                     help="Volume of solids / volume of slurry × 100")
-            # Convert vol-% → wt-%
-            X_wt = 100.0 * rho_p * X_vol / (rho * (100.0 - X_vol)) if (100.0 - X_vol) > 0 and rho > 0 else 0.0
-            pc5.metric("X (wt-%)", f"{X_wt:.2f}")
-        S_zw = pc6.number_input("Zwietering S constant", value=5.5, min_value=0.5,
-                                max_value=20.0, format="%.1f", key="ov_Szw",
-                                help="Geometry-dependent constant (typ. 1–10, PBT ≈ 5.5)")
-
-        st.markdown("**Grenville, Mak & Brown (GMB) parameters**")
-        _gmb_z_default = _safe(reactor.get("GMB_z"), 0.0)
-        _C_imp_default = _safe(reactor.get("imp1_clearance_m"), 0.0)
-        _C_D_default = _C_imp_default / D_imp if D_imp > 0 and _C_imp_default > 0 else 0.33
-        pc7, pc8 = st.columns(2)
-        gmb_z = pc7.number_input("GMB z constant", value=_gmb_z_default if _gmb_z_default > 0 else 3.0,
-                                  min_value=0.1, max_value=30.0, format="%.2f", key="ov_gmb_z",
-                                  help="Geometry constant (impeller-type dependent)")
-        C_D_ratio = pc8.number_input("C/D (clearance / impeller dia)",
-                                      value=_C_D_default, min_value=0.01,
-                                      max_value=2.0, format="%.3f", key="ov_CD",
-                                      help="Impeller clearance / impeller diameter")
-elif include_particles and particles.empty:
-    st.warning("Particle database is empty. Add particles on the Particle Database page.")
-
-with st.expander("Gas sparging (for kLa)", expanded=False):
-    gc1, gc2 = st.columns(2)
-    v_s = gc1.number_input("Superficial gas velocity v_s (m/s)", value=0.0, min_value=0.0, format="%.4f",
-                           key=f"ov_vs_{_rk}", help="Set > 0 to compute kLa. Typical: 0.001 – 0.05 m/s.")
-    coalescing = gc2.selectbox("Liquid type", ["Coalescing (pure liquid)", "Non-coalescing (electrolyte)"],
-                               key=f"ov_coal_{_fk}")
-    is_coalescing = coalescing.startswith("Coalescing")
+    sigma_c = fc4.number_input("σ surface tension (N/m)", value=_sigma_default, format="%.4f", key=f"ov_sigma_{_fk}",
+                               help="Continuous-phase surface tension (used for GL/LL calculations)")
 
 with st.expander("Reaction parameters", expanded=False):
     rc1, rc2, rc3 = st.columns(3)
@@ -455,7 +652,7 @@ def _da_banner(label: str, Da: float) -> None:
         st.error(f"🔴 **{label}:** Highly sensitive (Da = {Da:.3g})")
 
 # ── 4a · Mixing ──────────────────────────────────────────────────────────
-st.subheader("4a · Mixing")
+st.subheader("Mixing")
 
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Re", f"{hydro['Re']:.0f}")
@@ -487,28 +684,137 @@ _da_banner("Micromixing", da["Da_micro"])
 lam_B = batchelor_length(mu / rho, hydro["P/V (W/kg)"], D_mol)
 st.info(f"Batchelor microscale λ_B = {lam_B * 1e6:.2f} µm  |  Reaction time t_rxn = {t_rxn:.4g} s")
 
-# ── 4b · Mass Transfer ───────────────────────────────────────────────────
-st.subheader("4b · Mass Transfer")
+# ── 4b · Gas-Liquid Mass Transfer ─────────────────────────────────────────
+gl_results = {}
+if include_GL:
+    st.subheader("Gas-Liquid Mass Transfer")
 
-if v_s > 0:
-    mt1, mt2, mt3, _ = st.columns(4)
-    mt1.metric("kLa sparged (1/s)", f"{hydro['kLa (1/s)']:.4g}")
-    mt2.metric("kLa surface (1/s)", f"{hydro['kLa_surface (1/s)']:.4g}")
-    mt3.metric("Da_GL", f"{da['Da_GL']:.3g}")
+    _P_V_Wm3 = hydro["P/V (W/m³)"]
+    _eps_kg = hydro["P/V (W/kg)"]
+
+    if gl_sparged and v_s > 0:
+        mt1, mt2, mt3, mt4 = st.columns(4)
+        mt1.metric("kLa sparged (1/s)", f"{hydro['kLa (1/s)']:.4g}")
+        mt2.metric("kLa surface (1/s)", f"{hydro['kLa_surface (1/s)']:.4g}")
+        mt3.metric("Da_GL", f"{da['Da_GL']:.3g}")
+
+        # Gas holdup, bubble size, flooding
+        _eps_G = gas_holdup_hughmark(v_s, _P_V_Wm3, mu, sigma_c, rho)
+        _d32_bubble = sauter_bubble_diameter(_P_V_Wm3, v_s, sigma_c, rho)
+        _Q_gas = gas_flow_rate_from_vs(v_s, D_tank)
+        _N_flood = gas_flooding_speed(Nq_in, D_imp, _Q_gas)
+
+        mt4.metric("Gas holdup ε_G", f"{_eps_G:.3f}")
+        mt5, mt6, mt7, mt8 = st.columns(4)
+        mt5.metric("d₃₂ bubble (mm)", f"{_d32_bubble * 1e3:.2f}")
+        mt6.metric("Q_gas (m³/s)", f"{_Q_gas:.3e}")
+        mt7.metric("N_flood (RPM)", f"{_N_flood * 60:.1f}")
+        _flood_ratio = N_rps / _N_flood if _N_flood > 0 else np.inf
+        mt8.metric("N/N_flood", f"{_flood_ratio:.2f}")
+
+        if _flood_ratio < 1.0:
+            st.error("🔴 **Impeller is flooded** — operating below flooding speed. Gas dispersion is poor.")
+        elif _flood_ratio < 1.3:
+            st.warning("🟡 **Near flooding** — increase impeller speed for effective gas dispersion.")
+        else:
+            st.success(f"🟢 **Good gas dispersion** — N/N_flood = {_flood_ratio:.2f}")
+
+        gl_results = {
+            "GL mode": "Sparged",
+            "kLa sparged (1/s)": hydro["kLa (1/s)"],
+            "kLa surface (1/s)": hydro["kLa_surface (1/s)"],
+            "Gas holdup ε_G": _eps_G,
+            "d32 bubble (mm)": _d32_bubble * 1e3,
+            "Q_gas (m³/s)": _Q_gas,
+            "N_flood (RPM)": _N_flood * 60,
+            "N/N_flood": _flood_ratio,
+        }
+    else:
+        # Headspace-only mode (or sparged with v_s=0)
+        mt1, mt2, _, _ = st.columns(4)
+        mt1.metric("kLa surface (1/s)", f"{hydro['kLa_surface (1/s)']:.4g}")
+        da_gl_val = da["Da_GL"]
+        if da_gl_val > 0:
+            mt2.metric("Da_GL (surface)", f"{da_gl_val:.3g}")
+        if gl_sparged and v_s <= 0:
+            st.caption("Sparged mode selected but v_s = 0. Set superficial gas velocity > 0.")
+        else:
+            st.caption("Headspace-only mode — free-surface kLa (Lamont-Scott model).")
+        gl_results = {
+            "GL mode": "Headspace",
+            "kLa surface (1/s)": hydro["kLa_surface (1/s)"],
+        }
+
+    if da["Da_GL"] > 0:
+        _da_banner("Gas-liquid mass transfer", da["Da_GL"])
 else:
+    st.subheader("Mass Transfer (surface only)")
     mt1, mt2, _, _ = st.columns(4)
     mt1.metric("kLa surface (1/s)", f"{hydro['kLa_surface (1/s)']:.4g}")
-    da_gl_val = da['Da_GL']
+    da_gl_val = da["Da_GL"]
     if da_gl_val > 0:
         mt2.metric("Da_GL (surface)", f"{da_gl_val:.3g}")
-    st.caption("Sparged kLa not shown (set v_s > 0 in *Gas sparging* section). "
-               "Surface kLa uses the Lamont-Scott free-surface model.")
+    st.caption("GL system type not selected. Only free-surface kLa (Lamont-Scott) is shown.")
 
-if da["Da_GL"] > 0:
-    _da_banner("Gas-liquid mass transfer", da["Da_GL"])
+# ── 4c · Liquid-Liquid ───────────────────────────────────────────────────
+ll_results = {}
+if include_LL:
+    st.subheader("Liquid-Liquid Dispersion")
 
-# ── 4c · Heat Transfer ───────────────────────────────────────────────────
-st.subheader("4c · Heat Transfer")
+    _eps_kg_ll = hydro["P/V (W/kg)"]
+    _ll_check = phase_separation_check(
+        N=N_rps, D_imp=D_imp, D_tank=D_tank,
+        rho_c=rho, rho_d=ll_rho_d, mu_c=mu,
+        sigma_LL=ll_sigma_LL, phi_d=ll_phi_d,
+    )
+    _We_ll = _ll_check["We"]
+    _d32_drop = _ll_check["d32 (m)"]
+    _N_min_disp = minimum_dispersion_speed(D_imp, ll_sigma_LL, rho, ll_phi_d)
+    _k_LL = liquid_liquid_mass_transfer(_d32_drop, ll_D_mol_LL, rho, mu, _eps_kg_ll)
+    _a_LL = 6.0 * ll_phi_d / _d32_drop if _d32_drop > 0 else 0.0
+    _kLa_LL = _k_LL * _a_LL
+
+    ll1, ll2, ll3, ll4 = st.columns(4)
+    ll1.metric("Weber number", f"{_We_ll:.1f}")
+    ll2.metric("d₃₂ drop (µm)", f"{_ll_check['d32 (µm)']:.1f}")
+    ll3.metric("N_min dispersion (RPM)", f"{_N_min_disp * 60:.1f}")
+    ll4.metric("N/N_min", f"{N_rps / _N_min_disp:.2f}" if _N_min_disp > 0 else "—")
+
+    ll5, ll6, ll7, ll8 = st.columns(4)
+    ll5.metric("k_LL (m/s)", f"{_k_LL:.3e}")
+    ll6.metric("a_LL (1/m)", f"{_a_LL:.1f}")
+    ll7.metric("kLa_LL (1/s)", f"{_kLa_LL:.4g}")
+    ll8.metric("Drop settling (m/s)", f"{_ll_check['Drop settling velocity (m/s)']:.3e}")
+
+    ll9, ll10, _, _ = st.columns(4)
+    ll9.metric("Separation time (s)", f"{_ll_check['Separation time (s)']:.0f}" if _ll_check["Separation time (s)"] < 1e6 else "∞")
+    ll10.metric("Δρ (kg/m³)", f"{abs(ll_rho_d - rho):.1f}")
+
+    # Dispersion stability assessment
+    _disp_ratio = N_rps / _N_min_disp if _N_min_disp > 0 else 0
+    if _disp_ratio < 0.8:
+        st.error(f"🔴 **Poor dispersion** — N/N_min = {_disp_ratio:.2f}. Phases may separate rapidly.")
+    elif _disp_ratio < 1.0:
+        st.warning(f"🟡 **Marginal dispersion** — close to minimum dispersing speed.")
+    else:
+        st.success(f"🟢 **Good dispersion** — N/N_min = {_disp_ratio:.2f}")
+
+    st.info(f"Phase separation estimate: **{_ll_check['Assessment']}**")
+
+    ll_results = {
+        "We": _We_ll,
+        "d32 drop (µm)": _ll_check["d32 (µm)"],
+        "Drop settling velocity (m/s)": _ll_check["Drop settling velocity (m/s)"],
+        "Separation time (s)": _ll_check["Separation time (s)"],
+        "N_min dispersion (RPM)": _N_min_disp * 60,
+        "k_LL (m/s)": _k_LL,
+        "a_LL (1/m)": _a_LL,
+        "kLa_LL (1/s)": _kLa_LL,
+        "LL Assessment": _ll_check["Assessment"],
+    }
+
+# ── 4d · Heat Transfer ───────────────────────────────────────────────────
+st.subheader("Heat Transfer")
 
 heat_results = {}
 if include_heat:
@@ -568,11 +874,11 @@ if include_heat:
 else:
     st.caption("No enthalpy data (ΔH) for the selected reaction — heat balance skipped.")
 
-# ── 4d · Solids ──────────────────────────────────────────────────────────
+# ── 4e · Solid-Liquid ────────────────────────────────────────────────────
 particle_results = {}
 particle_meta = {}
-if include_particles and not particles.empty:
-    st.subheader("4d · Solids")
+if include_SL and not particles.empty:
+    st.subheader("Solid-Liquid")
     d_p_m = d50_um * 1e-6
     nu = mu / rho
     delta_rho = abs(rho_p - rho)
@@ -584,6 +890,9 @@ if include_particles and not particles.empty:
                        delta_rho, rho, X_vol, C_D_ratio)
     N_js = max(N_js_zw, N_js_gmb)
     k_SL = solid_liquid_mass_transfer(d_p_m, v_t, rho, mu, D_mol)
+    _Ar = archimedes_number(d_p_m, rho, delta_rho, mu)
+    _phi_s = X_vol / 100.0  # volume fraction
+    _kLa_SL = solid_liquid_kla(k_SL, d_p_m, _phi_s)
     susp = particle_suspension_criterion(N_rps, N_js)
 
     particle_results = {
@@ -594,6 +903,7 @@ if include_particles and not particles.empty:
         "Xv (vol-%)": X_vol,
         "v_t (m/s)": v_t,
         "Re_p": Re_p,
+        "Archimedes Ar": _Ar,
         "N_js Zwietering (rev/s)": N_js_zw,
         "N_js Zwietering (RPM)": N_js_zw * 60,
         "N_js GMB (rev/s)": N_js_gmb,
@@ -601,6 +911,7 @@ if include_particles and not particles.empty:
         "N_js (rev/s)": N_js,
         "N_js (RPM)": N_js * 60,
         "k_SL (m/s)": k_SL,
+        "kLa_SL (1/s)": _kLa_SL,
     }
     particle_meta = {
         "Particle": particle_name,
@@ -613,10 +924,12 @@ if include_particles and not particles.empty:
     sp3.metric("N_js Zwietering (RPM)", f"{N_js_zw * 60:.1f}")
     sp4.metric("N_js GMB (RPM)", f"{N_js_gmb * 60:.1f}")
 
-    sp5, sp6, _, _ = st.columns(4)
+    sp5, sp6, sp7, sp8 = st.columns(4)
     sp5.metric("N_js design (RPM)", f"{N_js * 60:.1f}",
               help="Higher of Zwietering and GMB estimates")
     sp6.metric("k_SL (m/s)", f"{k_SL:.3e}")
+    sp7.metric("kLa_SL (1/s)", f"{_kLa_SL:.4g}")
+    sp8.metric("Archimedes Ar", f"{_Ar:.3g}")
 
     if "Poorly" in susp:
         st.error(f"🔴 **{susp}** — current speed is below just-suspended speed")
@@ -670,9 +983,15 @@ if _can_envelope:
     HEAT_PARAMS = ["Q_gen (W)", "Q_cool (W)", "U (W/m²·K)", "A_ht (m²)", "Q_gen/Q_cool (%)"]
     if include_heat and rxn_delta_H != 0:
         PLOT_PARAMS = PLOT_PARAMS + HEAT_PARAMS
-    PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p", "k_SL (m/s)"]
-    if include_particles and not particles.empty:
+    PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p", "k_SL (m/s)", "kLa_SL (1/s)"]
+    if include_SL and not particles.empty:
         PLOT_PARAMS = PLOT_PARAMS + PARTICLE_PARAMS
+    GL_PARAMS = ["Gas holdup ε_G", "d32 bubble (mm)", "N_flood (RPM)", "N/N_flood"]
+    if include_GL and gl_sparged and v_s > 0:
+        PLOT_PARAMS = PLOT_PARAMS + GL_PARAMS
+    LL_PARAMS = ["We", "d32 drop (µm)", "N_min disp (RPM)", "N/N_min disp", "kLa_LL (1/s)"]
+    if include_LL:
+        PLOT_PARAMS = PLOT_PARAMS + LL_PARAMS
 
     _N_INTERP = 50
     N_arr = np.linspace(_N_lo, _N_hi, _N_INTERP)
@@ -680,7 +999,7 @@ if _can_envelope:
 
     # ── Pre-compute RPM-independent particle quantities (hoisted) ────────
     _part_static: dict | None = None
-    if include_particles and not particles.empty:
+    if include_SL and not particles.empty:
         _dp = d50_um * 1e-6
         _nu_p = mu / rho
         _drho = abs(rho_p - rho)
@@ -691,13 +1010,21 @@ if _can_envelope:
                            _drho, rho, X_vol, C_D_ratio)
         _njs = max(_njs_zw, _njs_gmb)
         _ksl = solid_liquid_mass_transfer(_dp, _vt, rho, mu, D_mol)
+        _phi_s_env = X_vol / 100.0
+        _kla_sl_env = solid_liquid_kla(_ksl, _dp, _phi_s_env)
         _part_static = {
             "N_js_rps": _njs,
             "v_t (m/s)": _vt,
             "Re_p": _rep,
             "k_SL (m/s)": _ksl,
+            "kLa_SL (1/s)": _kla_sl_env,
             "N_js (RPM)": _njs * 60,
         }
+
+    # ── Pre-compute LL RPM-independent quantities ────────────────────────
+    _ll_N_min_static: float = 0.0
+    if include_LL:
+        _ll_N_min_static = minimum_dispersion_speed(D_imp, ll_sigma_LL, rho, ll_phi_d)
 
     # ── Deduplicate mode dicts so identical sweeps run only once ──────────
     _mode_dicts: dict[str, dict[str, str]] = {}
@@ -748,6 +1075,26 @@ if _can_envelope:
                     _vals["v_t (m/s)"] = _part_static["v_t (m/s)"]
                     _vals["Re_p"] = _part_static["Re_p"]
                     _vals["k_SL (m/s)"] = _part_static["k_SL (m/s)"]
+                    _vals["kLa_SL (1/s)"] = _part_static["kLa_SL (1/s)"]
+                if include_GL and gl_sparged and v_s > 0:
+                    _P_V_e = _h["P/V (W/m³)"]
+                    _vals["Gas holdup ε_G"] = gas_holdup_hughmark(v_s, _P_V_e, mu, sigma_c, rho)
+                    _vals["d32 bubble (mm)"] = sauter_bubble_diameter(_P_V_e, v_s, sigma_c, rho) * 1e3
+                    _Q_gas_e = gas_flow_rate_from_vs(v_s, D_tank)
+                    _N_flood_e = gas_flooding_speed(Nq_in, D_imp, _Q_gas_e)
+                    _vals["N_flood (RPM)"] = _N_flood_e * 60
+                    _vals["N/N_flood"] = _N / _N_flood_e if _N_flood_e > 0 else np.inf
+                if include_LL:
+                    _We_e = weber_number(rho, _N, D_imp, ll_sigma_LL)
+                    _d32_e = sauter_drop_diameter(_We_e, D_imp, ll_phi_d)
+                    _vals["We"] = _We_e
+                    _vals["d32 drop (µm)"] = _d32_e * 1e6
+                    _vals["N_min disp (RPM)"] = _ll_N_min_static * 60
+                    _vals["N/N_min disp"] = _N / _ll_N_min_static if _ll_N_min_static > 0 else 0.0
+                    _eps_kg_e = _h["P/V (W/kg)"]
+                    _k_LL_e = liquid_liquid_mass_transfer(_d32_e, ll_D_mol_LL, rho, mu, _eps_kg_e)
+                    _a_LL_e = 6.0 * ll_phi_d / _d32_e if _d32_e > 0 else 0.0
+                    _vals["kLa_LL (1/s)"] = _k_LL_e * _a_LL_e
                 if include_heat and rxn_delta_H != 0:
                     if _r_U_override_env > 0:
                         _U_ht_e = _r_U_override_env
@@ -792,10 +1139,26 @@ if _can_envelope:
         "Da_micro": "Micromixing (Da_micro)",
         "Da_GL": "Gas-Liquid Mass Transfer (Da_GL)",
         "Q_gen/Q_cool (%)": "Heat Transfer Capacity (Q_gen/Q_cool (%))",
+        "Gas holdup ε_G": "Gas Holdup ε_G",
+        "d32 bubble (mm)": "Sauter Mean Bubble Diameter d₃₂ (mm)",
+        "N/N_flood": "N/N_flood (Gas Flooding Ratio)",
+        "N_flood (RPM)": "Gas Flooding Speed (RPM)",
+        "We": "Weber Number (LL)",
+        "d32 drop (µm)": "Sauter Mean Drop Diameter d₃₂ (µm)",
+        "N_min disp (RPM)": "Min Dispersion Speed (RPM)",
+        "N/N_min disp": "N/N_min (LL Dispersion Ratio)",
+        "kLa_LL (1/s)": "LL Mass Transfer kLa_LL (1/s)",
+        "kLa_SL (1/s)": "SL Mass Transfer kLa_SL (1/s)",
     }
     _display = lambda p: _DISPLAY_NAMES.get(p, p)
 
     _DEFAULT_PARAMS = ["Da_micro", "Da_macro", "Da_GL", "Q_gen/Q_cool (%)", "Blend time 95% (s)", "P/V (W/L)"]
+    if include_GL and gl_sparged and v_s > 0:
+        _DEFAULT_PARAMS.extend(["N/N_flood", "Gas holdup ε_G"])
+    if include_LL:
+        _DEFAULT_PARAMS.extend(["N/N_min disp", "d32 drop (µm)"])
+    if include_SL and not particles.empty:
+        _DEFAULT_PARAMS.extend(["N/N_js"])
     _defaults = [p for p in _DEFAULT_PARAMS if p in PLOT_PARAMS]
 
     with st.expander("Show / hide envelope charts", expanded=True):
@@ -911,6 +1274,32 @@ if _can_envelope:
                     font=dict(size=11, color="red"), showarrow=False,
                 )
 
+            if param == "N/N_flood":
+                fig.add_shape(
+                    type="line", x0=0, x1=1, y0=1.0, y1=1.0,
+                    xref="paper", yref="y",
+                    line=dict(color="red", width=1.5, dash="dash"),
+                )
+                fig.add_annotation(
+                    x=1.0, xref="paper", xanchor="right",
+                    y=1.0, yref="y", yanchor="bottom", yshift=2,
+                    text="N/N_flood = 1 (flooding)",
+                    font=dict(size=11, color="red"), showarrow=False,
+                )
+
+            if param == "N/N_min disp":
+                fig.add_shape(
+                    type="line", x0=0, x1=1, y0=1.0, y1=1.0,
+                    xref="paper", yref="y",
+                    line=dict(color="red", width=1.5, dash="dash"),
+                )
+                fig.add_annotation(
+                    x=1.0, xref="paper", xanchor="right",
+                    y=1.0, yref="y", yanchor="bottom", yshift=2,
+                    text="N/N_min = 1 (min dispersion)",
+                    font=dict(size=11, color="red"), showarrow=False,
+                )
+
             _param_label = _display(param)
             _yaxis_opts: dict = dict(
                 showspikes=True, spikemode="across",
@@ -954,6 +1343,14 @@ else:
 st.subheader("Full Hydrodynamic Parameter Table")
 hydro_df = pd.DataFrame([hydro]).T
 hydro_df.columns = ["Value"]
+if gl_results:
+    gl_df = pd.DataFrame([gl_results]).T
+    gl_df.columns = ["Value"]
+    hydro_df = pd.concat([hydro_df, gl_df])
+if ll_results:
+    ll_df = pd.DataFrame([ll_results]).T
+    ll_df.columns = ["Value"]
+    hydro_df = pd.concat([hydro_df, ll_df])
 if particle_results:
     part_df = pd.DataFrame([particle_results]).T
     part_df.columns = ["Value"]
@@ -995,10 +1392,13 @@ st.session_state["_ms_report_snapshot"] = {
     "fluid_T_C": fluid_T_C,
     "N_rpm": _N_rpm_input,
     "V_L": V_L,
+    "system_types": system_types,
     "hydro": dict(hydro),
     "da": dict(da),
     "t_rxn": t_rxn,
     "heat_results": dict(heat_results) if heat_results else {},
+    "gl_results": dict(gl_results) if gl_results else {},
+    "ll_results": dict(ll_results) if ll_results else {},
     "particle_results": dict(particle_results) if particle_results else {},
     "particle_meta": dict(particle_meta) if particle_meta else {},
     "batchelor_um": lam_B * 1e6,
@@ -1046,11 +1446,30 @@ if st.button("📌 Save this result to Recorded Results"):
             "ρ_p (kg/m³)": particle_results.get("ρ_p (kg/m³)", ""),
             "v_t (m/s)": particle_results.get("v_t (m/s)", ""),
             "Re_p": particle_results.get("Re_p", ""),
+            "Archimedes Ar": particle_results.get("Archimedes Ar", ""),
             "N_js Zwietering (RPM)": particle_results.get("N_js Zwietering (RPM)", ""),
             "N_js GMB (RPM)": particle_results.get("N_js GMB (RPM)", ""),
             "N_js (RPM)": particle_results.get("N_js (RPM)", ""),
             "k_SL (m/s)": particle_results.get("k_SL (m/s)", ""),
+            "kLa_SL (1/s)": particle_results.get("kLa_SL (1/s)", ""),
             "Suspension": particle_meta.get("Suspension", ""),
+        })
+    if gl_results:
+        result_row.update({
+            "Gas holdup ε_G": gl_results.get("Gas holdup ε_G", ""),
+            "d32 bubble (mm)": gl_results.get("d32 bubble (mm)", ""),
+            "Q_gas (m³/s)": gl_results.get("Q_gas (m³/s)", ""),
+            "N_flood (RPM)": gl_results.get("N_flood (RPM)", ""),
+            "N/N_flood": gl_results.get("N/N_flood", ""),
+        })
+    if ll_results:
+        result_row.update({
+            "We (LL)": ll_results.get("We", ""),
+            "d32 drop (µm)": ll_results.get("d32 drop (µm)", ""),
+            "N_min dispersion (RPM)": ll_results.get("N_min dispersion (RPM)", ""),
+            "k_LL (m/s)": ll_results.get("k_LL (m/s)", ""),
+            "kLa_LL (1/s)": ll_results.get("kLa_LL (1/s)", ""),
+            "LL Assessment": ll_results.get("LL Assessment", ""),
         })
     if "recorded_results" not in st.session_state:
         st.session_state.recorded_results = pd.DataFrame()

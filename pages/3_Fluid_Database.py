@@ -188,6 +188,9 @@ with tab_custom:
             "surface_tension_N_m": st.column_config.NumberColumn("σ (N/m)", format="%.4f"),
             "Cp_J_per_kgK": st.column_config.NumberColumn("Cp (J/kg·K)", format="%.1f"),
             "k_W_per_mK": st.column_config.NumberColumn("k (W/m·K)", format="%.4f"),
+            "hsp_d": st.column_config.NumberColumn("δd (MPa½)", format="%.1f"),
+            "hsp_p": st.column_config.NumberColumn("δp (MPa½)", format="%.1f"),
+            "hsp_h": st.column_config.NumberColumn("δh (MPa½)", format="%.1f"),
         },
         key="fluid_editor",
     )
@@ -211,7 +214,15 @@ with tab_custom:
             sigma = st.number_input("Surface tension σ (N/m)", min_value=0.0, value=0.072, format="%.4f")
             Cp = st.number_input("Specific heat Cp (J/kg·K)", min_value=1.0, value=4182.0, format="%.1f")
             k_val = st.number_input("Thermal conductivity k (W/m·K)", min_value=0.001, value=0.607, format="%.4f")
-            notes = st.text_input("Notes", "")
+        st.markdown("**Hansen Solubility Parameters** _(optional — for miscibility screening)_")
+        h1, h2, h3 = st.columns(3)
+        hsp_d = h1.number_input("δd dispersion (MPa½)", min_value=0.0, value=0.0, format="%.1f",
+                                help="Set to 0 if unknown")
+        hsp_p = h2.number_input("δp polar (MPa½)", min_value=0.0, value=0.0, format="%.1f",
+                                help="Set to 0 if unknown")
+        hsp_h = h3.number_input("δh H-bonding (MPa½)", min_value=0.0, value=0.0, format="%.1f",
+                                help="Set to 0 if unknown")
+        notes = st.text_input("Notes", "")
         submitted = st.form_submit_button("Add fluid")
         if submitted and name:
             if is_known_solvent(name):
@@ -225,6 +236,9 @@ with tab_custom:
                     "surface_tension_N_m": sigma,
                     "Cp_J_per_kgK": Cp,
                     "k_W_per_mK": k_val,
+                    "hsp_d": hsp_d,
+                    "hsp_p": hsp_p,
+                    "hsp_h": hsp_h,
                     "notes": notes,
                 }])
                 st.session_state.fluid_db = pd.concat(
