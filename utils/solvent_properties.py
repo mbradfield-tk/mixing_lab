@@ -2,10 +2,10 @@
 Temperature-dependent physical properties for common pharmaceutical solvents.
 =============================================================================
 
-Provides density (ρ), dynamic viscosity (μ), surface tension (σ), and
-molecular diffusivity (D_mol) as functions of temperature for solvents
-routinely used in small-molecule organic synthesis and pharmaceutical
-development.
+Provides density (ρ), dynamic viscosity (μ), surface tension (σ),
+molecular diffusivity (D_mol), specific heat capacity (Cp), and thermal
+conductivity (k) as functions of temperature for solvents routinely used
+in small-molecule organic synthesis and pharmaceutical development.
 
 Correlations
 ------------
@@ -15,6 +15,8 @@ Correlations
 * **Surface tension** – linear:  σ(T) = σ₂₅ + dσ/dT · (T − 25)  [N/m]
 * **Diffusivity** – Stokes-Einstein scaling:
        D(T) = D₂₅ · (T_K / 298.15) · (μ₂₅ / μ(T))
+* **Specific heat capacity** – linear:  Cp(T) = Cp₂₅ + dCp/dT · (T − 25)  [J/(kg·K)]
+* **Thermal conductivity** – linear:  k(T) = k₂₅ + dk/dT · (T − 25)  [W/(m·K)]
 
 All correlations are anchored at 25 °C so that the known reference values
 are recovered exactly at that temperature.
@@ -67,6 +69,14 @@ class SolventData:
     # Reference diffusivity at 25 °C [m²/s]
     D_ref_25: float
 
+    # Specific heat capacity at 25 °C and linear slope
+    Cp_25: float                       # J/(kg·K) at 25 °C
+    dCp_dT: float                      # J/(kg·K)/°C
+
+    # Thermal conductivity at 25 °C and linear slope
+    k_25: float                        # W/(m·K) at 25 °C
+    dk_dT: float                       # W/(m·K)/°C
+
     # Antoine equation: log10(P_mmHg) = A - B / (C + T_°C)
     antoine_A: float = 0.0
     antoine_B: float = 0.0
@@ -94,6 +104,8 @@ _add(SolventData(
     mu_25=8.90e-4, Ea_mu=15500.0,
     sig_25=0.0720, dsig_dT=-1.50e-4,
     D_ref_25=2.3e-9,
+    Cp_25=4182.0, dCp_dT=0.4,
+    k_25=0.607, dk_dT=0.0013,
     antoine_A=8.07131, antoine_B=1730.63, antoine_C=233.426,
     aliases=("H2O", "DI Water", "Deionized Water", "Purified Water"),
 ))
@@ -106,6 +118,8 @@ _add(SolventData(
     mu_25=5.44e-4, Ea_mu=10800.0,
     sig_25=0.0223, dsig_dT=-7.7e-5,
     D_ref_25=1.6e-9,
+    Cp_25=2531.0, dCp_dT=3.5,
+    k_25=0.200, dk_dT=-0.00020,
     antoine_A=8.08097, antoine_B=1582.27, antoine_C=239.726,
     aliases=("MeOH", "Methyl Alcohol", "CH3OH"),
 ))
@@ -118,6 +132,8 @@ _add(SolventData(
     mu_25=1.09e-3, Ea_mu=14000.0,
     sig_25=0.0220, dsig_dT=-8.3e-5,
     D_ref_25=1.2e-9,
+    Cp_25=2440.0, dCp_dT=4.5,
+    k_25=0.167, dk_dT=-0.00020,
     antoine_A=8.20417, antoine_B=1642.89, antoine_C=230.300,
     aliases=("EtOH", "Ethyl Alcohol", "C2H5OH"),
 ))
@@ -130,6 +146,8 @@ _add(SolventData(
     mu_25=2.04e-3, Ea_mu=18000.0,
     sig_25=0.0210, dsig_dT=-8.0e-5,
     D_ref_25=1.0e-9,
+    Cp_25=2604.0, dCp_dT=5.0,
+    k_25=0.135, dk_dT=-0.00018,
     antoine_A=8.11778, antoine_B=1580.92, antoine_C=219.610,
     aliases=("IPA", "iPrOH", "2-Propanol", "Isopropyl Alcohol"),
 ))
@@ -142,6 +160,8 @@ _add(SolventData(
     mu_25=3.06e-4, Ea_mu=7100.0,
     sig_25=0.0234, dsig_dT=-1.12e-4,
     D_ref_25=2.4e-9,
+    Cp_25=2163.0, dCp_dT=4.0,
+    k_25=0.161, dk_dT=-0.00020,
     antoine_A=7.11714, antoine_B=1210.595, antoine_C=229.664,
     aliases=("Me2CO", "Propan-2-one", "Dimethyl Ketone"),
 ))
@@ -154,6 +174,8 @@ _add(SolventData(
     mu_25=4.05e-4, Ea_mu=8000.0,
     sig_25=0.0243, dsig_dT=-1.00e-4,
     D_ref_25=1.8e-9,
+    Cp_25=2140.0, dCp_dT=4.0,
+    k_25=0.145, dk_dT=-0.00018,
     antoine_A=7.06356, antoine_B=1261.339, antoine_C=221.969,
     aliases=("MEK", "Methyl Ethyl Ketone", "Butanone"),
 ))
@@ -166,6 +188,8 @@ _add(SolventData(
     mu_25=3.69e-4, Ea_mu=7500.0,
     sig_25=0.0290, dsig_dT=-1.04e-4,
     D_ref_25=2.4e-9,
+    Cp_25=2229.0, dCp_dT=2.5,
+    k_25=0.188, dk_dT=-0.00018,
     antoine_A=7.09363, antoine_B=1314.400, antoine_C=230.000,
     aliases=("MeCN", "ACN", "CH3CN"),
 ))
@@ -178,6 +202,8 @@ _add(SolventData(
     mu_25=4.13e-4, Ea_mu=6500.0,
     sig_25=0.0280, dsig_dT=-1.18e-4,
     D_ref_25=2.1e-9,
+    Cp_25=1190.0, dCp_dT=2.5,
+    k_25=0.140, dk_dT=-0.00016,
     antoine_A=7.08030, antoine_B=1138.91, antoine_C=231.450,
     aliases=("DCM", "Dichloromethane", "Methylene Chloride", "CH2Cl2"),
 ))
@@ -190,6 +216,8 @@ _add(SolventData(
     mu_25=5.36e-4, Ea_mu=7000.0,
     sig_25=0.0271, dsig_dT=-1.12e-4,
     D_ref_25=2.0e-9,
+    Cp_25=960.0, dCp_dT=2.0,
+    k_25=0.117, dk_dT=-0.00015,
     antoine_A=6.95465, antoine_B=1170.966, antoine_C=226.232,
     aliases=("CHCl3", "Trichloromethane"),
 ))
@@ -202,6 +230,8 @@ _add(SolventData(
     mu_25=4.26e-4, Ea_mu=7500.0,
     sig_25=0.0238, dsig_dT=-1.10e-4,
     D_ref_25=2.2e-9,
+    Cp_25=1930.0, dCp_dT=4.0,
+    k_25=0.151, dk_dT=-0.00018,
     antoine_A=7.10179, antoine_B=1244.951, antoine_C=217.881,
     aliases=("EtOAc", "EA"),
 ))
@@ -214,6 +244,8 @@ _add(SolventData(
     mu_25=4.63e-4, Ea_mu=7200.0,
     sig_25=0.0268, dsig_dT=-9.5e-5,
     D_ref_25=2.0e-9,
+    Cp_25=1720.0, dCp_dT=3.5,
+    k_25=0.120, dk_dT=-0.00015,
     antoine_A=6.99515, antoine_B=1202.290, antoine_C=226.254,
     aliases=("Tetrahydrofuran",),
 ))
@@ -226,6 +258,8 @@ _add(SolventData(
     mu_25=5.54e-4, Ea_mu=8500.0,
     sig_25=0.0280, dsig_dT=-1.04e-4,
     D_ref_25=2.0e-9,
+    Cp_25=1690.0, dCp_dT=3.0,
+    k_25=0.131, dk_dT=-0.00018,
     antoine_A=6.95334, antoine_B=1343.943, antoine_C=219.377,
     aliases=("PhMe", "Tol", "Methylbenzene"),
 ))
@@ -238,6 +272,8 @@ _add(SolventData(
     mu_25=8.02e-4, Ea_mu=10000.0,
     sig_25=0.0370, dsig_dT=-1.12e-4,
     D_ref_25=1.5e-9,
+    Cp_25=2060.0, dCp_dT=2.5,
+    k_25=0.184, dk_dT=-0.00015,
     antoine_A=6.97780, antoine_B=1451.380, antoine_C=202.000,
     aliases=("Dimethylformamide", "N,N-Dimethylformamide"),
 ))
@@ -250,6 +286,8 @@ _add(SolventData(
     mu_25=1.99e-3, Ea_mu=14500.0,
     sig_25=0.0436, dsig_dT=-1.10e-4,
     D_ref_25=0.9e-9,
+    Cp_25=1960.0, dCp_dT=2.0,
+    k_25=0.200, dk_dT=-0.00015,
     antoine_A=7.91178, antoine_B=1956.140, antoine_C=199.820,
     aliases=("Dimethyl Sulfoxide", "Dimethylsulfoxide"),
 ))
@@ -262,6 +300,8 @@ _add(SolventData(
     mu_25=3.87e-4, Ea_mu=7500.0,
     sig_25=0.0200, dsig_dT=-8.8e-5,
     D_ref_25=2.5e-9,
+    Cp_25=2240.0, dCp_dT=4.5,
+    k_25=0.124, dk_dT=-0.00018,
     antoine_A=6.89385, antoine_B=1264.370, antoine_C=216.640,
     aliases=("n-Heptane", "C7H16"),
 ))
@@ -274,6 +314,8 @@ _add(SolventData(
     mu_25=2.94e-4, Ea_mu=6500.0,
     sig_25=0.0179, dsig_dT=-9.6e-5,
     D_ref_25=2.7e-9,
+    Cp_25=2270.0, dCp_dT=5.0,
+    k_25=0.120, dk_dT=-0.00020,
     antoine_A=6.87776, antoine_B=1171.530, antoine_C=224.366,
     aliases=("n-Hexane", "C6H14"),
 ))
@@ -286,6 +328,8 @@ _add(SolventData(
     mu_25=3.40e-4, Ea_mu=7000.0,
     sig_25=0.0190, dsig_dT=-9.8e-5,
     D_ref_25=2.3e-9,
+    Cp_25=2120.0, dCp_dT=4.0,
+    k_25=0.112, dk_dT=-0.00018,
     antoine_A=6.64473, antoine_B=1065.940, antoine_C=228.000,
     aliases=("Methyl tert-Butyl Ether", "tert-Butyl Methyl Ether", "TBME"),
 ))
@@ -298,6 +342,8 @@ _add(SolventData(
     mu_25=1.13e-3, Ea_mu=10500.0,
     sig_25=0.0271, dsig_dT=-8.4e-5,
     D_ref_25=1.3e-9,
+    Cp_25=2050.0, dCp_dT=2.0,
+    k_25=0.158, dk_dT=-0.00015,
     antoine_A=7.38782, antoine_B=1533.313, antoine_C=222.309,
     aliases=("AcOH", "HOAc", "Glacial Acetic Acid", "CH3COOH"),
 ))
@@ -310,6 +356,8 @@ _add(SolventData(
     mu_25=1.67e-3, Ea_mu=12000.0,
     sig_25=0.0410, dsig_dT=-9.0e-5,
     D_ref_25=1.1e-9,
+    Cp_25=1680.0, dCp_dT=2.0,
+    k_25=0.175, dk_dT=-0.00012,
     antoine_A=7.41282, antoine_B=1826.400, antoine_C=201.000,
     aliases=("N-Methyl-2-pyrrolidone", "N-Methylpyrrolidone"),
 ))
@@ -322,6 +370,8 @@ _add(SolventData(
     mu_25=4.60e-4, Ea_mu=7500.0,
     sig_25=0.0245, dsig_dT=-9.5e-5,
     D_ref_25=1.8e-9,
+    Cp_25=1810.0, dCp_dT=3.5,
+    k_25=0.118, dk_dT=-0.00015,
     antoine_A=6.97080, antoine_B=1228.550, antoine_C=221.380,
     aliases=("2-Methyltetrahydrofuran", "MeTHF", "2-MeOTHF"),
 ))
@@ -334,6 +384,8 @@ _add(SolventData(
     mu_25=1.18e-3, Ea_mu=12000.0,
     sig_25=0.0330, dsig_dT=-1.02e-4,
     D_ref_25=1.7e-9,
+    Cp_25=1740.0, dCp_dT=2.0,
+    k_25=0.159, dk_dT=-0.00012,
     antoine_A=7.43155, antoine_B=1554.679, antoine_C=240.337,
     aliases=("Dioxane", "p-Dioxane"),
 ))
@@ -346,6 +398,8 @@ _add(SolventData(
     mu_25=2.22e-4, Ea_mu=5500.0,
     sig_25=0.0170, dsig_dT=-1.12e-4,
     D_ref_25=2.6e-9,
+    Cp_25=2320.0, dCp_dT=3.5,
+    k_25=0.130, dk_dT=-0.00020,
     antoine_A=6.92032, antoine_B=1064.070, antoine_C=228.799,
     aliases=("Et2O", "Ether", "DEE", "Ethoxyethane"),
 ))
@@ -435,10 +489,21 @@ def diffusivity(T_C: float, solvent: SolventData) -> float:
     return solvent.D_ref_25 * (T_K / 298.15) * (solvent.mu_25 / mu_T)
 
 
+def specific_heat(T_C: float, solvent: SolventData) -> float:
+    """Specific heat capacity [J/(kg·K)] at temperature T_C [°C]."""
+    return solvent.Cp_25 + solvent.dCp_dT * (T_C - 25.0)
+
+
+def thermal_conductivity(T_C: float, solvent: SolventData) -> float:
+    """Thermal conductivity [W/(m·K)] at temperature T_C [°C]."""
+    return solvent.k_25 + solvent.dk_dT * (T_C - 25.0)
+
+
 def get_properties(solvent_name: str, T_C: float, P_atm: float = 1.0) -> dict:
     """Return a dict of all physical properties at the given temperature and pressure.
 
     Keys: rho_kg_m3, mu_Pa_s, D_mol_m2_s, surface_tension_N_m,
+          Cp_J_per_kgK, k_W_per_mK,
           T_C, P_atm, solvent, bp_C, bp_at_P_C, mp_C, in_range,
           vapor_pressure_atm
     """
@@ -459,6 +524,8 @@ def get_properties(solvent_name: str, T_C: float, P_atm: float = 1.0) -> dict:
         "mu_Pa_s": viscosity(T_C, s),
         "D_mol_m2_s": diffusivity(T_C, s),
         "surface_tension_N_m": surface_tension(T_C, s),
+        "Cp_J_per_kgK": specific_heat(T_C, s),
+        "k_W_per_mK": thermal_conductivity(T_C, s),
         "bp_C": s.bp_C,
         "bp_at_P_C": bp_at_P,
         "mp_C": s.mp_C,
@@ -488,6 +555,8 @@ def solvent_info_table() -> list[dict]:
             "μ₂₅ (mPa·s)": f"{s.mu_25 * 1000:.3f}",
             "σ₂₅ (mN/m)": f"{s.sig_25 * 1000:.1f}",
             "D₂₅ (m²/s)": f"{s.D_ref_25:.2e}",
+            "Cp₂₅ (J/kg·K)": f"{s.Cp_25:.0f}",
+            "k₂₅ (W/m·K)": f"{s.k_25:.3f}",
         })
     return rows
 

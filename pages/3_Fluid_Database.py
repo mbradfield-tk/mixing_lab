@@ -9,6 +9,7 @@ import pathlib
 from utils.solvent_properties import (
     SOLVENT_DB, get_properties, list_solvents, solvent_info_table,
     density, viscosity, surface_tension, diffusivity,
+    specific_heat, thermal_conductivity,
     is_known_solvent, vapor_pressure_mmHg, boiling_point_at_pressure,
 )
 
@@ -23,7 +24,7 @@ def _load_custom_fluids() -> pd.DataFrame:
         return pd.read_csv(FLUID_CSV)
     return pd.DataFrame(columns=[
         "fluid_name", "rho_kg_m3", "mu_Pa_s", "D_mol_m2_s",
-        "surface_tension_N_m", "notes",
+        "surface_tension_N_m", "Cp_J_per_kgK", "k_W_per_mK", "notes",
     ])
 
 
@@ -111,10 +112,12 @@ with tab_solvent:
     pc3.metric("σ (N/m)", f"{props['surface_tension_N_m']:.4f}")
     pc4.metric("D_mol (m²/s)", f"{props['D_mol_m2_s']:.3e}")
 
-    pc5, pc6, pc7 = st.columns(3)
-    pc5.metric("Vapor pressure (atm)", f"{props['vapor_pressure_atm']:.4f}")
-    pc6.metric("b.p. at P (°C)", f"{bp_at_P:.1f}")
-    pc7.metric("Normal b.p. (°C)", f"{sd.bp_C:.1f}")
+    pc5, pc6, pc7, pc8, pc9 = st.columns(5)
+    pc5.metric("Cp (J/kg·K)", f"{props['Cp_J_per_kgK']:.1f}")
+    pc6.metric("k (W/m·K)", f"{props['k_W_per_mK']:.4f}")
+    pc7.metric("Vapor pressure (atm)", f"{props['vapor_pressure_atm']:.4f}")
+    pc8.metric("b.p. at P (°C)", f"{bp_at_P:.1f}")
+    pc9.metric("Normal b.p. (°C)", f"{sd.bp_C:.1f}")
 
     st.caption(f"MW = {props['mw']:.2f} g/mol  ·  CAS {props['cas']}  ·  "
                f"b.p.(1 atm) = {props['bp_C']:.1f} °C  ·  "
@@ -130,19 +133,23 @@ with tab_solvent:
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
-    fig = make_subplots(rows=2, cols=2, subplot_titles=[
+    fig = make_subplots(rows=3, cols=2, subplot_titles=[
         "Density ρ (kg/m³)", "Viscosity μ (Pa·s)",
         "Surface tension σ (N/m)", "Diffusivity D (m²/s)",
-    ], vertical_spacing=0.2, horizontal_spacing=0.10)
+        "Specific heat Cp (J/kg·K)", "Thermal conductivity k (W/m·K)",
+    ], vertical_spacing=0.14, horizontal_spacing=0.10)
 
     rho_arr = [density(T, sd) for T in T_arr]
     mu_arr = [viscosity(T, sd) for T in T_arr]
     sig_arr = [surface_tension(T, sd) for T in T_arr]
     D_arr = [diffusivity(T, sd) for T in T_arr]
+    Cp_arr = [specific_heat(T, sd) for T in T_arr]
+    k_arr = [thermal_conductivity(T, sd) for T in T_arr]
 
     for r, c, y_arr, name in [
         (1, 1, rho_arr, "ρ"), (1, 2, mu_arr, "μ"),
         (2, 1, sig_arr, "σ"), (2, 2, D_arr, "D"),
+        (3, 1, Cp_arr, "Cp"), (3, 2, k_arr, "k"),
     ]:
         fig.add_trace(go.Scatter(
             x=T_arr, y=y_arr, mode="lines",
@@ -157,7 +164,7 @@ with tab_solvent:
         ), row=r, col=c)
         fig.update_xaxes(title_text="T (°C)", row=r, col=c)
 
-    fig.update_layout(height=550, margin=dict(t=40, b=40))
+    fig.update_layout(height=780, margin=dict(t=40, b=40))
     st.plotly_chart(fig, width='content')
 
 # ── Custom Fluids ─────────────────────────────────────────────────────────
@@ -179,6 +186,8 @@ with tab_custom:
             "mu_Pa_s": st.column_config.NumberColumn("μ (Pa·s)", format="%.6f"),
             "D_mol_m2_s": st.column_config.NumberColumn("D_mol (m²/s)", format="%.2e"),
             "surface_tension_N_m": st.column_config.NumberColumn("σ (N/m)", format="%.4f"),
+            "Cp_J_per_kgK": st.column_config.NumberColumn("Cp (J/kg·K)", format="%.1f"),
+            "k_W_per_mK": st.column_config.NumberColumn("k (W/m·K)", format="%.4f"),
         },
         key="fluid_editor",
     )
@@ -200,6 +209,8 @@ with tab_custom:
         with c2:
             D_mol = st.number_input("Molecular diffusivity D (m²/s)", min_value=1e-12, value=2.3e-9, format="%.2e")
             sigma = st.number_input("Surface tension σ (N/m)", min_value=0.0, value=0.072, format="%.4f")
+            Cp = st.number_input("Specific heat Cp (J/kg·K)", min_value=1.0, value=4182.0, format="%.1f")
+            k_val = st.number_input("Thermal conductivity k (W/m·K)", min_value=0.001, value=0.607, format="%.4f")
             notes = st.text_input("Notes", "")
         submitted = st.form_submit_button("Add fluid")
         if submitted and name:
@@ -212,6 +223,8 @@ with tab_custom:
                     "mu_Pa_s": mu,
                     "D_mol_m2_s": D_mol,
                     "surface_tension_N_m": sigma,
+                    "Cp_J_per_kgK": Cp,
+                    "k_W_per_mK": k_val,
                     "notes": notes,
                 }])
                 st.session_state.fluid_db = pd.concat(
@@ -240,6 +253,8 @@ with tab_blend:
                 "mu_Pa_s": p["mu_Pa_s"],
                 "D_mol_m2_s": p["D_mol_m2_s"],
                 "surface_tension_N_m": p["surface_tension_N_m"],
+                "Cp_J_per_kgK": p["Cp_J_per_kgK"],
+                "k_W_per_mK": p["k_W_per_mK"],
             }
         cust = st.session_state.fluid_db
         if not cust.empty and fname in cust["fluid_name"].values:
@@ -249,6 +264,8 @@ with tab_blend:
                 "mu_Pa_s": float(row["mu_Pa_s"]),
                 "D_mol_m2_s": float(row["D_mol_m2_s"]),
                 "surface_tension_N_m": float(row["surface_tension_N_m"]),
+                "Cp_J_per_kgK": float(row.get("Cp_J_per_kgK", 4182.0)),
+                "k_W_per_mK": float(row.get("k_W_per_mK", 0.607)),
             }
         return None
 
@@ -321,6 +338,8 @@ with tab_blend:
                 blend_mu = sum(cp["mass_frac"] * cp["mu_Pa_s"] for cp in comp_props)
                 blend_D = sum(cp["mass_frac"] * cp["D_mol_m2_s"] for cp in comp_props)
                 blend_sig = sum(cp["mass_frac"] * cp["surface_tension_N_m"] for cp in comp_props)
+                blend_Cp = sum(cp["mass_frac"] * cp["Cp_J_per_kgK"] for cp in comp_props)
+                blend_k = sum(cp["mass_frac"] * cp["k_W_per_mK"] for cp in comp_props)
 
                 # Display total volume input
                 st.metric("Total volume entered", f"{total_vol:.2f}")
@@ -336,6 +355,8 @@ with tab_blend:
                     "μ (Pa·s)": f"{cp['mu_Pa_s']:.6f}",
                     "σ (N/m)": f"{cp['surface_tension_N_m']:.4f}",
                     "D (m²/s)": f"{cp['D_mol_m2_s']:.3e}",
+                    "Cp (J/kg·K)": f"{cp['Cp_J_per_kgK']:.1f}",
+                    "k (W/m·K)": f"{cp['k_W_per_mK']:.4f}",
                 } for cp in comp_props]
                 comp_rows.append({
                     "Component": "**Blend**",
@@ -346,16 +367,20 @@ with tab_blend:
                     "μ (Pa·s)": f"{blend_mu:.6f}",
                     "σ (N/m)": f"{blend_sig:.4f}",
                     "D (m²/s)": f"{blend_D:.3e}",
+                    "Cp (J/kg·K)": f"{blend_Cp:.1f}",
+                    "k (W/m·K)": f"{blend_k:.4f}",
                 })
                 st.dataframe(pd.DataFrame(comp_rows), width='content', hide_index=True)
 
                 # Display blended properties
                 st.subheader("Blended Properties (mass-weighted)")
-                bm1, bm2, bm3, bm4 = st.columns(4)
+                bm1, bm2, bm3, bm4, bm5, bm6 = st.columns(6)
                 bm1.metric("ρ (kg/m³)", f"{blend_rho:.2f}")
                 bm2.metric("μ (Pa·s)", f"{blend_mu:.6f}")
                 bm3.metric("σ (N/m)", f"{blend_sig:.4f}")
                 bm4.metric("D_mol (m²/s)", f"{blend_D:.3e}")
+                bm5.metric("Cp (J/kg·K)", f"{blend_Cp:.1f}")
+                bm6.metric("k (W/m·K)", f"{blend_k:.4f}")
 
                 # Auto-generate name from actual normalised volume fractions
                 _parts = [
@@ -390,6 +415,8 @@ with tab_blend:
                             "mu_Pa_s": round(blend_mu, 8),
                             "D_mol_m2_s": blend_D,
                             "surface_tension_N_m": round(blend_sig, 5),
+                            "Cp_J_per_kgK": round(blend_Cp, 1),
+                            "k_W_per_mK": round(blend_k, 4),
                             "notes": f"Blend at {blend_T:.0f} °C: {_comp_notes}",
                         }])
                         st.session_state.fluid_db = pd.concat(
