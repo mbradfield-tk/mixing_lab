@@ -892,7 +892,9 @@ if include_SL and not particles.empty:
     N_js_gmb = gmb_njs(gmb_z, Np_in if Np_in else 1.27, D_imp, d_p_m,
                        delta_rho, rho, X_vol, C_D_ratio)
     N_js = max(N_js_zw, N_js_gmb)
-    k_SL = solid_liquid_mass_transfer(d_p_m, v_t, rho, mu, D_mol)
+    _eps_kg_cp = hydro["P/V (W/kg)"] if hydro["P/V (W/kg)"] > 0 else 0.0
+    _v_slip_cp = max(v_t, (_eps_kg_cp * d_p_m) ** (1.0 / 3.0) if _eps_kg_cp > 0 else 0.0)
+    k_SL = solid_liquid_mass_transfer(d_p_m, _v_slip_cp, rho, mu, D_mol)
     _Ar = archimedes_number(d_p_m, rho, delta_rho, mu)
     _phi_s = X_vol / 100.0  # volume fraction
     _kLa_SL = solid_liquid_kla(k_SL, d_p_m, _phi_s)
@@ -1000,7 +1002,7 @@ if _can_envelope:
     HEAT_PARAMS = ["Q_gen (W)", "Q_cool (W)", "U (W/m²·K)", "A_ht (m²)", "Q_gen/Q_cool (%)"]
     if include_heat and rxn_delta_H != 0:
         PLOT_PARAMS = PLOT_PARAMS + HEAT_PARAMS
-    PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p", "k_SL (m/s)", "kLa_SL (1/s)", "Da_SL"]
+    PARTICLE_PARAMS = ["N_js Zwietering (RPM)", "N_js GMB (RPM)", "N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p", "k_SL (m/s)", "kLa_SL (1/s)", "Da_SL"]
     if include_SL and not particles.empty:
         PLOT_PARAMS = PLOT_PARAMS + PARTICLE_PARAMS
     GL_PARAMS = ["Gas holdup ε_G", "d32 bubble (mm)", "N_flood (RPM)", "N/N_flood"]
@@ -1026,17 +1028,18 @@ if _can_envelope:
         _njs_gmb = gmb_njs(gmb_z, Np_in if Np_in else 1.27, D_imp, _dp,
                            _drho, rho, X_vol, C_D_ratio)
         _njs = max(_njs_zw, _njs_gmb)
-        _ksl = solid_liquid_mass_transfer(_dp, _vt, rho, mu, D_mol)
         _phi_s_env = X_vol / 100.0
-        _kla_sl_env = solid_liquid_kla(_ksl, _dp, _phi_s_env)
         _part_static = {
+            "N_js_zw_rps": _njs_zw,
+            "N_js_gmb_rps": _njs_gmb,
             "N_js_rps": _njs,
             "v_t (m/s)": _vt,
             "Re_p": _rep,
-            "k_SL (m/s)": _ksl,
-            "kLa_SL (1/s)": _kla_sl_env,
+            "N_js Zwietering (RPM)": _njs_zw * 60,
+            "N_js GMB (RPM)": _njs_gmb * 60,
             "N_js (RPM)": _njs * 60,
-            "Da_SL": damkohler_sl(_kla_sl_env, t_rxn),
+            "d_p": _dp,
+            "phi_s": _phi_s_env,
         }
 
     # ── Pre-compute LL RPM-independent quantities ────────────────────────
@@ -1082,7 +1085,13 @@ if _can_envelope:
                     rho=rho, mu=mu, Np=Np_in, Nq=Nq_in,
                     v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
                 )
-                _kLa_SL_env = _part_static["kLa_SL (1/s)"] if _part_static is not None else 0.0
+                _kLa_SL_env = 0.0
+                if _part_static is not None:
+                    _eps_kg = _h["P/V (W/kg)"] if _h["P/V (W/kg)"] > 0 else 0.0
+                    _v_slip = max(_part_static["v_t (m/s)"],
+                                  (_eps_kg * _part_static["d_p"]) ** (1.0 / 3.0) if _eps_kg > 0 else 0.0)
+                    _ksl_env = solid_liquid_mass_transfer(_part_static["d_p"], _v_slip, rho, mu, D_mol)
+                    _kLa_SL_env = solid_liquid_kla(_ksl_env, _part_static["d_p"], _part_static["phi_s"])
                 _da = compute_damkohler_numbers(
                     _h["Blend time 95% (s)"], _h["Micromix time t_E (s)"], t_rxn,
                     kLa=_h["kLa (1/s)"], kLa_surface=_h["kLa_surface (1/s)"],
@@ -1090,13 +1099,15 @@ if _can_envelope:
                 )
                 _vals = {**_h, **_da}
                 if _part_static is not None:
+                    _vals["N_js Zwietering (RPM)"] = _part_static["N_js Zwietering (RPM)"]
+                    _vals["N_js GMB (RPM)"] = _part_static["N_js GMB (RPM)"]
                     _vals["N_js (RPM)"] = _part_static["N_js (RPM)"]
                     _vals["N/N_js"] = _N / _part_static["N_js_rps"] if _part_static["N_js_rps"] > 0 else 0.0
                     _vals["v_t (m/s)"] = _part_static["v_t (m/s)"]
                     _vals["Re_p"] = _part_static["Re_p"]
-                    _vals["k_SL (m/s)"] = _part_static["k_SL (m/s)"]
-                    _vals["kLa_SL (1/s)"] = _part_static["kLa_SL (1/s)"]
-                    _vals["Da_SL"] = _part_static["Da_SL"]
+                    _vals["k_SL (m/s)"] = _ksl_env
+                    _vals["kLa_SL (1/s)"] = _kLa_SL_env
+                    _vals["Da_SL"] = _da["Da_SL"]
                 if include_GL and gl_sparged and v_s > 0:
                     _P_V_e = _h["P/V (W/m³)"]
                     _vals["Gas holdup ε_G"] = gas_holdup_hughmark(v_s, _P_V_e, mu, sigma_c, rho)

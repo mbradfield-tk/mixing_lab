@@ -90,6 +90,16 @@ the specific particle surface area:
 
 $$k_L a_{SL} = k_{SL} \cdot a_s, \quad a_s = \frac{6\,\phi_s}{d_p}$$
 
+The slip velocity used in the Ranz-Marshall correlation is the larger of the
+terminal settling velocity and the Kolmogorov-scale turbulent slip velocity:
+
+$$v_{\text{slip}} = \max\!\bigl(v_t,\; (\varepsilon \cdot d_p)^{1/3}\bigr)$$
+
+where $\varepsilon$ is the specific energy dissipation rate (W/kg), which varies
+with impeller speed.  At low RPM the gravitational settling dominates; at higher
+RPM the turbulent contribution takes over, making $k_{SL}$ (and therefore
+$Da_{SL}$) RPM-dependent.
+
 | $Da_{SL}$ range | Interpretation |
 |----------------|----------------|
 | $Da_{SL} \ll 0.01$ | Mass transfer is fast — reaction-limited |
@@ -107,6 +117,8 @@ When $k_L a_{SL} = 0$ (no solid phase present), $Da_{SL}$ is set to zero
 | $a_s$ | Specific particle surface area | 1/m |
 | $\phi_s$ | Volumetric solids fraction | — |
 | $d_p$ | Particle diameter | m |
+| $v_t$ | Terminal settling velocity | m/s |
+| $\varepsilon$ | Specific energy dissipation rate | W/kg |
 | $t_{rxn}$ | Characteristic reaction time | s |
 
 The interpretation mirrors $Da_{GL}$: higher values indicate the system is

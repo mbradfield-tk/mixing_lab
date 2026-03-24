@@ -1,3 +1,6 @@
-fluid_name,rho_kg_m3,mu_Pa_s,D_mol_m2_s,surface_tension_N_m,notes
-60% Acetic Acid / 40% Water,1028.83,0.00103691,1.687862283602412e-09,0.04452,"Blend at 25 °C: Acetic Acid 60vol%, Water 40vol%"
-45% Water / 55% Acetone (30 °C),890.37,0.00055555,2.576016099388906e-09,0.04782,"Blend at 30 °C: Water 45vol%, Acetone 55vol%"
+fluid_name,rho_kg_m3,mu_Pa_s,D_mol_m2_s,surface_tension_N_m,notes,Cp_J_per_kgK,k_W_per_mK,hsp_d,hsp_p,hsp_h
+60% Acetic Acid / 40% Water,1028.83,0.00103691,1.6878622836024121e-09,0.04452,"Blend at 25 °C: Acetic Acid 60vol%, Water 40vol%",,,,,
+45% Water / 55% Acetone (30 °C),890.37,0.00055555,2.5760160993889062e-09,0.04782,"Blend at 30 °C: Water 45vol%, Acetone 55vol%",,,,,
+0.6 M Sodium Hydroxide,1022.0,0.00095,2.3e-09,0.067,Estimated parameters,4182.0,0.607,0.0,0.0,0.0
+TAK-360 Step 6 Crystallization GMP4 Final Mass,983.29,0.00086687,2.2118596208148447e-09,0.06115,"Blend at 25 °C: Water 53wt%, Acetic Acid 10wt%, Acetonitrile 12wt%, 0.6 M Sodium Hydroxide 25wt%",3736.3,0.5122,,,
+TAK-360 Step 6 Crystallization GMP4-2 Final (50 °C),974.79,0.00064409,3.3129356526197594e-09,0.05863,"Blend at 50 °C: 0.6 M Sodium Hydroxide 25wt%, Water 53wt%, Acetic Acid 10wt%, Acetonitrile 12wt%",3754.1,0.5286,,,

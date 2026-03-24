@@ -252,9 +252,9 @@ with tab_custom:
 with tab_blend:
     st.markdown(
         "Create a **blend** from existing fluids (solvents and/or custom fluids).  "
-        "Enter volumetric proportions — these are converted to mass fractions "
-        "using each component's density, and mixture properties are computed as "
-        "mass-weighted averages."
+        "Enter proportions on a **volumetric** or **mass** basis — they are converted "
+        "to mass fractions using each component's density, and mixture properties "
+        "are computed as mass-weighted averages."
     )
 
     # Helper: get properties for any fluid name (solvent or custom) at 25 °C
@@ -305,28 +305,40 @@ with tab_blend:
     )
 
     if len(blend_components) >= 2:
-        # Collect volumetric proportions
-        st.subheader("Volumetric Contributions")
+        # Choose input basis
+        _blend_basis = st.radio(
+            "Input basis",
+            ["Volume", "Mass"],
+            horizontal=True,
+            key="blend_basis",
+            help="Enter component amounts on a volumetric or mass basis. "
+                 "Properties are always averaged on a mass-fraction basis.",
+        )
+        _is_vol_basis = _blend_basis == "Volume"
+        _basis_label = "volume" if _is_vol_basis else "mass"
+
+        # Collect proportions
+        st.subheader(f"Component Contributions ({_basis_label})")
         st.caption(
-            "Enter the volume contribution of each component (they will be "
+            f"Enter the {_basis_label} contribution of each component (they will be "
             "normalised automatically to sum to 1.0)."
         )
 
-        vol_fracs: dict[str, float] = {}
+        input_fracs: dict[str, float] = {}
         cols = st.columns(min(len(blend_components), 4))
         for i, comp in enumerate(blend_components):
             with cols[i % len(cols)]:
-                vol_fracs[comp] = st.number_input(
+                input_fracs[comp] = st.number_input(
                     f"{comp}", min_value=0.0, value=1.0, step=0.1,
-                    format="%.2f", key=f"blend_vf_{comp}",
+                    format="%.2f", key=f"blend_f_{_basis_label}_{comp}",
                 )
 
-        total_vol = sum(vol_fracs.values())
-        if total_vol <= 0:
-            st.warning("Total volume must be > 0.")
+        total_input = sum(input_fracs.values())
+        if total_input <= 0:
+            st.warning(f"Total {_basis_label} must be > 0.")
         else:
-            # Normalise volume fractions
-            vol_norm = {k: v / total_vol for k, v in vol_fracs.items()}
+            # Normalise input fractions
+            input_norm = {k: v / total_input for k, v in input_fracs.items()}
 
             # Gather component properties
             comp_props: list[dict] = []
@@ -336,16 +348,26 @@ with tab_blend:
                 if p is None:
                     _missing.append(comp)
                 else:
-                    comp_props.append({"name": comp, "vol_frac": vol_norm[comp], **p})
+                    comp_props.append({"name": comp, "input_frac": input_norm[comp], **p})
             if _missing:
                 st.error(f"Could not find properties for: {', '.join(_missing)}")
             else:
-                # Convert volumetric to mass fractions
-                # mass_i = vol_frac_i * rho_i (per unit total volume)
-                masses = [cp["vol_frac"] * cp["rho_kg_m3"] for cp in comp_props]
-                total_mass = sum(masses)
-                for cp, m in zip(comp_props, masses):
-                    cp["mass_frac"] = m / total_mass
+                if _is_vol_basis:
+                    # Input is volume fractions → convert to mass fractions
+                    for cp in comp_props:
+                        cp["vol_frac"] = cp["input_frac"]
+                    masses = [cp["vol_frac"] * cp["rho_kg_m3"] for cp in comp_props]
+                    total_mass = sum(masses)
+                    for cp, m in zip(comp_props, masses):
+                        cp["mass_frac"] = m / total_mass
+                else:
+                    # Input is mass fractions → convert to volume fractions
+                    for cp in comp_props:
+                        cp["mass_frac"] = cp["input_frac"]
+                    vols = [cp["mass_frac"] / cp["rho_kg_m3"] for cp in comp_props]
+                    total_vol_calc = sum(vols)
+                    for cp, v in zip(comp_props, vols):
+                        cp["vol_frac"] = v / total_vol_calc
 
                 # Mass-weighted average properties
                 blend_rho = sum(cp["mass_frac"] * cp["rho_kg_m3"] for cp in comp_props)
@@ -355,18 +377,33 @@ with tab_blend:
                 blend_Cp = sum(cp["mass_frac"] * cp["Cp_J_per_kgK"] for cp in comp_props)
                 blend_k = sum(cp["mass_frac"] * cp["k_W_per_mK"] for cp in comp_props)
 
-                # Display total volume input
-                st.metric("Total volume entered", f"{total_vol:.2f}")
+                # Compute absolute volume (L) and mass (kg) per component
+                for cp in comp_props:
+                    if _is_vol_basis:
+                        cp["vol_L"] = input_fracs[cp["name"]]
+                        cp["mass_kg"] = cp["vol_L"] * cp["rho_kg_m3"] * 1e-3  # L→m³
+                    else:
+                        cp["mass_kg"] = input_fracs[cp["name"]]
+                        cp["vol_L"] = cp["mass_kg"] / cp["rho_kg_m3"] * 1e3   # m³→L
+                _total_vol_L = sum(cp["vol_L"] for cp in comp_props)
+                _total_mass_kg = sum(cp["mass_kg"] for cp in comp_props)
+
+                # Display total input
+                st.metric(f"Total {_basis_label} entered", f"{total_input:.2f}")
 
                 # Display composition table
                 st.subheader("Blend Composition")
+                blend_nu = blend_mu / blend_rho if blend_rho > 0 else 0.0
                 comp_rows = [{
                     "Component": cp["name"],
-                    "Added": f"{vol_fracs[cp['name']]:.2f}",
+                    "Added": f"{input_fracs[cp['name']]:.2f}",
+                    "Volume (L)": f"{cp['vol_L']:.3g}",
+                    "Mass (kg)": f"{cp['mass_kg']:.3g}",
                     "Vol %": f"{cp['vol_frac'] * 100:.1f}",
                     "Mass %": f"{cp['mass_frac'] * 100:.1f}",
                     "ρ (kg/m³)": f"{cp['rho_kg_m3']:.1f}",
                     "μ (Pa·s)": f"{cp['mu_Pa_s']:.6f}",
+                    "ν (m²/s)": f"{cp['mu_Pa_s'] / cp['rho_kg_m3']:.3e}",
                     "σ (N/m)": f"{cp['surface_tension_N_m']:.4f}",
                     "D (m²/s)": f"{cp['D_mol_m2_s']:.3e}",
                     "Cp (J/kg·K)": f"{cp['Cp_J_per_kgK']:.1f}",
@@ -374,11 +411,14 @@ with tab_blend:
                 } for cp in comp_props]
                 comp_rows.append({
                     "Component": "**Blend**",
-                    "Added": f"{total_vol:.2f}",
+                    "Added": f"{total_input:.2f}",
+                    "Volume (L)": f"{_total_vol_L:.3g}",
+                    "Mass (kg)": f"{_total_mass_kg:.3g}",
                     "Vol %": "100.0",
                     "Mass %": "100.0",
                     "ρ (kg/m³)": f"{blend_rho:.1f}",
                     "μ (Pa·s)": f"{blend_mu:.6f}",
+                    "ν (m²/s)": f"{blend_nu:.3e}",
                     "σ (N/m)": f"{blend_sig:.4f}",
                     "D (m²/s)": f"{blend_D:.3e}",
                     "Cp (J/kg·K)": f"{blend_Cp:.1f}",
@@ -396,16 +436,26 @@ with tab_blend:
                 bm5.metric("Cp (J/kg·K)", f"{blend_Cp:.1f}")
                 bm6.metric("k (W/m·K)", f"{blend_k:.4f}")
 
-                # Auto-generate name from actual normalised volume fractions
-                _parts = [
-                    f"{cp['vol_frac'] * 100:.0f}% {cp['name']}"
-                    for cp in comp_props
-                ]
+                # Auto-generate name from actual normalised fractions
+                if _is_vol_basis:
+                    _parts = [
+                        f"{cp['vol_frac'] * 100:.0f}%v {cp['name']}"
+                        for cp in comp_props
+                    ]
+                    _comp_notes = ", ".join(
+                        f"{cp['name']} {cp['vol_frac']*100:.0f}vol%"
+                        for cp in comp_props
+                    )
+                else:
+                    _parts = [
+                        f"{cp['mass_frac'] * 100:.0f}%w {cp['name']}"
+                        for cp in comp_props
+                    ]
+                    _comp_notes = ", ".join(
+                        f"{cp['name']} {cp['mass_frac']*100:.0f}wt%"
+                        for cp in comp_props
+                    )
                 _auto_name = " / ".join(_parts) + f" ({blend_T:.0f} °C)"
-                _comp_notes = ", ".join(
-                    f"{cp['name']} {cp['vol_frac']*100:.0f}vol%"
-                    for cp in comp_props
-                )
 
                 # Push the computed name into session state whenever it changes
                 if st.session_state.get("_blend_auto_name") != _auto_name:

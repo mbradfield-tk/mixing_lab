@@ -453,12 +453,17 @@ for rname in selected_names:
             _njs_gmb = gmb_njs(cmp_gmb_z, _Np_corner, D_imp_v, _dp,
                                _drho, rho, cmp_X_vol, _C_D_corner)
             _njs = max(_njs_zw, _njs_gmb)
-            _ksl = solid_liquid_mass_transfer(_dp, _vt, rho, mu, D_mol)
+            _eps_kg_corner = h["P/V (W/kg)"] if h["P/V (W/kg)"] > 0 else 0.0
+            _v_slip_corner = max(_vt,
+                                 (_eps_kg_corner * _dp) ** (1.0 / 3.0) if _eps_kg_corner > 0 else 0.0)
+            _ksl = solid_liquid_mass_transfer(_dp, _v_slip_corner, rho, mu, D_mol)
             _phi_s_corner = cmp_X_vol / 100.0
             _kLa_SL_corner = solid_liquid_kla(_ksl, _dp, _phi_s_corner)
             _njs_rpm = _njs * 60
             _n_over_njs = N / _njs if _njs > 0 else 0.0
             part_vals = {
+                "N_js Zwietering (RPM)": _njs_zw * 60,
+                "N_js GMB (RPM)": _njs_gmb * 60,
                 "N_js (RPM)": _njs_rpm,
                 "N/N_js": _n_over_njs,
                 "v_t (m/s)": _vt,
@@ -555,7 +560,7 @@ PLOT_PARAMS = [
 HEAT_PARAMS = ["Q_gen (W)", "Q_cool (W)", "U (W/m²·K)", "A_ht (m²)", "Q_gen/Q_cool (%)"]
 if include_heat and rxn_delta_H != 0:
     PLOT_PARAMS = PLOT_PARAMS + HEAT_PARAMS
-PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p", "k_SL (m/s)", "kLa_SL (1/s)", "Da_SL"]
+PARTICLE_PARAMS = ["N_js Zwietering (RPM)", "N_js GMB (RPM)", "N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p", "k_SL (m/s)", "kLa_SL (1/s)", "Da_SL"]
 if include_particles and cmp_d50_um > 0:
     PLOT_PARAMS = PLOT_PARAMS + PARTICLE_PARAMS
 
@@ -586,14 +591,15 @@ if include_particles and cmp_d50_um > 0:
         _njs_gmb_p7 = gmb_njs(cmp_gmb_z, _Np_p7, info["D_imp"], _dp_p7,
                                _drho_p7, rho, cmp_X_vol, _C_D_p7)
         _njs_p7 = max(_njs_zw_p7, _njs_gmb_p7)
-        _ksl_p7 = solid_liquid_mass_transfer(_dp_p7, _vt_p7, rho, mu, D_mol)
         _phi_s_p7 = cmp_X_vol / 100.0
-        _kla_sl_p7 = solid_liquid_kla(_ksl_p7, _dp_p7, _phi_s_p7)
         _p7_part_static[rname] = {
-            "N_js_rps": _njs_p7, "N_js (RPM)": _njs_p7 * 60,
-            "v_t (m/s)": _vt_p7, "Re_p": _rep_p7, "k_SL (m/s)": _ksl_p7,
-            "kLa_SL (1/s)": _kla_sl_p7,
-            "Da_SL": damkohler_sl(_kla_sl_p7, t_rxn),
+            "N_js_zw_rps": _njs_zw_p7, "N_js_gmb_rps": _njs_gmb_p7,
+            "N_js_rps": _njs_p7,
+            "N_js Zwietering (RPM)": _njs_zw_p7 * 60,
+            "N_js GMB (RPM)": _njs_gmb_p7 * 60,
+            "N_js (RPM)": _njs_p7 * 60,
+            "v_t (m/s)": _vt_p7, "Re_p": _rep_p7,
+            "d_p": _dp_p7, "phi_s": _phi_s_p7,
         }
 
 for rname, info in reactor_info.items():
@@ -619,23 +625,33 @@ for rname, info in reactor_info.items():
                 rho=rho, mu=mu, Np=info["Np"], Nq=info["Nq"],
                 v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
             )
-            _kLa_SL_env_p7 = _p7_part_static[rname]["kLa_SL (1/s)"] if rname in _p7_part_static else 0.0
+            _kLa_SL_env_p7 = 0.0
+            _ksl_env_p7 = 0.0
+            if rname in _p7_part_static:
+                _ps = _p7_part_static[rname]
+                _eps_kg_p7 = h["P/V (W/kg)"] if h["P/V (W/kg)"] > 0 else 0.0
+                _v_slip_p7 = max(_ps["v_t (m/s)"],
+                                 (_eps_kg_p7 * _ps["d_p"]) ** (1.0 / 3.0) if _eps_kg_p7 > 0 else 0.0)
+                _ksl_env_p7 = solid_liquid_mass_transfer(_ps["d_p"], _v_slip_p7, rho, mu, D_mol)
+                _kLa_SL_env_p7 = solid_liquid_kla(_ksl_env_p7, _ps["d_p"], _ps["phi_s"])
             da = compute_damkohler_numbers(
                 h["Blend time 95% (s)"], h["Micromix time t_E (s)"], t_rxn,
                 kLa=h["kLa (1/s)"], kLa_surface=h["kLa_surface (1/s)"],
                 kLa_SL=_kLa_SL_env_p7,
             )
             vals = {**h, **da}
-            # Particle parameters — use pre-computed statics
+            # Particle parameters — use pre-computed statics + dynamic k_SL/kLa_SL/Da_SL
             if rname in _p7_part_static:
                 _ps = _p7_part_static[rname]
+                vals["N_js Zwietering (RPM)"] = _ps["N_js Zwietering (RPM)"]
+                vals["N_js GMB (RPM)"] = _ps["N_js GMB (RPM)"]
                 vals["N_js (RPM)"] = _ps["N_js (RPM)"]
                 vals["N/N_js"] = N / _ps["N_js_rps"] if _ps["N_js_rps"] > 0 else 0.0
                 vals["v_t (m/s)"] = _ps["v_t (m/s)"]
                 vals["Re_p"] = _ps["Re_p"]
-                vals["k_SL (m/s)"] = _ps["k_SL (m/s)"]
-                vals["kLa_SL (1/s)"] = _ps["kLa_SL (1/s)"]
-                vals["Da_SL"] = _ps["Da_SL"]
+                vals["k_SL (m/s)"] = _ksl_env_p7
+                vals["kLa_SL (1/s)"] = _kLa_SL_env_p7
+                vals["Da_SL"] = da["Da_SL"]
             # Heat balance — only U depends on RPM
             if include_heat and rxn_delta_H != 0:
                 if info["U_override"] > 0:
