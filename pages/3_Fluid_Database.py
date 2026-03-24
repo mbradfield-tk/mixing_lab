@@ -11,6 +11,7 @@ from utils.solvent_properties import (
     density, viscosity, surface_tension, diffusivity,
     specific_heat, thermal_conductivity,
     is_known_solvent, vapor_pressure_mmHg, boiling_point_at_pressure,
+    solvent_miscibility,
 )
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
@@ -425,6 +426,39 @@ with tab_blend:
                     "k (W/m·K)": f"{blend_k:.4f}",
                 })
                 st.dataframe(pd.DataFrame(comp_rows), width='content', hide_index=True)
+
+                # ── Pairwise miscibility screening ────────────────────────
+                from itertools import combinations
+                _pairs = list(combinations([cp["name"] for cp in comp_props], 2))
+                if _pairs:
+                    st.subheader("Miscibility Screening")
+                    st.caption(
+                        "Pairwise assessment using experimental data (built-in solvents) "
+                        "or Hansen Solubility Parameters where available."
+                    )
+                    _any_immiscible = False
+                    _misc_rows = []
+                    for _n1, _n2 in _pairs:
+                        _misc = solvent_miscibility(_n1, _n2, custom_fluids=st.session_state.fluid_db)
+                        _misc_rows.append({
+                            "Pair": f"{_n1} / {_n2}",
+                            "Assessment": _misc["assessment"],
+                            "R_a (MPa½)": f"{_misc['Ra']:.1f}" if _misc["Ra"] is not None else "—",
+                            "Source": _misc["source"],
+                        })
+                        if _misc["miscible"] is False:
+                            _any_immiscible = True
+                    st.dataframe(pd.DataFrame(_misc_rows), width='content', hide_index=True)
+
+                    if _any_immiscible:
+                        st.warning(
+                            "⚠️ One or more component pairs are **immiscible or partially miscible**. "
+                            "The blend may form multiple liquid phases. Mass-weighted property "
+                            "averages shown below assume a single homogeneous phase and may "
+                            "not be physically meaningful."
+                        )
+                    else:
+                        st.success("🟢 All component pairs are miscible — single-phase blend expected.")
 
                 # Display blended properties
                 st.subheader("Blended Properties (mass-weighted)")

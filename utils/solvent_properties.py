@@ -570,14 +570,28 @@ def miscibility_assessment(
                 "color": "green"}
 
 
-def get_hsp(name: str) -> tuple[float, float, float] | None:
-    """Return (hsp_d, hsp_p, hsp_h) for a solvent name, or None if not found."""
+def get_hsp(name: str, custom_fluids=None) -> tuple[float, float, float] | None:
+    """Return (hsp_d, hsp_p, hsp_h) for a solvent name, or None if not found.
+
+    Checks built-in SOLVENT_DB first, then falls back to *custom_fluids*
+    (a pandas DataFrame with columns ``fluid_name``, ``hsp_d``, ``hsp_p``, ``hsp_h``).
+    """
     s = SOLVENT_DB.get(name)
-    if s is None:
-        return None
-    if s.hsp_d == 0.0 and s.hsp_p == 0.0 and s.hsp_h == 0.0:
-        return None
-    return (s.hsp_d, s.hsp_p, s.hsp_h)
+    if s is not None:
+        if s.hsp_d == 0.0 and s.hsp_p == 0.0 and s.hsp_h == 0.0:
+            return None
+        return (s.hsp_d, s.hsp_p, s.hsp_h)
+    # Fallback: custom-fluid dataframe
+    if custom_fluids is not None and not custom_fluids.empty:
+        _rows = custom_fluids[custom_fluids["fluid_name"] == name]
+        if not _rows.empty:
+            _r = _rows.iloc[0]
+            _d = float(_r.get("hsp_d", 0.0) or 0.0)
+            _p = float(_r.get("hsp_p", 0.0) or 0.0)
+            _h = float(_r.get("hsp_h", 0.0) or 0.0)
+            if _d != 0.0 or _p != 0.0 or _h != 0.0:
+                return (_d, _p, _h)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -621,11 +635,18 @@ _PARTIALLY_MISCIBLE: set[frozenset[str]] = {
 }
 
 
-def solvent_miscibility(name1: str, name2: str) -> dict:
+def solvent_miscibility(name1: str, name2: str, custom_fluids=None) -> dict:
     """Assess miscibility between two fluids.
 
     Uses a known-pairs lookup for built-in solvents; falls back to
     Hansen distance for custom / unknown pairs.
+
+    Parameters
+    ----------
+    custom_fluids : DataFrame, optional
+        Custom-fluid table with ``fluid_name``, ``hsp_d``, ``hsp_p``, ``hsp_h``
+        columns.  Passed through to :func:`get_hsp` so Hansen distance can be
+        computed for non-built-in fluids.
 
     Returns dict with keys:
         miscible (bool), assessment (str), source (str),
@@ -636,8 +657,8 @@ def solvent_miscibility(name1: str, name2: str) -> dict:
     _n2 = resolve_solvent_name(name2) or name2
 
     pair = frozenset({_n1, _n2})
-    hsp1 = get_hsp(_n1)
-    hsp2 = get_hsp(_n2)
+    hsp1 = get_hsp(_n1, custom_fluids)
+    hsp2 = get_hsp(_n2, custom_fluids)
     Ra = hansen_distance(*hsp1, *hsp2) if (hsp1 and hsp2) else None
 
     # Same solvent → miscible
