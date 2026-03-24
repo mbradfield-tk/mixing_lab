@@ -23,7 +23,7 @@ CORE_COLS = [
     "D_tank_m", "H_m", "D_imp_m", "impeller_type", "Np", "Nq",
     "N_rpm_min", "N_rpm_max", "N_rps",
     "V_L_min", "V_L_max", "V_L",
-    "material", "baffles",
+    "shell_material", "lining_material", "baffles",
     "bottom_dish", "top_dish",
     "impeller_count",
     "imp1_clearance_m", "imp1_height_m",
@@ -565,7 +565,8 @@ with tab_add:
         st.session_state["add_V_max"] = _tv("V_L_max", 1.0)
         st.session_state["add_bottom_dish"] = _ts("bottom_dish")
         st.session_state["add_top_dish"] = _ts("top_dish")
-        st.session_state["add_material"] = _ts("material")
+        st.session_state["add_shell_material"] = _ts("shell_material")
+        st.session_state["add_lining_material"] = _ts("lining_material")
         st.session_state["add_baffles"] = _tsel("baffles", _BAFFLE_OPTIONS)
         st.session_state["add_knuckle"] = _tv("knuckle_radius_m")
         st.session_state["add_rpm_min"] = _tv("N_rpm_min")
@@ -621,7 +622,8 @@ with tab_add:
             bottom_dish = st.text_input("Bottom dish type", "", key="add_bottom_dish")
             top_dish = st.text_input("Top dish type", "", key="add_top_dish")
         with c4:
-            material = st.text_input("Material of construction", "", key="add_material")
+            shell_material = st.text_input("Shell material", "", key="add_shell_material")
+            lining_material = st.text_input("Lining material", "", key="add_lining_material")
             baffles = st.selectbox("Baffles", _BAFFLE_OPTIONS, key="add_baffles")
             knuckle_radius = st.number_input("Knuckle radius (m)", min_value=0.0, value=0.0, format="%.4f", key="add_knuckle")
 
@@ -711,7 +713,8 @@ with tab_add:
                 "V_L_min": _or_nan(V_L_min),
                 "V_L_max": _or_nan(V_L_max),
                 "V_L": V_L_max if V_L_max > 0 else np.nan,
-                "material": material,
+                "shell_material": shell_material,
+                "lining_material": lining_material,
                 "baffles": baffles,
                 "bottom_dish": bottom_dish,
                 "top_dish": top_dish,

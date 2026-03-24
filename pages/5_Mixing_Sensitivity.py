@@ -19,6 +19,7 @@ from utils.solvent_properties import (
 from utils.calculations import (
     compute_reactor_hydro,
     compute_damkohler_numbers,
+    damkohler_sl,
     kolmogorov_length,
     batchelor_length,
     micromixing_time_engulfment,
@@ -818,7 +819,8 @@ st.subheader("Heat Transfer")
 
 heat_results = {}
 if include_heat:
-    _r_material = str(reactor.get("material", ""))
+    _r_material = str(reactor.get("shell_material", ""))
+    _r_lining = str(reactor.get("lining_material", ""))
     _r_U_override = _safe(reactor.get("U_W_m2K"), 0.0)
     _r_A_override = _safe(reactor.get("A_ht_m2"), 0.0)
     _r_wall_mm = _safe(reactor.get("wall_thickness_mm"), 0.0)
@@ -834,6 +836,7 @@ if include_heat:
             N_rps=N_rps, D_imp=D_imp, D_tank=D_tank,
             rho=rho, mu=mu,
             material=_r_material,
+            lining_material=_r_lining,
             wall_thickness_mm=_r_wall_mm,
             fluid_name=fluid_name,
         )
@@ -931,6 +934,19 @@ if include_SL and not particles.empty:
     sp7.metric("kLa_SL (1/s)", f"{_kLa_SL:.4g}")
     sp8.metric("Archimedes Ar", f"{_Ar:.3g}")
 
+    # Recompute Damköhler numbers including Da_SL
+    _Da_SL = damkohler_sl(_kLa_SL, t_rxn)
+    da["Da_SL"] = _Da_SL
+    da["Assessment"] = mixing_sensitivity_assessment(
+        da["Da_macro"], da["Da_micro"], da["Da_GL"], _Da_SL,
+    )
+    particle_results["Da_SL"] = _Da_SL
+
+    sp9, _, _, _ = st.columns(4)
+    sp9.metric("Da_SL", f"{_Da_SL:.3g}")
+
+    _da_banner("Solid-liquid mass transfer", _Da_SL)
+
     if "Poorly" in susp:
         st.error(f"🔴 **{susp}** — current speed is below just-suspended speed")
     elif "Partially" in susp:
@@ -965,7 +981,8 @@ _can_envelope = _N_lo > 0 and _N_hi > 0 and _env_V_max > 0
 
 if _can_envelope:
     # Reactor heat-transfer metadata
-    _r_material_env = str(reactor.get("material", ""))
+    _r_material_env = str(reactor.get("shell_material", ""))
+    _r_lining_env = str(reactor.get("lining_material", ""))
     _r_U_override_env = _safe(reactor.get("U_W_m2K"), 0.0)
     _r_A_override_env = _safe(reactor.get("A_ht_m2"), 0.0)
     _r_wall_mm_env = _safe(reactor.get("wall_thickness_mm"), 0.0)
@@ -976,14 +993,14 @@ if _can_envelope:
         "Micromix time t_E (s)", "Micromix time t_E_local (s)",
         "Kolmogorov η (µm)", "Re",
         "Avg shear rate (1/s)", "Max shear rate (1/s)", "Avg shear stress (Pa)",
-        "Da_macro", "Da_micro", "Da_GL", "ε_max (W/kg)",
+        "Da_macro", "Da_micro", "Da_GL", "Da_SL", "ε_max (W/kg)",
         "EDCF (W/kg/s)", "Torque (N·m)", "Torque/V (N·m/m³)", "Froude number",
         "kLa (1/s)", "kLa_surface (1/s)",
     ]
     HEAT_PARAMS = ["Q_gen (W)", "Q_cool (W)", "U (W/m²·K)", "A_ht (m²)", "Q_gen/Q_cool (%)"]
     if include_heat and rxn_delta_H != 0:
         PLOT_PARAMS = PLOT_PARAMS + HEAT_PARAMS
-    PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p", "k_SL (m/s)", "kLa_SL (1/s)"]
+    PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p", "k_SL (m/s)", "kLa_SL (1/s)", "Da_SL"]
     if include_SL and not particles.empty:
         PLOT_PARAMS = PLOT_PARAMS + PARTICLE_PARAMS
     GL_PARAMS = ["Gas holdup ε_G", "d32 bubble (mm)", "N_flood (RPM)", "N/N_flood"]
@@ -1019,6 +1036,7 @@ if _can_envelope:
             "k_SL (m/s)": _ksl,
             "kLa_SL (1/s)": _kla_sl_env,
             "N_js (RPM)": _njs * 60,
+            "Da_SL": damkohler_sl(_kla_sl_env, t_rxn),
         }
 
     # ── Pre-compute LL RPM-independent quantities ────────────────────────
@@ -1064,9 +1082,11 @@ if _can_envelope:
                     rho=rho, mu=mu, Np=Np_in, Nq=Nq_in,
                     v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
                 )
+                _kLa_SL_env = _part_static["kLa_SL (1/s)"] if _part_static is not None else 0.0
                 _da = compute_damkohler_numbers(
                     _h["Blend time 95% (s)"], _h["Micromix time t_E (s)"], t_rxn,
                     kLa=_h["kLa (1/s)"], kLa_surface=_h["kLa_surface (1/s)"],
+                    kLa_SL=_kLa_SL_env,
                 )
                 _vals = {**_h, **_da}
                 if _part_static is not None:
@@ -1076,6 +1096,7 @@ if _can_envelope:
                     _vals["Re_p"] = _part_static["Re_p"]
                     _vals["k_SL (m/s)"] = _part_static["k_SL (m/s)"]
                     _vals["kLa_SL (1/s)"] = _part_static["kLa_SL (1/s)"]
+                    _vals["Da_SL"] = _part_static["Da_SL"]
                 if include_GL and gl_sparged and v_s > 0:
                     _P_V_e = _h["P/V (W/m³)"]
                     _vals["Gas holdup ε_G"] = gas_holdup_hughmark(v_s, _P_V_e, mu, sigma_c, rho)
@@ -1103,6 +1124,7 @@ if _can_envelope:
                             N_rps=_N, D_imp=D_imp, D_tank=D_tank,
                             rho=rho, mu=mu,
                             material=_r_material_env,
+                            lining_material=_r_lining_env,
                             wall_thickness_mm=_r_wall_mm_env,
                             fluid_name=fluid_name,
                         )
@@ -1138,6 +1160,7 @@ if _can_envelope:
         "Da_macro": "Macromixing (Da_macro)",
         "Da_micro": "Micromixing (Da_micro)",
         "Da_GL": "Gas-Liquid Mass Transfer (Da_GL)",
+        "Da_SL": "Solid-Liquid Mass Transfer (Da_SL)",
         "Q_gen/Q_cool (%)": "Heat Transfer Capacity (Q_gen/Q_cool (%))",
         "Gas holdup ε_G": "Gas Holdup ε_G",
         "d32 bubble (mm)": "Sauter Mean Bubble Diameter d₃₂ (mm)",
@@ -1228,7 +1251,7 @@ if _can_envelope:
             ))
 
             # Reference lines for Da parameters
-            if param in ("Da_macro", "Da_micro", "Da_GL"):
+            if param in ("Da_macro", "Da_micro", "Da_GL", "Da_SL"):
                 import math
                 for da_val, da_color, label in [
                     (0.1, "orange", "Da=0.1 (onset of sensitivity)"),
@@ -1437,6 +1460,7 @@ if st.button("📌 Save this result to Recorded Results"):
         "Da_macro": da["Da_macro"],
         "Da_micro": da["Da_micro"],
         "Da_GL": da["Da_GL"],
+        "Da_SL": da.get("Da_SL", 0.0),
         "Assessment": da["Assessment"],
     }
     if particle_results:

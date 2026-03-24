@@ -77,6 +77,42 @@ $Da_{micro}$: higher values indicate the system is **more limited** by
 the transport process relative to reaction.
 """)
 
+# ── Solid-Liquid Damköhler ───────────────────────────────────────────────
+st.header("Solid-Liquid Damköhler Number")
+
+st.latex(r"Da_{SL} = \frac{1}{k_L a_{SL} \; t_{rxn}} = \frac{t_{\text{SL transfer}}}{t_{rxn}}")
+
+st.markdown(r"""
+Compares the characteristic **solid-liquid mass-transfer time** $\;(1/k_L a_{SL})\;$
+to the reaction time, where $k_L a_{SL}$ is the volumetric solid-liquid
+mass-transfer coefficient computed from the Ranz-Marshall correlation and
+the specific particle surface area:
+
+$$k_L a_{SL} = k_{SL} \cdot a_s, \quad a_s = \frac{6\,\phi_s}{d_p}$$
+
+| $Da_{SL}$ range | Interpretation |
+|----------------|----------------|
+| $Da_{SL} \ll 0.01$ | Mass transfer is fast — reaction-limited |
+| $0.01 < Da_{SL} < 0.1$ | Likely insensitive to S-L transfer |
+| $0.1 < Da_{SL} < 1$ | Potentially transfer-limited |
+| $1 < Da_{SL} < 10$ | Transfer-limited |
+| $Da_{SL} \gg 10$ | Strongly transfer-limited |
+
+When $k_L a_{SL} = 0$ (no solid phase present), $Da_{SL}$ is set to zero
+(not applicable).
+
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $k_{SL}$ | Solid-liquid mass-transfer coefficient | m/s |
+| $a_s$ | Specific particle surface area | 1/m |
+| $\phi_s$ | Volumetric solids fraction | — |
+| $d_p$ | Particle diameter | m |
+| $t_{rxn}$ | Characteristic reaction time | s |
+
+The interpretation mirrors $Da_{GL}$: higher values indicate the system is
+**more limited** by dissolution / solid-liquid transfer relative to reaction.
+""")
+
 # ── Reaction time ────────────────────────────────────────────────────────
 st.header("Characteristic Reaction Time")
 

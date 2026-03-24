@@ -552,8 +552,28 @@ def damkohler_gl(kLa: float, t_rxn: float) -> float:
     return 1.0 / (kLa * t_rxn)
 
 
+def damkohler_sl(kLa_SL: float, t_rxn: float) -> float:
+    """Solid-liquid Damköhler number  Da_SL = 1 / (kLa_SL · t_rxn).
+
+    Compares the characteristic solid-liquid mass-transfer time (1/kLa_SL)
+    to the reaction time.  Interpretation mirrors Da_GL:
+
+      Da_SL << 1  →  mass transfer is fast, reaction-limited
+      Da_SL ~ 1   →  comparable time scales
+      Da_SL >> 1  →  mass-transfer-limited
+
+    Returns 0 when kLa_SL is zero (no solid-liquid transfer present).
+    """
+    if kLa_SL <= 0:
+        return 0.0
+    if t_rxn <= 0:
+        return np.inf
+    return 1.0 / (kLa_SL * t_rxn)
+
+
 def mixing_sensitivity_assessment(Da_macro: float, Da_micro: float,
-                                   Da_GL: float = 0.0) -> str:
+                                   Da_GL: float = 0.0,
+                                   Da_SL: float = 0.0) -> str:
     """
     Qualitative assessment based on Damköhler numbers.
 
@@ -585,6 +605,18 @@ def mixing_sensitivity_assessment(Da_macro: float, Da_micro: float,
             labels.append(f"G-L: Transfer-limited (Da_GL={Da_GL:.3g})")
         else:
             labels.append(f"G-L: Strongly transfer-limited (Da_GL={Da_GL:.3g})")
+    # S-L assessment (only when kLa_SL is present)
+    if Da_SL > 0:
+        if Da_SL < 0.01:
+            labels.append(f"S-L: Transfer-fast (Da_SL={Da_SL:.3g})")
+        elif Da_SL < 0.1:
+            labels.append(f"S-L: Likely insensitive (Da_SL={Da_SL:.3g})")
+        elif Da_SL < 1:
+            labels.append(f"S-L: Potentially transfer-limited (Da_SL={Da_SL:.3g})")
+        elif Da_SL < 10:
+            labels.append(f"S-L: Transfer-limited (Da_SL={Da_SL:.3g})")
+        else:
+            labels.append(f"S-L: Strongly transfer-limited (Da_SL={Da_SL:.3g})")
     return " | ".join(labels)
 
 
@@ -708,18 +740,21 @@ def compute_reactor_hydro(
 
 
 def compute_damkohler_numbers(t_blend, t_micro, t_rxn,
-                               kLa=0.0, kLa_surface=0.0):
-    """Return Damköhler numbers (macro, micro, G-L) and assessment string."""
+                               kLa=0.0, kLa_surface=0.0,
+                               kLa_SL=0.0):
+    """Return Damköhler numbers (macro, micro, G-L, S-L) and assessment string."""
     Da_macro = damkohler_macro(t_blend, t_rxn)
     Da_micro = damkohler_micro(t_micro, t_rxn)
     # Use the larger of sparged or surface kLa for Da_GL
     kLa_eff = max(kLa, kLa_surface)
     Da_gl = damkohler_gl(kLa_eff, t_rxn)
-    assessment = mixing_sensitivity_assessment(Da_macro, Da_micro, Da_gl)
+    Da_sl = damkohler_sl(kLa_SL, t_rxn)
+    assessment = mixing_sensitivity_assessment(Da_macro, Da_micro, Da_gl, Da_sl)
     return {
         "Da_macro": Da_macro,
         "Da_micro": Da_micro,
         "Da_GL": Da_gl,
+        "Da_SL": Da_sl,
         "Assessment": assessment,
     }
 
@@ -905,7 +940,8 @@ def estimate_jacket_area(D_tank: float, H: float,
         return A_dish_full + A_cyl
 
 
-def estimate_U(material: str = "", N_rps: float = 0.0) -> float:
+def estimate_U(material: str = "", N_rps: float = 0.0,
+               lining_material: str = "") -> float:
     """Estimate overall heat-transfer coefficient U (W/m²·K).
 
     Typical ranges for jacketed stirred tanks:
@@ -918,7 +954,9 @@ def estimate_U(material: str = "", N_rps: float = 0.0) -> float:
     of the range (better internal h_i at higher RPM).
     """
     mat = str(material).lower() if material else ""
-    if "glass" in mat:
+    lining = str(lining_material).lower() if lining_material else ""
+    # A glass lining dominates the thermal resistance
+    if "glass" in lining or "glass" in mat:
         U_lo, U_hi = 100.0, 250.0
     elif "hastel" in mat:
         U_lo, U_hi = 200.0, 450.0
@@ -951,6 +989,35 @@ WALL_CONDUCTIVITY: dict[str, float] = {
     "glass-lined": 1.0,
     "titanium": 22.0,
     "copper": 385.0,
+}
+
+# Lining thermal conductivity [W/(m·K)] and typical thickness [m]
+LINING_CONDUCTIVITY: dict[str, float] = {
+    "glass": 1.0,
+    "glass-lined": 1.0,
+    "ptfe": 0.25,
+    "teflon": 0.25,
+    "pfa": 0.25,
+    "pvdf": 0.19,
+    "rubber": 0.16,
+    "epoxy": 0.20,
+    "titanium": 22.0,
+    "hastelloy": 12.0,
+    "tantalum": 57.0,
+}
+
+LINING_THICKNESS_DEFAULT: dict[str, float] = {
+    "glass": 0.0015,       # 1.5 mm
+    "glass-lined": 0.0015,
+    "ptfe": 0.002,         # 2 mm
+    "teflon": 0.002,
+    "pfa": 0.002,
+    "pvdf": 0.003,         # 3 mm
+    "rubber": 0.006,       # 6 mm
+    "epoxy": 0.003,
+    "titanium": 0.002,
+    "hastelloy": 0.002,
+    "tantalum": 0.001,
 }
 
 # Thermal conductivity [W/(m·K)] and specific heat capacity [J/(kg·K)]
@@ -1000,6 +1067,19 @@ def _lookup_wall_k(material: str) -> float | None:
     return None
 
 
+def _lookup_lining_k(lining_material: str) -> tuple[float, float] | None:
+    """Return (k_lining, default_thickness_m) for a lining material, or None."""
+    mat = str(lining_material).lower().strip() if lining_material else ""
+    if not mat:
+        return None
+    for key in LINING_CONDUCTIVITY:
+        if key in mat or mat in key:
+            k = LINING_CONDUCTIVITY[key]
+            t = LINING_THICKNESS_DEFAULT.get(key, 0.002)
+            return k, t
+    return None
+
+
 def _lookup_solvent_thermal(fluid_name: str) -> tuple[float, float] | None:
     """Return (k_fluid, Cp) for a fluid name, or None if not found.
 
@@ -1028,6 +1108,7 @@ def estimate_U_detailed(
     rho: float,
     mu: float,
     material: str = "",
+    lining_material: str = "",
     wall_thickness_mm: float = 0.0,
     fluid_name: str = "",
     Cp: float = 0.0,
@@ -1057,7 +1138,9 @@ def estimate_U_detailed(
     D_tank           : tank diameter (m)
     rho              : fluid density (kg/m³)
     mu               : dynamic viscosity (Pa·s)
-    material         : vessel wall material (for k_wall lookup)
+    material         : vessel shell material (for k_wall lookup)
+    lining_material  : inner lining material (e.g. glass, PTFE); adds
+                       lining thermal resistance
     wall_thickness_mm: wall thickness (mm); 0 = unknown
     fluid_name       : fluid name for Cp/k lookup
     Cp               : specific heat capacity (J/(kg·K)); 0 = auto-lookup
@@ -1096,7 +1179,7 @@ def estimate_U_detailed(
     if not can_nusselt:
         warnings.append("Insufficient data for Nusselt correlation – "
                         "using simple material-based estimate")
-        return estimate_U(material, N_rps), warnings
+        return estimate_U(material, N_rps, lining_material=lining_material), warnings
 
     # Impeller Reynolds number
     Re = rho * N_rps * D_imp**2 / mu
@@ -1127,18 +1210,21 @@ def estimate_U_detailed(
     else:
         warnings.append("Wall thickness and material unknown – wall resistance omitted")
 
-    # For glass-lined vessels, add the glass lining resistance
-    mat_lower = str(material).lower() if material else ""
-    if "glass" in mat_lower:
-        # Typical glass lining ~1.5 mm, k_glass ≈ 1.0 W/(m·K)
-        glass_thickness = 0.0015  # m
-        k_glass = 1.0
-        R_glass = glass_thickness / k_glass
-        R_wall += R_glass
-        if wall_m == 0:
-            # Assume a steel shell behind the glass
+    # -- Lining resistance --------------------------------------------------
+    _lining_info = _lookup_lining_k(lining_material)
+    if _lining_info is not None:
+        _k_lining, _t_lining = _lining_info
+        R_lining = _t_lining / _k_lining
+        R_wall += R_lining
+        _lining_label = str(lining_material).strip()
+        warnings.append(
+            f"Lining: {_lining_label} "
+            f"(k={_k_lining} W/m·K, t={_t_lining*1000:.1f} mm)"
+        )
+        if wall_m == 0 and k_wall is None:
+            # No shell info → assume SS shell behind the lining
             R_wall += 0.010 / 16.0  # ~10 mm SS shell
-            warnings.append("Glass-lined: assumed 1.5 mm glass + 10 mm SS shell")
+            warnings.append(f"Shell unknown – assumed 10 mm SS behind {_lining_label} lining")
 
     # -- Jacket-side h_o ---------------------------------------------------
     h_o = jacket_htc if jacket_htc > 0 else JACKET_HTC_DEFAULT

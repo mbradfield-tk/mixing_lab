@@ -18,6 +18,7 @@ from utils.solvent_properties import (
 )
 from utils.calculations import (
     compute_reactor_hydro, compute_damkohler_numbers,
+    damkohler_sl, solid_liquid_kla,
     settling_velocity, particle_reynolds, zwietering_njs,
     solid_liquid_mass_transfer, particle_suspension_criterion,
     reaction_rate_mol_per_s, heat_generation_rate,
@@ -408,12 +409,14 @@ for rname in selected_names:
     reactor_info[rname]["C_D_ratio"] = _imp1_C / D_imp_v if D_imp_v > 0 and _imp1_C > 0 else cmp_C_D_ratio
 
     # Heat-transfer geometry for this reactor
-    _r_material = str(r.get("material", ""))
+    _r_material = str(r.get("shell_material", ""))
+    _r_lining = str(r.get("lining_material", ""))
     _r_bottom_dish = str(r.get("bottom_dish", "")) if pd.notna(r.get("bottom_dish")) else ""
     _r_U_override = _safe_float(r.get("U_W_m2K"), 0.0)
     _r_A_override = _safe_float(r.get("A_ht_m2"), 0.0)
     _r_wall_mm = _safe_float(r.get("wall_thickness_mm"), 0.0)
-    reactor_info[rname]["material"] = _r_material
+    reactor_info[rname]["shell_material"] = _r_material
+    reactor_info[rname]["lining_material"] = _r_lining
     reactor_info[rname]["bottom_dish"] = _r_bottom_dish
     reactor_info[rname]["U_override"] = _r_U_override
     reactor_info[rname]["A_override"] = _r_A_override
@@ -435,12 +438,9 @@ for rname in selected_names:
             v_s=v_s, coalescing=is_coalescing,
             D_mol=D_mol,
         )
-        da = compute_damkohler_numbers(
-            h["Blend time 95% (s)"], h["Micromix time t_E (s)"], t_rxn,
-            kLa=h["kLa (1/s)"], kLa_surface=h["kLa_surface (1/s)"],
-        )
         # Particle parameters (if enabled)
         part_vals = {}
+        _kLa_SL_corner = 0.0
         if include_particles and cmp_d50_um > 0:
             _dp = cmp_d50_um * 1e-6
             _nu = mu / rho
@@ -454,6 +454,8 @@ for rname in selected_names:
                                _drho, rho, cmp_X_vol, _C_D_corner)
             _njs = max(_njs_zw, _njs_gmb)
             _ksl = solid_liquid_mass_transfer(_dp, _vt, rho, mu, D_mol)
+            _phi_s_corner = cmp_X_vol / 100.0
+            _kLa_SL_corner = solid_liquid_kla(_ksl, _dp, _phi_s_corner)
             _njs_rpm = _njs * 60
             _n_over_njs = N / _njs if _njs > 0 else 0.0
             part_vals = {
@@ -462,7 +464,13 @@ for rname in selected_names:
                 "v_t (m/s)": _vt,
                 "Re_p": _rep,
                 "k_SL (m/s)": _ksl,
+                "kLa_SL (1/s)": _kLa_SL_corner,
             }
+        da = compute_damkohler_numbers(
+            h["Blend time 95% (s)"], h["Micromix time t_E (s)"], t_rxn,
+            kLa=h["kLa (1/s)"], kLa_surface=h["kLa_surface (1/s)"],
+            kLa_SL=_kLa_SL_corner,
+        )
         # Heat balance parameters (if enabled)
         heat_vals = {}
         if include_heat and rxn_delta_H != 0:
@@ -514,7 +522,8 @@ if include_heat and rxn_delta_H != 0:
         _, _u_warns = estimate_U_detailed(
             N_rps=info["N_hi"], D_imp=info["D_imp"], D_tank=info["D_tank"],
             rho=rho, mu=mu,
-            material=info["material"],
+            material=info["shell_material"],
+            lining_material=info["lining_material"],
             wall_thickness_mm=info["wall_thickness_mm"],
             fluid_name=fluid_name,
         )
@@ -539,14 +548,14 @@ PLOT_PARAMS = [
     "Micromix time t_E (s)", "Micromix time t_E_local (s)",
     "Kolmogorov η (µm)", "Re",
     "Avg shear rate (1/s)", "Max shear rate (1/s)", "Avg shear stress (Pa)",
-    "Da_macro", "Da_micro", "Da_GL", "ε_max (W/kg)",
+    "Da_macro", "Da_micro", "Da_GL", "Da_SL", "ε_max (W/kg)",
     "EDCF (W/kg/s)", "Torque (N·m)", "Torque/V (N·m/m³)", "Froude number",
     "kLa (1/s)", "kLa_surface (1/s)",
 ]
 HEAT_PARAMS = ["Q_gen (W)", "Q_cool (W)", "U (W/m²·K)", "A_ht (m²)", "Q_gen/Q_cool (%)"]
 if include_heat and rxn_delta_H != 0:
     PLOT_PARAMS = PLOT_PARAMS + HEAT_PARAMS
-PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p", "k_SL (m/s)"]
+PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p", "k_SL (m/s)", "kLa_SL (1/s)", "Da_SL"]
 if include_particles and cmp_d50_um > 0:
     PLOT_PARAMS = PLOT_PARAMS + PARTICLE_PARAMS
 
@@ -578,9 +587,13 @@ if include_particles and cmp_d50_um > 0:
                                _drho_p7, rho, cmp_X_vol, _C_D_p7)
         _njs_p7 = max(_njs_zw_p7, _njs_gmb_p7)
         _ksl_p7 = solid_liquid_mass_transfer(_dp_p7, _vt_p7, rho, mu, D_mol)
+        _phi_s_p7 = cmp_X_vol / 100.0
+        _kla_sl_p7 = solid_liquid_kla(_ksl_p7, _dp_p7, _phi_s_p7)
         _p7_part_static[rname] = {
             "N_js_rps": _njs_p7, "N_js (RPM)": _njs_p7 * 60,
             "v_t (m/s)": _vt_p7, "Re_p": _rep_p7, "k_SL (m/s)": _ksl_p7,
+            "kLa_SL (1/s)": _kla_sl_p7,
+            "Da_SL": damkohler_sl(_kla_sl_p7, t_rxn),
         }
 
 for rname, info in reactor_info.items():
@@ -606,9 +619,11 @@ for rname, info in reactor_info.items():
                 rho=rho, mu=mu, Np=info["Np"], Nq=info["Nq"],
                 v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
             )
+            _kLa_SL_env_p7 = _p7_part_static[rname]["kLa_SL (1/s)"] if rname in _p7_part_static else 0.0
             da = compute_damkohler_numbers(
                 h["Blend time 95% (s)"], h["Micromix time t_E (s)"], t_rxn,
                 kLa=h["kLa (1/s)"], kLa_surface=h["kLa_surface (1/s)"],
+                kLa_SL=_kLa_SL_env_p7,
             )
             vals = {**h, **da}
             # Particle parameters — use pre-computed statics
@@ -619,6 +634,8 @@ for rname, info in reactor_info.items():
                 vals["v_t (m/s)"] = _ps["v_t (m/s)"]
                 vals["Re_p"] = _ps["Re_p"]
                 vals["k_SL (m/s)"] = _ps["k_SL (m/s)"]
+                vals["kLa_SL (1/s)"] = _ps["kLa_SL (1/s)"]
+                vals["Da_SL"] = _ps["Da_SL"]
             # Heat balance — only U depends on RPM
             if include_heat and rxn_delta_H != 0:
                 if info["U_override"] > 0:
@@ -627,7 +644,8 @@ for rname, info in reactor_info.items():
                     _U_ht, _ = estimate_U_detailed(
                         N_rps=N, D_imp=info["D_imp"], D_tank=info["D_tank"],
                         rho=rho, mu=mu,
-                        material=info["material"],
+                        material=info["shell_material"],
+                        lining_material=info["lining_material"],
                         wall_thickness_mm=info["wall_thickness_mm"],
                         fluid_name=fluid_name,
                     )
@@ -671,7 +689,7 @@ with st.expander("Full 4-corner detail table", expanded=False):
                    "Kolmogorov η (µm)",
                    "Avg shear rate (1/s)", "Max shear rate (1/s)",
                    "Avg shear stress (Pa)", "kLa (1/s)", "kLa_surface (1/s)",
-                   "Da_macro", "Da_micro", "Da_GL"]
+                   "Da_macro", "Da_micro", "Da_GL", "Da_SL"]
     if include_particles and cmp_d50_um > 0:
         detail_cols += PARTICLE_PARAMS
     if include_heat and rxn_delta_H != 0:
@@ -718,6 +736,7 @@ with st.expander("Show / hide envelope charts", expanded=True):
         "Da_macro": "Macromixing (Da_macro)",
         "Da_micro": "Micromixing (Da_micro)",
         "Da_GL": "Gas-Liquid Mass Transfer (Da_GL)",
+        "Da_SL": "Solid-Liquid Mass Transfer (Da_SL)",
         "Q_gen/Q_cool (%)": "Heat Transfer Capacity (Q_gen/Q_cool (%))",
     }
     _display = lambda p: _DISPLAY_NAMES.get(p, p)
@@ -832,7 +851,7 @@ with st.expander("Show / hide envelope charts", expanded=True):
             ))
 
         # Reference lines for Da parameters
-        if param in ("Da_macro", "Da_micro", "Da_GL"):
+        if param in ("Da_macro", "Da_micro", "Da_GL", "Da_SL"):
             import math
             for da_val, da_color, label in [
                 (0.1, "orange", "Da=0.1 (onset of sensitivity)"),
@@ -1118,6 +1137,7 @@ if st.button("📌 Save results for all selected reactors", key="cmp_save_all"):
             "Da_macro": _c.get("Da_macro", ""),
             "Da_micro": _c.get("Da_micro", ""),
             "Da_GL": _c.get("Da_GL", ""),
+            "Da_SL": _c.get("Da_SL", ""),
             "Assessment": _c.get("Assessment", ""),
         }
         if include_particles and cmp_d50_um > 0:
