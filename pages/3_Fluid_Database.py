@@ -254,8 +254,10 @@ with tab_blend:
     st.markdown(
         "Create a **blend** from existing fluids (solvents and/or custom fluids).  "
         "Enter proportions on a **volumetric** or **mass** basis — they are converted "
-        "to mass fractions using each component's density, and mixture properties "
-        "are computed as mass-weighted averages."
+        "to mass fractions using each component's density.  Properties are computed "
+        "with literature-recommended mixing rules (log-mixing for viscosity, "
+        "volume-additive density, etc.).  Optionally add **dissolved starting "
+        "material** to account for the effect of a soluble solid on the solution."
     )
 
     # Helper: get properties for any fluid name (solvent or custom) at 25 °C
@@ -295,7 +297,7 @@ with tab_blend:
     blend_components = st.multiselect(
         "Select component fluids", _available,
         default=None, key="blend_components",
-        help="Choose two or more fluids to blend.",
+        help="Choose one or more fluids. Two or more will be blended.",
     )
 
     blend_T = st.number_input(
@@ -305,25 +307,65 @@ with tab_blend:
              "Custom fluids use their fixed values regardless.",
     )
 
-    if len(blend_components) >= 2:
+    if len(blend_components) >= 1:
         # Choose input basis
         _blend_basis = st.radio(
             "Input basis",
-            ["Volume", "Mass"],
+            ["Volume", "Mass", "SM Ratio"],
             horizontal=True,
             key="blend_basis",
-            help="Enter component amounts on a volumetric or mass basis. "
-                 "Properties are always averaged on a mass-fraction basis.",
+            help="**Volume / Mass** — enter amounts directly.  "
+                 "**SM Ratio** — specify starting-material mass and "
+                 "solvent-to-SM ratio (L solvent per kg SM); "
+                 "total solvent volume is computed automatically.",
         )
-        _is_vol_basis = _blend_basis == "Volume"
-        _basis_label = "volume" if _is_vol_basis else "mass"
+        _is_sm_ratio = _blend_basis == "SM Ratio"
+        _is_vol_basis = _blend_basis in ("Volume", "SM Ratio")
+        _basis_label = ("relative volume" if _is_sm_ratio
+                        else "volume" if _is_vol_basis else "mass")
+
+        # ── SM-ratio sizing inputs ────────────────────────────────
+        _smr_total_vol_L = 0.0
+        _smr_mass_kg = 0.0
+        if _is_sm_ratio:
+            st.subheader("Starting-Material Sizing")
+            st.caption(
+                "Enter the mass of starting material and the solvent-to-SM "
+                "ratio (sometimes called *relative volumes*).  The total "
+                "solvent volume is SM mass × ratio."
+            )
+            _smr_c1, _smr_c2, _smr_c3 = st.columns(3)
+            with _smr_c1:
+                _smr_mass_kg = st.number_input(
+                    "SM mass (kg)", min_value=0.001, value=0.010,
+                    step=0.001, format="%.3f", key="smr_sm_mass",
+                )
+            with _smr_c2:
+                _smr_ratio = st.number_input(
+                    "Solvent ratio (L/kg SM)",
+                    min_value=0.1, value=10.0, step=0.5,
+                    format="%.1f", key="smr_ratio",
+                    help="Total litres of solvent blend per kg of SM. "
+                         "e.g. 10 L/kg = '10 volumes'.",
+                )
+            _smr_total_vol_L = _smr_mass_kg * _smr_ratio
+            with _smr_c3:
+                st.metric("Total solvent volume",
+                          f"{_smr_total_vol_L:.3f} L")
 
         # Collect proportions
         st.subheader(f"Component Contributions ({_basis_label})")
-        st.caption(
-            f"Enter the {_basis_label} contribution of each component (they will be "
-            "normalised automatically to sum to 1.0)."
-        )
+        if _is_sm_ratio:
+            st.caption(
+                "Enter the relative volume proportion of each solvent "
+                "component (they will be normalised to sum to 1.0). "
+                "Absolute volumes are set by the SM ratio above."
+            )
+        else:
+            st.caption(
+                f"Enter the {_basis_label} contribution of each component "
+                "(they will be normalised automatically to sum to 1.0)."
+            )
 
         input_fracs: dict[str, float] = {}
         cols = st.columns(min(len(blend_components), 4))
@@ -370,17 +412,54 @@ with tab_blend:
                     for cp, v in zip(comp_props, vols):
                         cp["vol_frac"] = v / total_vol_calc
 
-                # Mass-weighted average properties
-                blend_rho = sum(cp["mass_frac"] * cp["rho_kg_m3"] for cp in comp_props)
-                blend_mu = sum(cp["mass_frac"] * cp["mu_Pa_s"] for cp in comp_props)
-                blend_D = sum(cp["mass_frac"] * cp["D_mol_m2_s"] for cp in comp_props)
-                blend_sig = sum(cp["mass_frac"] * cp["surface_tension_N_m"] for cp in comp_props)
-                blend_Cp = sum(cp["mass_frac"] * cp["Cp_J_per_kgK"] for cp in comp_props)
-                blend_k = sum(cp["mass_frac"] * cp["k_W_per_mK"] for cp in comp_props)
+                # --- Mixing rules (literature-recommended) ---
+                # Density: ideal mixing (volume additivity)
+                #   1/ρ_mix = Σ(w_i / ρ_i)
+                blend_rho = 1.0 / sum(
+                    cp["mass_frac"] / cp["rho_kg_m3"]
+                    for cp in comp_props)
+
+                # Viscosity: Arrhenius log-mixing rule
+                #   ln(μ_mix) = Σ(w_i · ln μ_i)
+                # Ref: Irving (1977); Poling et al., Properties of Gases & Liquids
+                blend_mu = np.exp(sum(
+                    cp["mass_frac"] * np.log(cp["mu_Pa_s"])
+                    for cp in comp_props))
+
+                # Diffusivity: Vignes-type log mixing
+                blend_D = np.exp(sum(
+                    cp["mass_frac"] * np.log(cp["D_mol_m2_s"])
+                    for cp in comp_props))
+
+                # Surface tension: volume-fraction weighted (Macleod–Sugden)
+                blend_sig = sum(
+                    cp["vol_frac"] * cp["surface_tension_N_m"]
+                    for cp in comp_props)
+
+                # Specific heat: mass-weighted (thermodynamically exact)
+                blend_Cp = sum(
+                    cp["mass_frac"] * cp["Cp_J_per_kgK"]
+                    for cp in comp_props)
+
+                # Thermal conductivity: volume-fraction weighted (Li 1976)
+                blend_k = sum(
+                    cp["vol_frac"] * cp["k_W_per_mK"]
+                    for cp in comp_props)
+
+                # Dissolved-solid flags (set later if SM is included)
+                _sm_added = False
+                _sm_name_val = ""
+                _sm_conc_kg_L = 0.0
 
                 # Compute absolute volume (L) and mass (kg) per component
                 for cp in comp_props:
-                    if _is_vol_basis:
+                    if _is_sm_ratio:
+                        # Distribute total volume from SM sizing
+                        cp["vol_L"] = (cp["vol_frac"]
+                                       * _smr_total_vol_L)
+                        cp["mass_kg"] = (cp["vol_L"]
+                                         * cp["rho_kg_m3"] * 1e-3)
+                    elif _is_vol_basis:
                         cp["vol_L"] = input_fracs[cp["name"]]
                         cp["mass_kg"] = cp["vol_L"] * cp["rho_kg_m3"] * 1e-3  # L→m³
                     else:
@@ -390,7 +469,13 @@ with tab_blend:
                 _total_mass_kg = sum(cp["mass_kg"] for cp in comp_props)
 
                 # Display total input
-                st.metric(f"Total {_basis_label} entered", f"{total_input:.2f}")
+                if _is_sm_ratio:
+                    st.metric("Total solvent",
+                              f"{_total_vol_L:.3f} L  "
+                              f"({_total_mass_kg:.3f} kg)")
+                else:
+                    st.metric(f"Total {_basis_label} entered",
+                              f"{total_input:.2f}")
 
                 # Display composition table
                 st.subheader("Blend Composition")
@@ -460,15 +545,206 @@ with tab_blend:
                     else:
                         st.success("🟢 All component pairs are miscible — single-phase blend expected.")
 
-                # Display blended properties
-                st.subheader("Blended Properties (mass-weighted)")
-                bm1, bm2, bm3, bm4, bm5, bm6 = st.columns(6)
-                bm1.metric("ρ (kg/m³)", f"{blend_rho:.2f}")
-                bm2.metric("μ (Pa·s)", f"{blend_mu:.6f}")
-                bm3.metric("σ (N/m)", f"{blend_sig:.4f}")
-                bm4.metric("D_mol (m²/s)", f"{blend_D:.3e}")
-                bm5.metric("Cp (J/kg·K)", f"{blend_Cp:.1f}")
-                bm6.metric("k (W/m·K)", f"{blend_k:.4f}")
+                # ── Dissolved starting material (optional) ────────────
+                st.subheader("Dissolved Starting Material")
+                if _is_sm_ratio:
+                    st.info(
+                        f"SM Ratio mode: **{_smr_mass_kg:.3f} kg** of "
+                        f"starting material is automatically included."
+                    )
+                    _include_sm = True
+                else:
+                    _include_sm = st.checkbox(
+                        "Include dissolved starting material",
+                        value=False,
+                        key="blend_include_sm",
+                        help="Add a soluble solid (e.g. API, reagent) that "
+                             "dissolves in the solvent blend, adjusting "
+                             "physical properties.",
+                    )
+
+                if _include_sm:
+                    sm_c1, sm_c2, sm_c3 = st.columns(3)
+                    with sm_c1:
+                        _sm_name_input = st.text_input(
+                            "Starting material name", value="API",
+                            key="blend_sm_name",
+                        )
+                        if _is_sm_ratio:
+                            _sm_mass_kg = _smr_mass_kg
+                            st.metric("SM mass (kg)",
+                                      f"{_sm_mass_kg:.3f}")
+                        else:
+                            _sm_mass_kg = st.number_input(
+                                "Mass of dissolved solid (kg)",
+                                min_value=0.0, value=0.010, step=0.001,
+                                format="%.3f", key="blend_sm_mass",
+                            )
+                    with sm_c2:
+                        _sm_rho = st.number_input(
+                            "Solid density ρ_s (kg/m³)",
+                            min_value=100.0, value=1300.0, step=10.0,
+                            format="%.0f", key="blend_sm_rho",
+                            help="True density of the solid "
+                                 "(typ. 1100–1500 kg/m³ for organic APIs).",
+                        )
+                        _sm_mw = st.number_input(
+                            "Molecular weight (g/mol, 0 = unknown)",
+                            min_value=0.0, value=0.0, step=10.0,
+                            format="%.1f", key="blend_sm_mw",
+                        )
+                    with sm_c3:
+                        _sm_Cp = st.number_input(
+                            "Solid Cp (J/kg·K)",
+                            min_value=100.0, value=1200.0, step=50.0,
+                            format="%.0f", key="blend_sm_Cp",
+                            help="Specific heat of the solid. "
+                                 "Typical: 1000–1500 J/kg·K for organic solids.",
+                        )
+                        _sm_k_visc = st.number_input(
+                            "Viscosity coefficient k_μ",
+                            min_value=0.0, value=2.5, step=0.1,
+                            format="%.1f", key="blend_sm_kmu",
+                            help="Controls viscosity increase from dissolved "
+                                 "solid: μ_sol = μ_blend × exp(k_μ × φ_s). "
+                                 "Default 2.5 (Einstein). Increase for "
+                                 "large molecules / polymers.",
+                        )
+
+                    if _sm_mass_kg > 0:
+                        _sm_vol_m3 = _sm_mass_kg / _sm_rho
+                        _sm_vol_L = _sm_vol_m3 * 1000.0
+
+                        _sol_mass_kg = _total_mass_kg + _sm_mass_kg
+                        _sol_vol_L = _total_vol_L + _sm_vol_L
+                        _sol_vol_m3 = _sol_vol_L / 1000.0
+
+                        _phi_s = (_sm_vol_m3 / _sol_vol_m3
+                                  if _sol_vol_m3 > 0 else 0.0)
+                        _w_s = (_sm_mass_kg / _sol_mass_kg
+                                if _sol_mass_kg > 0 else 0.0)
+
+                        # Adjust properties for dissolved solid
+                        blend_rho = (_sol_mass_kg / _sol_vol_m3
+                                     if _sol_vol_m3 > 0 else blend_rho)
+                        _mu_blend_orig = blend_mu
+                        blend_mu = _mu_blend_orig * np.exp(
+                            _sm_k_visc * _phi_s)
+                        # Stokes–Einstein: D ∝ 1/μ
+                        blend_D = blend_D * (_mu_blend_orig / blend_mu)
+                        # Cp: mass-weighted with solid
+                        blend_Cp = (1 - _w_s) * blend_Cp + _w_s * _sm_Cp
+
+                        _total_mass_kg = _sol_mass_kg
+                        _total_vol_L = _sol_vol_L
+                        _sm_conc_kg_L = (_sm_mass_kg / _total_vol_L
+                                         if _total_vol_L > 0 else 0.0)
+                        _sm_added = True
+                        _sm_name_val = _sm_name_input
+
+                # Display final properties as a summary table
+                _props_label = ("Solution Properties" if _sm_added
+                                else "Blended Properties")
+                st.subheader(_props_label)
+
+                blend_nu = blend_mu / blend_rho if blend_rho > 0 else 0.0
+
+                # Build rows: components → (optional SM) → blend/solution
+                _summary_rows = []
+                for cp in comp_props:
+                    _cp_vol_pct = (cp["vol_L"] / _total_vol_L * 100
+                                   if _total_vol_L > 0 else 0.0)
+                    _cp_mass_pct = (cp["mass_kg"] / _total_mass_kg * 100
+                                    if _total_mass_kg > 0 else 0.0)
+                    _summary_rows.append({
+                        "Component": cp["name"],
+                        "Volume (L)": f"{cp['vol_L']:.3g}",
+                        "Mass (kg)": f"{cp['mass_kg']:.3g}",
+                        "Vol %": f"{_cp_vol_pct:.1f}",
+                        "Mass %": f"{_cp_mass_pct:.1f}",
+                        "Conc. (kg/L)": "—",
+                        "Molarity (mol/L)": "—",
+                        "ρ (kg/m³)": f"{cp['rho_kg_m3']:.1f}",
+                        "μ (Pa·s)": f"{cp['mu_Pa_s']:.6f}",
+                        "ν (m²/s)": f"{cp['mu_Pa_s'] / cp['rho_kg_m3']:.3e}",
+                        "σ (N/m)": f"{cp['surface_tension_N_m']:.4f}",
+                        "D (m²/s)": f"{cp['D_mol_m2_s']:.3e}",
+                        "Cp (J/kg·K)": f"{cp['Cp_J_per_kgK']:.1f}",
+                        "k (W/m·K)": f"{cp['k_W_per_mK']:.4f}",
+                    })
+                if _sm_added:
+                    _sm_vol_pct = (_sm_vol_L / _total_vol_L * 100
+                                   if _total_vol_L > 0 else 0.0)
+                    _sm_mass_pct = (_sm_mass_kg / _total_mass_kg * 100
+                                    if _total_mass_kg > 0 else 0.0)
+                    _summary_rows.append({
+                        "Component": f"SM: {_sm_name_val}",
+                        "Volume (L)": f"{_sm_vol_L:.3g}",
+                        "Mass (kg)": f"{_sm_mass_kg:.3g}",
+                        "Vol %": f"{_sm_vol_pct:.2f}",
+                        "Mass %": f"{_sm_mass_pct:.1f}",
+                        "Conc. (kg/L)": f"{_sm_conc_kg_L:.4f}",
+                        "Molarity (mol/L)": (f"{_sm_conc_kg_L * 1000.0 / _sm_mw:.3f}"
+                                              if _sm_mw > 0 else "—"),
+                        "ρ (kg/m³)": f"{_sm_rho:.1f}",
+                        "μ (Pa·s)": "—",
+                        "ν (m²/s)": "—",
+                        "σ (N/m)": "—",
+                        "D (m²/s)": "—",
+                        "Cp (J/kg·K)": f"{_sm_Cp:.1f}",
+                        "k (W/m·K)": "—",
+                    })
+                _sol_label = "**Solution**" if _sm_added else "**Blend**"
+                _summary_rows.append({
+                    "Component": _sol_label,
+                    "Volume (L)": f"{_total_vol_L:.3g}",
+                    "Mass (kg)": f"{_total_mass_kg:.3g}",
+                    "Vol %": "100.0",
+                    "Mass %": "100.0",
+                    "Conc. (kg/L)": (f"{_sm_conc_kg_L:.4f}"
+                                     if _sm_added else "—"),
+                    "Molarity (mol/L)": (f"{_sm_conc_kg_L * 1000.0 / _sm_mw:.3f}"
+                                         if _sm_added and _sm_mw > 0
+                                         else "—"),
+                    "ρ (kg/m³)": f"{blend_rho:.1f}",
+                    "μ (Pa·s)": f"{blend_mu:.6f}",
+                    "ν (m²/s)": f"{blend_nu:.3e}",
+                    "σ (N/m)": f"{blend_sig:.4f}",
+                    "D (m²/s)": f"{blend_D:.3e}",
+                    "Cp (J/kg·K)": f"{blend_Cp:.1f}",
+                    "k (W/m·K)": f"{blend_k:.4f}",
+                })
+                st.dataframe(
+                    pd.DataFrame(_summary_rows),
+                    width='content', hide_index=True)
+
+                with st.expander("ℹ️ Mixing rules used"):
+                    st.markdown(
+                        "| Property | Rule | Reference |\n"
+                        "|---|---|---|\n"
+                        "| ρ | Ideal (volume-additive): "
+                        "1/ρ = Σ(wᵢ/ρᵢ) | — |\n"
+                        "| μ | Arrhenius log-mixing: "
+                        "ln μ = Σ(wᵢ ln μᵢ) | Irving 1977 |\n"
+                        "| σ | Volume-fraction weighted: "
+                        "σ = Σ(φᵢ σᵢ) | Macleod–Sugden |\n"
+                        "| D | Log-mixing: "
+                        "ln D = Σ(wᵢ ln Dᵢ) | Vignes 1966 |\n"
+                        "| Cp | Mass-weighted: "
+                        "Cp = Σ(wᵢ Cpᵢ) | Thermodynamic |\n"
+                        "| k | Volume-fraction weighted: "
+                        "k = Σ(φᵢ kᵢ) | Li 1976 |"
+                    )
+                    if _sm_added:
+                        st.markdown(
+                            "**Dissolved-solid adjustments:**\n"
+                            "- ρ — total mass / total volume "
+                            "(additive volumes)\n"
+                            "- μ — μ_blend × exp(k_μ × φ_s) "
+                            "(Mooney 1951)\n"
+                            "- D — Stokes–Einstein scaling (D ∝ 1/μ)\n"
+                            "- Cp — mass-weighted with solid Cp"
+                        )
 
                 # Auto-generate name from actual normalised fractions
                 if _is_vol_basis:
@@ -490,6 +766,8 @@ with tab_blend:
                         for cp in comp_props
                     )
                 _auto_name = " / ".join(_parts) + f" ({blend_T:.0f} °C)"
+                if _sm_added:
+                    _auto_name += f" + {_sm_name_val} {_sm_conc_kg_L:.3f} kg/L"
 
                 # Push the computed name into session state whenever it changes
                 if st.session_state.get("_blend_auto_name") != _auto_name:
@@ -515,15 +793,17 @@ with tab_blend:
                             "surface_tension_N_m": round(blend_sig, 5),
                             "Cp_J_per_kgK": round(blend_Cp, 1),
                             "k_W_per_mK": round(blend_k, 4),
-                            "notes": f"Blend at {blend_T:.0f} °C: {_comp_notes}",
+                            "notes": (f"Blend at {blend_T:.0f} °C: {_comp_notes}"
+                                      + (f" + {_sm_name_val} {_sm_conc_kg_L:.3f} kg/L"
+                                         if _sm_added else "")),
                         }])
                         st.session_state.fluid_db = pd.concat(
                             [st.session_state.fluid_db, new_row], ignore_index=True)
                         _save_custom_fluids(st.session_state.fluid_db)
                         st.success(f"Added **{blend_name}** to the custom fluid database.")
                         st.rerun()
-    elif len(blend_components) == 1:
-        st.info("Select at least two fluids to create a blend.")
+    if not blend_components:
+        st.info("Select at least one fluid to get started.")
 
 # ── Import / Export ───────────────────────────────────────────────────────
 with tab_import:
