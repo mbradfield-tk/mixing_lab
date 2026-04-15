@@ -1,0 +1,871 @@
+"""
+Shared PDF report builder for Mixing Lab pages.
+=================================================
+Provides the MixingReport FPDF subclass and helper functions used by
+Pages 5, 7 and 10 to generate downloadable PDF reports.
+"""
+
+import pathlib
+import io
+import datetime
+import numpy as np
+
+from fpdf import FPDF
+
+_ROOT = pathlib.Path(__file__).resolve().parent.parent
+_LOGO = _ROOT / "images" / "general" / "logo.png"
+
+# DejaVu Sans – Unicode-capable TTF bundled with matplotlib
+def _find_dejavu() -> pathlib.Path | None:
+    """Locate DejaVuSans.ttf from the matplotlib package."""
+    try:
+        import matplotlib
+        d = pathlib.Path(matplotlib.__file__).parent / "mpl-data" / "fonts" / "ttf"
+        if (d / "DejaVuSans.ttf").exists():
+            return d
+    except ImportError:
+        pass
+    return None
+
+_DEJAVU_DIR = _find_dejavu()
+
+# Unicode → ASCII substitution map (used when falling back to Helvetica)
+_UNICODE_MAP = str.maketrans({
+    "\u2014": "--",   # em dash
+    "\u2013": "-",    # en dash
+    "\u00b7": ".",    # middle dot
+    "\u00b0": "deg",  # degree
+    "\u00b2": "2",    # superscript 2
+    "\u00b3": "3",    # superscript 3
+    "\u00b5": "u",    # micro sign
+    "\u03b7": "eta",  # eta
+    "\u03b5": "eps",  # epsilon
+    "\u03bb": "lambda",
+    "\u03c1": "rho",
+    "\u03c6": "phi",
+    "\u0394": "D",    # Delta
+})
+
+def _safe_text(text: str, is_unicode_font: bool) -> str:
+    """If using a non-Unicode font, replace special characters with ASCII."""
+    if is_unicode_font:
+        return text
+    return text.translate(_UNICODE_MAP).encode("latin-1", errors="replace").decode("latin-1")
+
+
+DISPLAY_NAMES = {
+    "Da_macro": "Macromixing (Da_macro)",
+    "Da_micro": "Micromixing (Da_micro)",
+    "Da_GL": "Gas-Liquid Mass Transfer (Da_GL)",
+    "Q_gen/Q_cool (%)": "Heat Capacity (Q_gen/Q_cool %)",
+}
+
+MODE_COLORS = {"Literature": "#3366CC", "ROM": "#33AA66", "Experimental": "#FF8800"}
+
+
+def da_text(Da: float) -> str:
+    if Da < 0.01:
+        return "Not sensitive"
+    if Da < 0.1:
+        return "Likely not sensitive"
+    if Da < 1:
+        return "Potentially sensitive"
+    if Da < 10:
+        return "Likely sensitive"
+    return "Highly sensitive"
+
+
+def da_symbol(Da: float) -> str:
+    if Da < 0.1:
+        return "GREEN"
+    if Da < 1:
+        return "AMBER"
+    return "RED"
+
+
+def fig_to_png_bytes(fig) -> bytes:
+    return fig.to_image(format="png", scale=2)
+
+
+# ── MixingReport FPDF class ─────────────────────────────────────────────
+class MixingReport(FPDF):
+    """Custom FPDF subclass with header/footer branding."""
+
+    _FONT = "DejaVu"
+    _unicode_font = True
+
+    def __init__(self, report_title: str, logo_path: str | None = None, **kw):
+        super().__init__(**kw)
+        if logo_path is None:
+            logo_path = str(_LOGO) if _LOGO.exists() else None
+        self._logo_path = logo_path
+        self._report_title = report_title
+        self.set_auto_page_break(auto=True, margin=25)
+        if _DEJAVU_DIR:
+            try:
+                self.add_font("DejaVu", "",  str(_DEJAVU_DIR / "DejaVuSans.ttf"))
+                self.add_font("DejaVu", "B", str(_DEJAVU_DIR / "DejaVuSans-Bold.ttf"))
+                self.add_font("DejaVu", "I", str(_DEJAVU_DIR / "DejaVuSans-Oblique.ttf"))
+                self.add_font("DejaVu", "BI", str(_DEJAVU_DIR / "DejaVuSans-BoldOblique.ttf"))
+            except Exception:
+                self._FONT = "Helvetica"
+                self._unicode_font = False
+        else:
+            self._FONT = "Helvetica"
+            self._unicode_font = False
+
+    def header(self):
+        if self._logo_path and pathlib.Path(self._logo_path).exists():
+            self.image(self._logo_path, x=10, y=8, h=12)
+        self.set_font(self._FONT, "B", 10)
+        self.set_text_color(100, 100, 100)
+        self.cell(0, 10, self._s(self._report_title), align="R")
+        self.ln(14)
+        self.set_draw_color(200, 200, 200)
+        self.line(10, self.get_y(), self.w - 10, self.get_y())
+        self.ln(4)
+
+    def footer(self):
+        self.set_y(-20)
+        self.set_draw_color(200, 200, 200)
+        self.line(10, self.get_y(), self.w - 10, self.get_y())
+        self.set_y(-15)
+        self.set_font(self._FONT, "I", 8)
+        self.set_text_color(140, 140, 140)
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        self.cell(0, 10, f"Generated {ts}", align="L")
+        self.cell(0, 10, f"Page {self.page_no()}/{{nb}}", align="R")
+
+    # ── convenience methods ──────────────────────────────────────────────
+    def _s(self, text: str) -> str:
+        return _safe_text(text, self._unicode_font)
+
+    def section_title(self, text: str):
+        self.set_font(self._FONT, "B", 13)
+        self.set_text_color(30, 30, 80)
+        self.cell(0, 9, self._s(text))
+        self.ln(10)
+
+    def sub_title(self, text: str):
+        self.set_font(self._FONT, "B", 11)
+        self.set_text_color(50, 50, 50)
+        self.cell(0, 8, self._s(text))
+        self.ln(8)
+
+    def kv(self, key: str, value: str, bold_val: bool = False):
+        self.set_font(self._FONT, "", 10)
+        self.set_text_color(60, 60, 60)
+        self.cell(70, 6, self._s(key))
+        style = "B" if bold_val else ""
+        self.set_font(self._FONT, style, 10)
+        self.set_text_color(20, 20, 20)
+        self.cell(0, 6, self._s(value))
+        self.ln(6)
+
+    def body_text(self, text: str):
+        """Multi-line body text block."""
+        self.set_font(self._FONT, "", 10)
+        self.set_text_color(40, 40, 40)
+        self.multi_cell(0, 5, self._s(text))
+        self.ln(3)
+
+    def metric_table(self, rows: list[tuple[str, str]], cols: int = 2):
+        col_w = (self.w - 20) / cols / 2
+        self.set_font(self._FONT, "", 9)
+        for i, (k, v) in enumerate(rows):
+            if i > 0 and i % cols == 0:
+                self.ln(6)
+            self.set_text_color(80, 80, 80)
+            self.cell(col_w, 6, self._s(k))
+            self.set_text_color(20, 20, 20)
+            self.set_font(self._FONT, "B", 9)
+            self.cell(col_w, 6, self._s(v))
+            self.set_font(self._FONT, "", 9)
+        self.ln(8)
+
+    def assessment_box(self, text: str, colour: str = "GREEN"):
+        if colour == "GREEN":
+            r, g, b = 34, 139, 34
+            br, bg, bb = 220, 245, 220
+        elif colour == "AMBER":
+            r, g, b = 180, 130, 0
+            br, bg, bb = 255, 245, 210
+        else:
+            r, g, b = 200, 30, 30
+            br, bg, bb = 255, 220, 220
+        self.set_fill_color(br, bg, bb)
+        self.set_text_color(r, g, b)
+        self.set_font(self._FONT, "B", 10)
+        self.cell(0, 8, f"  {self._s(text)}", fill=True)
+        self.ln(9)
+        self.set_text_color(0, 0, 0)
+
+    def findings_table(self, findings: list[tuple[str, str, str]]):
+        """Render a list of (mechanism, status_icon, detail) rows."""
+        self.set_font(self._FONT, "B", 9)
+        self.set_fill_color(230, 230, 240)
+        self.set_text_color(30, 30, 80)
+        col_w1, col_w2, col_w3 = 45, 40, self.w - 20 - 85
+        self.cell(col_w1, 7, self._s("Mechanism"), border=1, fill=True)
+        self.cell(col_w2, 7, self._s("Status"), border=1, fill=True)
+        self.cell(col_w3, 7, self._s("Detail"), border=1, fill=True)
+        self.ln(7)
+        self.set_font(self._FONT, "", 8)
+        self.set_text_color(40, 40, 40)
+        for mechanism, status, detail in findings:
+            # Determine row height based on detail text length
+            _detail_clean = self._s(detail)
+            _status_clean = self._s(status)
+            x_before = self.get_x()
+            y_before = self.get_y()
+            # Estimate lines needed
+            _lines = max(1, len(_detail_clean) // int(col_w3 / 1.8) + 1)
+            row_h = max(6, _lines * 5)
+            self.cell(col_w1, row_h, self._s(mechanism), border=1)
+            self.cell(col_w2, row_h, _status_clean, border=1)
+            # Use multi_cell for detail (wraps text)
+            x_mc = self.get_x()
+            y_mc = self.get_y()
+            self.multi_cell(col_w3, 5, _detail_clean, border=1)
+            # Ensure we move to correct y
+            _y_after = self.get_y()
+            if _y_after < y_mc + row_h:
+                self.set_y(y_mc + row_h)
+        self.ln(4)
+
+
+def new_report(title: str) -> MixingReport:
+    """Create a new MixingReport with standard settings."""
+    pdf = MixingReport(title, orientation="P", unit="mm", format="A4")
+    pdf.alias_nb_pages()
+    return pdf
+
+
+def report_bytes(pdf: MixingReport) -> bytes:
+    """Finalize and return the PDF as bytes."""
+    return bytes(pdf.output())
+
+
+def report_filename(prefix: str, label: str = "") -> str:
+    """Generate a timestamped filename."""
+    clean = label.replace(" ", "_").replace("/", "_") if label else ""
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    parts = [prefix]
+    if clean:
+        parts.append(clean)
+    parts.append(ts)
+    return "_".join(parts) + ".pdf"
+
+
+def build_envelope_fig(param: str, envelope: dict, V_L: float = 0.0):
+    """Build a single operating-envelope Plotly figure for *param*."""
+    import plotly.graph_objects as go
+
+    if envelope is None:
+        return None
+    curve_data = envelope["curve_data"]
+    pct_arr = np.array(envelope["pct_arr"])
+    active_modes = envelope["active_modes"]
+    priority_mode_label = envelope["priority_mode_label"]
+    current_pct = envelope["current_pct"]
+    env_V_max = envelope["env_V_max"]
+    env_V_min = envelope["env_V_min"]
+    rpm_max = envelope["rpm_max"]
+
+    first_mode = list(curve_data.keys())[0]
+    if param not in curve_data[first_mode]["maxV"]:
+        return None
+
+    fig = go.Figure()
+    for mode_label in active_modes:
+        if mode_label not in curve_data:
+            continue
+        color = MODE_COLORS.get(mode_label, "#999999")
+        mc = curve_data[mode_label]
+        y_max = np.array(mc["maxV"][param])
+        y_min = np.array(mc["minV"][param])
+        poly_x = np.concatenate([pct_arr, pct_arr[::-1], [pct_arr[0]]])
+        poly_y = np.concatenate([y_max, y_min[::-1], [y_max[0]]])
+        fig.add_trace(go.Scatter(
+            x=poly_x, y=poly_y, fill="toself", fillcolor=color, opacity=0.15,
+            line=dict(color=color, width=1), mode="lines",
+            name=f"{mode_label} envelope", legendgroup=mode_label,
+            hoverinfo="skip",
+        ))
+        fig.add_trace(go.Scatter(
+            x=pct_arr, y=y_max, mode="lines",
+            line=dict(color=color, width=2),
+            name=f"{mode_label} max V ({env_V_max:.1f} L)",
+            legendgroup=mode_label,
+        ))
+        fig.add_trace(go.Scatter(
+            x=pct_arr, y=y_min, mode="lines",
+            line=dict(color=color, width=2, dash="dot"),
+            name=f"{mode_label} min V ({env_V_min:.1f} L)",
+            legendgroup=mode_label,
+        ))
+
+    if priority_mode_label in curve_data:
+        pc = curve_data[priority_mode_label]
+        y_maxp = np.array(pc["maxV"][param])
+        y_minp = np.array(pc["minV"][param])
+        if abs(env_V_max - env_V_min) > 1e-6:
+            frac = max(0.0, min(1.0, (V_L - env_V_min) / (env_V_max - env_V_min)))
+            y_interp = (np.interp(current_pct, pct_arr, y_minp) * (1 - frac)
+                        + np.interp(current_pct, pct_arr, y_maxp) * frac)
+        else:
+            y_interp = np.interp(current_pct, pct_arr, y_maxp)
+        fig.add_trace(go.Scatter(
+            x=[current_pct], y=[y_interp],
+            mode="markers", marker=dict(size=12, color="red", symbol="star",
+                                         line=dict(width=1, color="white")),
+            name="Current",
+        ))
+
+    if param in ("Da_macro", "Da_micro", "Da_GL"):
+        for da_val, da_color, label in [
+            (0.1, "orange", "Da=0.1"), (1.0, "red", "Da=1"),
+        ]:
+            fig.add_shape(type="line", x0=0, x1=1, y0=da_val, y1=da_val,
+                          xref="paper", yref="y",
+                          line=dict(color=da_color, width=1.5, dash="dash"))
+        fig.update_yaxes(type="log")
+    if param == "Q_gen/Q_cool (%)":
+        fig.add_shape(type="line", x0=0, x1=1, y0=100, y1=100,
+                      xref="paper", yref="y",
+                      line=dict(color="red", width=1.5, dash="dash"))
+
+    display = DISPLAY_NAMES.get(param, param)
+    fig.update_layout(
+        title=display, xaxis_title=f"Stir speed (% of max RPM = {rpm_max:.0f})",
+        yaxis_title=display,
+        xaxis=dict(range=[0, 105], dtick=10),
+        height=400, width=700, margin=dict(t=50, b=50),
+    )
+    return fig
+
+
+def add_envelope_charts(pdf: MixingReport, envelope: dict, V_L: float,
+                        report_params: list[str]):
+    """Add operating envelope chart pages to the PDF."""
+    pdf.add_page()
+    pdf.section_title("Operating Envelopes")
+    pdf.set_font(pdf._FONT, "", 9)
+    pdf.set_text_color(80, 80, 80)
+    pdf.cell(0, 6, pdf._s(
+             f"RPM range: {envelope['rpm_min']:.0f} - {envelope['rpm_max']:.0f}  |  "
+             f"Volume range: {envelope['env_V_min']:.1f} - {envelope['env_V_max']:.1f} L"))
+    pdf.ln(10)
+
+    _chart_count_on_page = 0
+    for param in report_params:
+        fig = build_envelope_fig(param, envelope, V_L)
+        if fig is None:
+            continue
+        try:
+            png = fig_to_png_bytes(fig)
+        except Exception:
+            continue
+        if not png or png[:4] != b"\x89PNG":
+            continue
+        if _chart_count_on_page >= 2:
+            pdf.add_page()
+            _chart_count_on_page = 0
+        pdf.image(io.BytesIO(png), x=15, w=180)
+        pdf.ln(5)
+        _chart_count_on_page += 1
+
+
+# ── Page-specific report builders ────────────────────────────────────────
+
+def build_mixing_assessment_pdf(snap: dict) -> bytes:
+    """Build PDF report for Page 5 – Mixing Assessment."""
+    reactor_name = snap["reactor"]
+    reaction_name = snap["reaction"]
+    fluid_name = snap["fluid"]
+    fluid_T_C = snap["fluid_T_C"]
+    N_rpm = snap["N_rpm"]
+    V_L = snap["V_L"]
+    hydro = snap["hydro"]
+    da = snap["da"]
+    t_rxn = snap["t_rxn"]
+    heat_results = snap.get("heat_results", {})
+    particle_results = snap.get("particle_results", {})
+    particle_meta = snap.get("particle_meta", {})
+    batchelor_um = snap.get("batchelor_um", 0.0)
+    envelope = snap.get("envelope")
+
+    title = f"Mixing Assessment \u2014 {reactor_name}"
+    pdf = new_report(title)
+
+    # ── Page 1: Title & System Info ──────────────────────────────────────
+    pdf.add_page()
+    pdf.set_font(pdf._FONT, "B", 20)
+    pdf.set_text_color(30, 30, 80)
+    pdf.cell(0, 14, pdf._s("Mixing Assessment Report"), align="C")
+    pdf.ln(18)
+
+    pdf.section_title("System Configuration")
+    pdf.kv("Reactor", reactor_name, bold_val=True)
+    pdf.kv("Reaction", reaction_name, bold_val=True)
+    pdf.kv("Fluid", f"{fluid_name}  ({fluid_T_C:.1f} deg C)", bold_val=True)
+    pdf.kv("Stir speed", f"{N_rpm:.0f} RPM")
+    pdf.kv("Liquid volume", f"{V_L:.2f} L")
+    pdf.kv("Reaction time (t_rxn)", f"{t_rxn:.4g} s")
+    pdf.ln(4)
+
+    # ── Hydrodynamic metrics ─────────────────────────────────────────────
+    pdf.section_title("Hydrodynamic & Mixing Metrics")
+    metrics = [
+        ("Re", f"{hydro['Re']:.0f}"),
+        ("P/V (W/L)", f"{hydro['P/V (W/L)']:.3g}"),
+        ("Blend time 95% (s)", f"{hydro['Blend time 95% (s)']:.2f}"),
+        ("Micromix t_E (s)", f"{hydro['Micromix time t_E (s)']:.4g}"),
+        ("Tip speed (m/s)", f"{hydro['Tip speed (m/s)']:.2f}"),
+        ("Kolmogorov eta (um)", f"{hydro['Kolmogorov η (µm)']:.1f}"),
+        ("Batchelor lambda_B (um)", f"{batchelor_um:.2f}"),
+        ("Circulation time (s)", f"{hydro['Circulation time (s)']:.2f}"),
+        ("Avg shear rate (1/s)", f"{hydro['Avg shear rate (1/s)']:.1f}"),
+        ("Max shear rate (1/s)", f"{hydro['Max shear rate (1/s)']:.0f}"),
+        ("Avg shear stress (Pa)", f"{hydro['Avg shear stress (Pa)']:.3g}"),
+        ("EDCF (W/kg/s)", f"{hydro['EDCF (W/kg/s)']:.3g}"),
+        ("Torque (N.m)", f"{hydro['Torque (N·m)']:.3g}"),
+        ("Froude number", f"{hydro['Froude number']:.4g}"),
+    ]
+    pdf.metric_table(metrics, cols=2)
+    pdf.ln(2)
+
+    pdf.sub_title("Mass Transfer")
+    mt_rows = [
+        ("kLa surface (1/s)", f"{hydro['kLa_surface (1/s)']:.4g}"),
+    ]
+    if hydro.get("kLa (1/s)", 0) > 0:
+        mt_rows.insert(0, ("kLa sparged (1/s)", f"{hydro['kLa (1/s)']:.4g}"))
+    pdf.metric_table(mt_rows, cols=2)
+
+    if heat_results:
+        pdf.sub_title("Heat Transfer")
+        ht_rows = [
+            ("Q_gen (W)", f"{heat_results['Q_gen (W)']:.1f}"),
+            ("Q_cool (W)", f"{heat_results['Q_cool (W)']:.1f}"),
+            ("U (W/m2.K)", f"{heat_results['U (W/m²·K)']:.0f}"),
+            ("A_ht (m2)", f"{heat_results['A_ht (m²)']:.3f}"),
+            ("Q_gen/Q_cool (%)", f"{heat_results['Q_gen/Q_cool (%)']:.1f}%"),
+        ]
+        pdf.metric_table(ht_rows, cols=2)
+
+    if particle_results:
+        pdf.sub_title("Solid Particles")
+        sp_rows = [
+            ("Particle", particle_meta.get("Particle", "")),
+            ("d50 (um)", f"{particle_results['d50 (µm)']:.1f}"),
+            ("rho_p (kg/m3)", f"{particle_results['ρ_p (kg/m³)']:.0f}"),
+            ("N_js design (RPM)", f"{particle_results['N_js (RPM)']:.1f}"),
+            ("v_t (m/s)", f"{particle_results['v_t (m/s)']:.3e}"),
+            ("k_SL (m/s)", f"{particle_results['k_SL (m/s)']:.3e}"),
+        ]
+        pdf.metric_table(sp_rows, cols=2)
+        susp = particle_meta.get("Suspension", "")
+        _susp_col = "GREEN" if "Well" in susp or "Just" in susp else ("AMBER" if "Partial" in susp else "RED")
+        pdf.assessment_box(susp, _susp_col)
+
+    # ── Page 2: Sensitivity Assessment ───────────────────────────────────
+    pdf.add_page()
+    pdf.section_title("Mixing Sensitivity Assessment")
+
+    da_macro = da["Da_macro"]
+    da_micro = da["Da_micro"]
+    da_gl = da["Da_GL"]
+
+    pdf.kv("Da_macro", f"{da_macro:.3g}")
+    pdf.assessment_box(
+        f"Macromixing: {da_text(da_macro)} (Da = {da_macro:.3g})",
+        da_symbol(da_macro),
+    )
+    pdf.kv("Da_micro", f"{da_micro:.3g}")
+    pdf.assessment_box(
+        f"Micromixing: {da_text(da_micro)} (Da = {da_micro:.3g})",
+        da_symbol(da_micro),
+    )
+    if da_gl > 0:
+        pdf.kv("Da_GL", f"{da_gl:.3g}")
+        pdf.assessment_box(
+            f"Gas-liquid: {da_text(da_gl)} (Da = {da_gl:.3g})",
+            da_symbol(da_gl),
+        )
+    if heat_results:
+        ratio = heat_results["Q_gen/Q_cool (%)"]
+        heat_col = "GREEN" if ratio < 100 else "RED"
+        pdf.assessment_box(
+            f"Heat balance: Q_gen/Q_cool = {ratio:.1f}%",
+            heat_col,
+        )
+
+    overall = da.get("Assessment", "")
+    if overall:
+        pdf.ln(4)
+        pdf.sub_title("Overall Assessment")
+        if "not" in overall.lower():
+            _oc = "GREEN"
+        elif "potentially" in overall.lower():
+            _oc = "AMBER"
+        else:
+            _oc = "RED"
+        pdf.assessment_box(overall, _oc)
+
+    # ── Recommendations ──────────────────────────────────────────────────
+    pdf.ln(4)
+    pdf.section_title("Recommendations")
+    recs = []
+    if da_macro >= 1:
+        recs.append("Macromixing is limiting -- consider increasing agitation or reducing reaction volume.")
+    elif da_macro >= 0.1:
+        recs.append("Macromixing is potentially sensitive -- verify at target scale with Da_macro monitoring.")
+    if da_micro >= 1:
+        recs.append("Micromixing is limiting -- feed near the impeller, increase tip speed, or use higher shear impeller.")
+    elif da_micro >= 0.1:
+        recs.append("Micromixing is potentially sensitive -- consider feed location and addition rate at scale.")
+    if da_gl >= 1:
+        recs.append("Gas-liquid mass transfer is limiting -- increase kLa via higher gas flow or agitation.")
+    if heat_results and heat_results.get("Q_gen/Q_cool (%)", 0) >= 100:
+        recs.append("Cooling capacity is insufficient -- reduce feed rate, increase jacket area, or lower coolant temperature.")
+    if not recs:
+        recs.append("No mixing limitations identified at the current operating point. Standard scale-up practices apply.")
+    for rec in recs:
+        pdf.body_text(f"- {rec}")
+
+    # ── Envelope Charts ──────────────────────────────────────────────────
+    if envelope is not None:
+        report_params = ["Da_micro", "Da_macro", "Da_GL", "Blend time 95% (s)", "P/V (W/L)"]
+        if heat_results:
+            report_params.append("Q_gen/Q_cool (%)")
+        add_envelope_charts(pdf, envelope, V_L, report_params)
+
+    return report_bytes(pdf)
+
+
+def build_reactor_comparison_pdf(snap: dict) -> bytes:
+    """Build PDF report for Page 7 – Reactor Comparison."""
+    selected_names = snap["selected_names"]
+    fluid_name = snap["fluid"]
+    fluid_T_C = snap["fluid_T_C"]
+    rxn_name = snap.get("reaction", "N/A")
+    t_rxn = snap.get("t_rxn", 0.0)
+    env_df = snap.get("env_df")  # DataFrame with all corner data
+    agg_df = snap.get("agg_df")  # Aggregated summary
+    reactor_info = snap.get("reactor_info", {})
+    include_heat = snap.get("include_heat", False)
+    include_particles = snap.get("include_particles", False)
+
+    title = f"Reactor Comparison \u2014 {', '.join(selected_names[:3])}"
+    if len(selected_names) > 3:
+        title += f" + {len(selected_names) - 3} more"
+    pdf = new_report(title)
+
+    # ── Page 1: Title & System Info ──────────────────────────────────────
+    pdf.add_page()
+    pdf.set_font(pdf._FONT, "B", 20)
+    pdf.set_text_color(30, 30, 80)
+    pdf.cell(0, 14, pdf._s("Reactor Comparison Report"), align="C")
+    pdf.ln(18)
+
+    pdf.section_title("System Configuration")
+    pdf.kv("Reactors compared", ", ".join(selected_names), bold_val=True)
+    pdf.kv("Fluid", f"{fluid_name}  ({fluid_T_C:.1f} deg C)", bold_val=True)
+    pdf.kv("Reaction", rxn_name, bold_val=True)
+    pdf.kv("Reaction time (t_rxn)", f"{t_rxn:.4g} s")
+    if include_heat:
+        pdf.kv("Heat balance", "Included")
+    if include_particles:
+        pdf.kv("Solid particles", "Included")
+    pdf.ln(4)
+
+    # ── Per-reactor summary ──────────────────────────────────────────────
+    pdf.section_title("Operating Envelope Summary")
+    if agg_df is not None and not agg_df.empty:
+        _key_params = ["P/V (W/L)", "Blend time 95% (s)", "Tip speed (m/s)",
+                       "Da_macro", "Da_micro", "Re"]
+        for _, a in agg_df.iterrows():
+            rname = a["Reactor"]
+            pdf.sub_title(rname)
+            vol_min = a.get("Volume (L)_min", 0)
+            vol_max = a.get("Volume (L)_max", 0)
+            pdf.kv("Volume range (L)", f"{vol_min:.1f} - {vol_max:.1f}")
+            rows = []
+            for p in _key_params:
+                p_min_col = f"{p}_min"
+                p_max_col = f"{p}_max"
+                if p_min_col in a.index and p_max_col in a.index:
+                    lo = a[p_min_col]
+                    hi = a[p_max_col]
+                    if np.isfinite(lo) and np.isfinite(hi):
+                        rows.append((p, f"{lo:.3g} - {hi:.3g}"))
+            if rows:
+                pdf.metric_table(rows, cols=2)
+            pdf.ln(2)
+
+    # ── Scale-up ratios page ─────────────────────────────────────────────
+    if env_df is not None and not env_df.empty and len(selected_names) >= 2:
+        pdf.add_page()
+        pdf.section_title("Scale-Up Impact Summary")
+        pdf.body_text(
+            "Ratios use midpoint (average of 4 corners) for each parameter, "
+            "relative to the first selected reactor."
+        )
+        _su_params = ["P/V (W/L)", "Blend time 95% (s)", "Tip speed (m/s)",
+                      "Da_macro", "Da_micro", "Re"]
+        mid_df = env_df.groupby("Reactor", sort=False)[_su_params + ["Volume (L)"]].mean().reset_index()
+        if len(mid_df) >= 2:
+            ref = mid_df.iloc[0]
+            for _, row in mid_df.iloc[1:].iterrows():
+                pdf.sub_title(f"{row['Reactor']} vs {ref['Reactor']}")
+                ratio_rows = []
+                for p in _su_params:
+                    ref_val = ref[p]
+                    row_val = row[p]
+                    if np.isfinite(ref_val) and np.isfinite(row_val) and ref_val != 0:
+                        ratio_rows.append((p, f"{row_val / ref_val:.2f}x"))
+                if ratio_rows:
+                    pdf.metric_table(ratio_rows, cols=2)
+
+    # ── Recommendations ──────────────────────────────────────────────────
+    pdf.add_page()
+    pdf.section_title("Recommendations")
+    recs = []
+    if agg_df is not None and not agg_df.empty:
+        for _, a in agg_df.iterrows():
+            rname = a["Reactor"]
+            da_macro_max = a.get("Da_macro_max", 0)
+            da_micro_max = a.get("Da_micro_max", 0)
+            if np.isfinite(da_macro_max) and da_macro_max >= 1:
+                recs.append(f"{rname}: Macromixing-sensitive at worst case (Da_macro = {da_macro_max:.2g}).")
+            if np.isfinite(da_micro_max) and da_micro_max >= 1:
+                recs.append(f"{rname}: Micromixing-sensitive at worst case (Da_micro = {da_micro_max:.2g}).")
+    if not recs:
+        recs.append("No mixing limitations identified across the compared reactors at the evaluated conditions.")
+    for rec in recs:
+        pdf.body_text(f"- {rec}")
+
+    return report_bytes(pdf)
+
+
+def build_protocol_pdf(snap: dict) -> bytes:
+    """Build PDF report for Page 10 – Mixing Sensitivity Protocol."""
+    rxn_name = snap["reaction"]
+    t_rxn = snap["t_rxn"]
+    rxn_delta_H = snap.get("rxn_delta_H", 0.0)
+    phases = snap.get("phases", [])
+    findings = snap.get("findings", [])  # list of (mechanism, status, detail)
+    next_steps = snap.get("next_steps", [])  # list of {Area, Action}
+    bourne_result = snap.get("bourne_result", "Not performed")
+    competing = snap.get("competing", "Not assessed")
+    overall_verdict = snap.get("overall_verdict", "")
+    using_approximate = snap.get("using_approximate", False)
+
+    title = f"Sensitivity Protocol \u2014 {rxn_name}"
+    pdf = new_report(title)
+
+    # ── Page 1: Title & Inputs ───────────────────────────────────────────
+    pdf.add_page()
+    pdf.set_font(pdf._FONT, "B", 20)
+    pdf.set_text_color(30, 30, 80)
+    pdf.cell(0, 14, pdf._s("Reaction Sensitivity Protocol Report"), align="C")
+    pdf.ln(18)
+
+    pdf.section_title("Reaction Input")
+    pdf.kv("Reaction", rxn_name, bold_val=True)
+    pdf.kv("Reaction time (t_rxn)", f"{t_rxn:.4g} s")
+    pdf.kv("Delta H (kJ/mol)", f"{rxn_delta_H:.1f}" if rxn_delta_H != 0 else "N/A")
+    pdf.kv("Phases", ", ".join(phases) if phases else "Liquid (single phase)")
+    if using_approximate:
+        pdf.assessment_box("Approximate kinetics used -- results are indicative", "AMBER")
+    pdf.ln(4)
+
+    # ── Protocol findings ────────────────────────────────────────────────
+    pdf.section_title("Protocol Findings")
+    pdf.kv("Bourne pre-screen", bourne_result)
+    pdf.kv("Competing reactions", competing)
+    pdf.ln(4)
+
+    # Overall verdict
+    if overall_verdict:
+        if "high" in overall_verdict.lower():
+            _oc = "RED"
+        elif "moderate" in overall_verdict.lower() or "low-to-moderate" in overall_verdict.lower():
+            _oc = "AMBER"
+        else:
+            _oc = "GREEN"
+        pdf.assessment_box(overall_verdict, _oc)
+        pdf.ln(4)
+
+    # Findings table
+    if findings:
+        pdf.sub_title("Detailed Findings")
+        for mechanism, status, detail in findings:
+            # Clean status icons for PDF
+            status_clean = status.replace("🔴", "[RED]").replace("🟡", "[AMBER]").replace("🟢", "[GREEN]").replace("⚪", "[N/A]")
+            if "[RED]" in status_clean:
+                colour = "RED"
+            elif "[AMBER]" in status_clean:
+                colour = "AMBER"
+            else:
+                colour = "GREEN"
+            pdf.kv(mechanism, status_clean.split(" — ")[0].strip() if " — " in status_clean else status_clean)
+            pdf.body_text(detail)
+            pdf.ln(1)
+        pdf.ln(4)
+
+    # ── Recommendations page ─────────────────────────────────────────────
+    pdf.add_page()
+    pdf.section_title("Recommended Next Steps")
+    if next_steps:
+        for step in next_steps:
+            area = step.get("Area", "")
+            action = step.get("Action", "")
+            pdf.sub_title(area)
+            pdf.body_text(action)
+            pdf.ln(2)
+    else:
+        pdf.body_text(
+            "The reaction appears low risk for mixing sensitivity. "
+            "Standard scale-up practices should be sufficient."
+        )
+
+    return report_bytes(pdf)
+
+
+def build_bourne_protocol_pdf(snap: dict) -> bytes:
+    """Build PDF report for Page 6 – Bourne Protocol."""
+    reactor_name = snap.get("reactor", "Manual entry")
+    fluid_name = snap.get("fluid", "")
+    V_L = snap.get("V_L", 0.0)
+    dominant = snap.get("dominant", "Unknown")
+    conclusions = snap.get("conclusions", [])
+    scaleup_notes = snap.get("scaleup_notes", [])
+    t1_conditions = snap.get("t1_conditions", [])
+    t1_responses = snap.get("t1_responses")
+    t2_responses = snap.get("t2_responses")
+    t3_responses = snap.get("t3_responses")
+    centerpoint_metrics = snap.get("centerpoint_metrics", {})
+
+    title = f"Bourne Protocol \u2014 {reactor_name}"
+    pdf = new_report(title)
+
+    # ── Page 1: Title & System ───────────────────────────────────────────
+    pdf.add_page()
+    pdf.set_font(pdf._FONT, "B", 20)
+    pdf.set_text_color(30, 30, 80)
+    pdf.cell(0, 14, pdf._s("Bourne Protocol Report"), align="C")
+    pdf.ln(18)
+
+    pdf.section_title("System Configuration")
+    pdf.kv("Reactor", reactor_name, bold_val=True)
+    pdf.kv("Fluid", fluid_name, bold_val=True)
+    pdf.kv("Working volume", f"{V_L:.1f} L")
+    if centerpoint_metrics:
+        pdf.ln(2)
+        pdf.sub_title("Centerpoint Hydrodynamics")
+        cm_rows = []
+        for k, v in centerpoint_metrics.items():
+            cm_rows.append((k, f"{v:.4g}" if isinstance(v, float) else str(v)))
+        pdf.metric_table(cm_rows, cols=2)
+    pdf.ln(4)
+
+    # ── Test 1 ───────────────────────────────────────────────────────────
+    pdf.section_title("Test 1 -- Impeller Speed")
+    if t1_conditions:
+        for cond in t1_conditions:
+            label = cond.get("Condition", "")
+            rpm = cond.get("N (RPM)", 0)
+            pv = cond.get("P/V (W/kg)", 0)
+            pdf.kv(label, f"{rpm:.0f} RPM  |  P/V = {pv:.4g} W/kg")
+    if t1_responses:
+        pdf.ln(2)
+        pdf.sub_title(f"Responses ({t1_responses.get('resp_name', '')})")
+        labels = t1_responses.get("labels", [])
+        resp = t1_responses.get("resp", [])
+        for lbl, val in zip(labels, resp):
+            pdf.kv(lbl, f"{val:.4g}")
+        max_pct = t1_responses.get("max_pct", 0)
+        sensitive = t1_responses.get("sensitive", False)
+        colour = "RED" if sensitive else "GREEN"
+        pdf.assessment_box(
+            f"Max change = {max_pct:.1f}% -- {'Sensitive' if sensitive else 'Not sensitive'}",
+            colour,
+        )
+
+    # ── Test 2 ───────────────────────────────────────────────────────────
+    if t2_responses:
+        pdf.section_title("Test 2 -- Feed Rate / Feed Time")
+        pdf.sub_title(f"Responses ({t2_responses.get('resp_name', '')})")
+        t2_labels = ["Fast (1/3x)", "Center (1x)", "Slow (3x)"]
+        t2_resp = t2_responses.get("resp", [])
+        for lbl, val in zip(t2_labels, t2_resp):
+            pdf.kv(lbl, f"{val:.4g}")
+        t2_pct = t2_responses.get("max_pct", 0)
+        t2_sens = t2_responses.get("sensitive", False)
+        colour = "RED" if t2_sens else "GREEN"
+        pdf.assessment_box(
+            f"Max change = {t2_pct:.1f}% -- {'Sensitive (mesomixing involved)' if t2_sens else 'Not sensitive (micromixing controls)'}",
+            colour,
+        )
+
+    # ── Test 3 ───────────────────────────────────────────────────────────
+    if t3_responses:
+        pdf.section_title("Test 3 -- Feed Location")
+        pdf.sub_title(f"Responses ({t3_responses.get('resp_name', '')})")
+        t3_labels = ["Surface", "Sub-surface (mid)", "Impeller zone"]
+        t3_resp = t3_responses.get("resp", [])
+        for lbl, val in zip(t3_labels, t3_resp):
+            pdf.kv(lbl, f"{val:.4g}")
+        t3_pct = t3_responses.get("max_pct", 0)
+        t3_sens = t3_responses.get("sensitive", False)
+        colour = "RED" if t3_sens else "GREEN"
+        pdf.assessment_box(
+            f"Max change = {t3_pct:.1f}% -- {'Sensitive (mesomixing controls)' if t3_sens else 'Not sensitive (macromixing controls)'}",
+            colour,
+        )
+
+    # ── Conclusion & Recommendations ─────────────────────────────────────
+    pdf.add_page()
+    pdf.section_title("Conclusion")
+
+    if conclusions:
+        for test_name, result, icon in conclusions:
+            pdf.kv(test_name, result)
+        pdf.ln(4)
+
+    if dominant == "Micromixing":
+        colour = "GREEN"
+    elif dominant == "Mesomixing":
+        colour = "AMBER"
+    else:
+        colour = "RED"
+    pdf.assessment_box(f"Dominant mixing limitation: {dominant}", colour)
+    pdf.ln(4)
+
+    pdf.section_title("Scale-Up Recommendations")
+    if dominant == "Micromixing":
+        pdf.body_text(
+            "The molecular-scale engulfment step is rate-limiting. "
+            "Maintain constant local energy dissipation (eps_loc) at the feed point on scale-up. "
+            "Consider impeller type and feed-point proximity to the impeller."
+        )
+    elif dominant == "Mesomixing":
+        pdf.body_text(
+            "Feed-plume disintegration is rate-limiting. "
+            "Keep impeller speed constant on scale-up, extend the feed time to reduce local feed rate, "
+            "or use multiple feed points to reduce local feed velocity at each point."
+        )
+    elif dominant == "Macromixing":
+        pdf.body_text(
+            "Bulk blending / circulation is rate-limiting. "
+            "Focus on blend time reduction: high-efficiency impellers, multiple impellers, or static mixers. "
+            "Consider continuous-flow alternatives with in-line mixing."
+        )
+    if scaleup_notes:
+        pdf.ln(2)
+        for note in scaleup_notes:
+            pdf.body_text(f"- {note}")
+
+    return report_bytes(pdf)

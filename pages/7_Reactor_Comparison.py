@@ -279,19 +279,23 @@ st.header("3 · Additional Options")
 
 # ── Particle options ──────────────────────────────────────────────────────────
 include_particles = st.checkbox("Include solid particles", value=False, key="cmp_include_particles")
-cmp_rho_p = cmp_d50_um = cmp_phi_p = cmp_X_wt = cmp_S_zw = 0.0
-cmp_gmb_z = cmp_X_vol = cmp_C_D_ratio = 0.0
+cmp_rho_p = cmp_d50_um = cmp_phi_p = cmp_X_wt = 0.0
+cmp_X_vol = 0.0
+# Per-reactor particle properties & Zwietering / GMB constants
+cmp_d50_per: dict[str, float] = {}
+cmp_rho_p_per: dict[str, float] = {}
+cmp_phi_p_per: dict[str, float] = {}
+cmp_S_zw_per: dict[str, float] = {}
+cmp_gmb_z_per: dict[str, float] = {}
+cmp_C_D_per: dict[str, float] = {}
 if include_particles and not particles_db.empty:
     pcol1, pcol2, pcol3 = st.columns(3)
     with pcol1:
-        cmp_particle_name = st.selectbox("Particle", particles_db["particle_name"].tolist(), key="cmp_particle")
+        cmp_particle_name = st.selectbox("Particle (defaults)", particles_db["particle_name"].tolist(), key="cmp_particle")
         cmp_part = particles_db[particles_db["particle_name"] == cmp_particle_name].iloc[0]
         cmp_rho_p = float(cmp_part["rho_p_kg_m3"])
         cmp_d50_um = float(cmp_part["d50_um"])
         cmp_phi_p = float(cmp_part["shape_factor"])
-    with pcol2:
-        cmp_S_zw = st.number_input("Zwietering S", value=5.5, min_value=0.5,
-                                    max_value=20.0, format="%.1f", key="cmp_Szw")
     # Solids loading – single input with auto-conversion
     _cmp_solids_basis = st.radio("Solids loading basis",
                                   ["Mass (wt-%)", "Volume (vol-%)"],
@@ -310,17 +314,52 @@ if include_particles and not particles_db.empty:
                                         help="Volume of solids / volume of slurry × 100")
         cmp_X_wt = 100.0 * cmp_rho_p * cmp_X_vol / (rho * (100.0 - cmp_X_vol)) if (100.0 - cmp_X_vol) > 0 and rho > 0 else 0.0
         scol2.metric("X (wt-%)", f"{cmp_X_wt:.2f}")
-    st.markdown("**Grenville, Mak & Brown (GMB) parameters**")
-    gcol1, gcol2 = st.columns(2)
-    with gcol1:
-        cmp_gmb_z = st.number_input("GMB z constant", value=3.0, min_value=0.1,
-                                     max_value=30.0, format="%.2f", key="cmp_gmb_z",
-                                     help="Geometry constant (impeller-type dependent)")
-    with gcol2:
-        cmp_C_D_ratio = st.number_input("C/D (clearance / impeller dia)",
-                                         value=0.33, min_value=0.01,
-                                         max_value=2.0, format="%.3f", key="cmp_CD",
-                                         help="Impeller clearance / impeller diameter")
+    st.markdown("**Particle & suspension parameters (per reactor)**")
+    st.caption(
+        "Particle properties default to the selected database entry above. "
+        "Zwietering S, GMB z, and C/D depend on impeller type and geometry. "
+        "Adjust any value independently for each reactor."
+    )
+    for _rname in selected_names:
+        with st.expander(f"⚙️ {_rname}", expanded=False):
+            _pc1, _pc2, _pc3 = st.columns(3)
+            with _pc1:
+                cmp_d50_per[_rname] = st.number_input(
+                    "d50 (µm)", value=cmp_d50_um, min_value=0.01,
+                    format="%.1f", key=f"cmp_d50_{_rname}",
+                )
+            with _pc2:
+                cmp_rho_p_per[_rname] = st.number_input(
+                    "ρ_p (kg/m³)", value=cmp_rho_p, min_value=1.0,
+                    format="%.0f", key=f"cmp_rhop_{_rname}",
+                )
+            with _pc3:
+                cmp_phi_p_per[_rname] = st.number_input(
+                    "Shape factor φ", value=cmp_phi_p, min_value=0.01,
+                    max_value=1.0, format="%.2f",
+                    key=f"cmp_phi_{_rname}",
+                )
+            _zc1, _zc2, _zc3 = st.columns(3)
+            with _zc1:
+                cmp_S_zw_per[_rname] = st.number_input(
+                    "Zwietering S", value=5.5, min_value=0.5,
+                    max_value=20.0, format="%.1f",
+                    key=f"cmp_Szw_{_rname}",
+                )
+            with _zc2:
+                cmp_gmb_z_per[_rname] = st.number_input(
+                    "GMB z constant", value=3.0, min_value=0.1,
+                    max_value=30.0, format="%.2f",
+                    key=f"cmp_gmb_z_{_rname}",
+                    help="Geometry constant (impeller-type dependent)",
+                )
+            with _zc3:
+                cmp_C_D_per[_rname] = st.number_input(
+                    "C/D (clearance / impeller dia)", value=0.33,
+                    min_value=0.01, max_value=2.0, format="%.3f",
+                    key=f"cmp_CD_{_rname}",
+                    help="Impeller clearance / impeller diameter",
+                )
 elif include_particles and particles_db.empty:
     st.warning("Particle database is empty.")
 
@@ -404,9 +443,9 @@ for rname in selected_names:
         rpm_max=rpm_max,
     )
 
-    # C/D ratio for GMB Njs (from reactor DB or user default)
+    # C/D ratio for GMB Njs (from reactor DB or user per-reactor default)
     _imp1_C = _safe_float(r.get("imp1_clearance_m"), 0.0)
-    reactor_info[rname]["C_D_ratio"] = _imp1_C / D_imp_v if D_imp_v > 0 and _imp1_C > 0 else cmp_C_D_ratio
+    reactor_info[rname]["C_D_ratio"] = _imp1_C / D_imp_v if D_imp_v > 0 and _imp1_C > 0 else cmp_C_D_per.get(rname, 0.33)
 
     # Heat-transfer geometry for this reactor
     _r_material = str(r.get("shell_material", ""))
@@ -442,15 +481,17 @@ for rname in selected_names:
         part_vals = {}
         _kLa_SL_corner = 0.0
         if include_particles and cmp_d50_um > 0:
-            _dp = cmp_d50_um * 1e-6
+            _dp = cmp_d50_per.get(rname, cmp_d50_um) * 1e-6
+            _rho_p_r = cmp_rho_p_per.get(rname, cmp_rho_p)
+            _phi_p_r = cmp_phi_p_per.get(rname, cmp_phi_p)
             _nu = mu / rho
-            _drho = abs(cmp_rho_p - rho)
-            _vt = settling_velocity(_dp, cmp_rho_p, rho, mu, cmp_phi_p)
+            _drho = abs(_rho_p_r - rho)
+            _vt = settling_velocity(_dp, _rho_p_r, rho, mu, _phi_p_r)
             _rep = particle_reynolds(_dp, _vt, rho, mu)
-            _njs_zw = zwietering_njs(cmp_S_zw, _nu, _dp, _drho, rho, cmp_X_wt, D_imp_v)
+            _njs_zw = zwietering_njs(cmp_S_zw_per.get(rname, 5.5), _nu, _dp, _drho, rho, cmp_X_wt, D_imp_v)
             _Np_corner = Np_v if Np_v else 1.27
-            _C_D_corner = _safe_float(r.get("imp1_clearance_m")) / D_imp_v if D_imp_v > 0 and _safe_float(r.get("imp1_clearance_m")) > 0 else cmp_C_D_ratio
-            _njs_gmb = gmb_njs(cmp_gmb_z, _Np_corner, D_imp_v, _dp,
+            _C_D_corner = _safe_float(r.get("imp1_clearance_m")) / D_imp_v if D_imp_v > 0 and _safe_float(r.get("imp1_clearance_m")) > 0 else cmp_C_D_per.get(rname, 0.33)
+            _njs_gmb = gmb_njs(cmp_gmb_z_per.get(rname, 3.0), _Np_corner, D_imp_v, _dp,
                                _drho, rho, cmp_X_vol, _C_D_corner)
             _njs = max(_njs_zw, _njs_gmb)
             _eps_kg_corner = h["P/V (W/kg)"] if h["P/V (W/kg)"] > 0 else 0.0
@@ -579,16 +620,18 @@ curve_data: dict = {}  # rname → {pct_arr, maxV: {param: arr}, minV: {param: a
 # Pre-compute RPM-independent particle quantities (hoisted out of inner loop)
 _p7_part_static: dict[str, dict] = {}
 if include_particles and cmp_d50_um > 0:
-    _dp_p7 = cmp_d50_um * 1e-6
     _nu_p7 = mu / rho
-    _drho_p7 = abs(cmp_rho_p - rho)
-    _vt_p7 = settling_velocity(_dp_p7, cmp_rho_p, rho, mu, cmp_phi_p)
-    _rep_p7 = particle_reynolds(_dp_p7, _vt_p7, rho, mu)
     for rname, info in reactor_info.items():
-        _njs_zw_p7 = zwietering_njs(cmp_S_zw, _nu_p7, _dp_p7, _drho_p7, rho, cmp_X_wt, info["D_imp"])
+        _dp_p7 = cmp_d50_per.get(rname, cmp_d50_um) * 1e-6
+        _rho_p_p7 = cmp_rho_p_per.get(rname, cmp_rho_p)
+        _phi_p_p7 = cmp_phi_p_per.get(rname, cmp_phi_p)
+        _drho_p7 = abs(_rho_p_p7 - rho)
+        _vt_p7 = settling_velocity(_dp_p7, _rho_p_p7, rho, mu, _phi_p_p7)
+        _rep_p7 = particle_reynolds(_dp_p7, _vt_p7, rho, mu)
+        _njs_zw_p7 = zwietering_njs(cmp_S_zw_per.get(rname, 5.5), _nu_p7, _dp_p7, _drho_p7, rho, cmp_X_wt, info["D_imp"])
         _Np_p7 = info["Np"] if info["Np"] else 1.27
-        _C_D_p7 = info.get("C_D_ratio", cmp_C_D_ratio)
-        _njs_gmb_p7 = gmb_njs(cmp_gmb_z, _Np_p7, info["D_imp"], _dp_p7,
+        _C_D_p7 = info.get("C_D_ratio", cmp_C_D_per.get(rname, 0.33))
+        _njs_gmb_p7 = gmb_njs(cmp_gmb_z_per.get(rname, 3.0), _Np_p7, info["D_imp"], _dp_p7,
                                _drho_p7, rho, cmp_X_vol, _C_D_p7)
         _njs_p7 = max(_njs_zw_p7, _njs_gmb_p7)
         _phi_s_p7 = cmp_X_vol / 100.0
@@ -710,8 +753,8 @@ with st.expander("Full 4-corner detail table", expanded=False):
         detail_cols += PARTICLE_PARAMS
     if include_heat and rxn_delta_H != 0:
         detail_cols += HEAT_PARAMS
-    # Only include columns that exist in the dataframe
-    detail_cols = [c for c in detail_cols if c in env_df.columns]
+    # Deduplicate while preserving order, then keep only columns in the dataframe
+    detail_cols = list(dict.fromkeys(c for c in detail_cols if c in env_df.columns))
     fmt = {c: "{:.3g}" for c in detail_cols if c not in ("Reactor", "Corner")}
     st.dataframe(env_df[detail_cols].style.format(fmt), width='content', hide_index=True)
 
@@ -1159,8 +1202,8 @@ if st.button("📌 Save results for all selected reactors", key="cmp_save_all"):
         if include_particles and cmp_d50_um > 0:
             _result_row.update({
                 "Particle": cmp_particle_name if "cmp_particle_name" in dir() else "",
-                "d50 (µm)": cmp_d50_um,
-                "ρ_p (kg/m³)": cmp_rho_p,
+                "d50 (µm)": cmp_d50_per.get(rname, cmp_d50_um),
+                "ρ_p (kg/m³)": cmp_rho_p_per.get(rname, cmp_rho_p),
                 "v_t (m/s)": _c.get("v_t (m/s)", ""),
                 "Re_p": _c.get("Re_p", ""),
                 "N_js (RPM)": _c.get("N_js (RPM)", ""),
@@ -1175,3 +1218,41 @@ if st.button("📌 Save results for all selected reactors", key="cmp_save_all"):
     _results_csv = DATA_DIR / "recorded_results.csv"
     st.session_state.recorded_results.to_csv(_results_csv, index=False)
     st.success(f"Saved {_saved_count} reactor result(s) to **Recorded Results**.")
+
+# ── Generate PDF Report ──────────────────────────────────────────────────
+st.divider()
+st.header("9 · Export Report")
+
+if st.button("📥 Export PDF Report", type="primary", key="p7_export_pdf"):
+    with st.spinner("Generating PDF…"):
+        try:
+            from utils.report_builder import build_reactor_comparison_pdf, report_filename
+            import pandas as _pd_report
+            _p7_snap = {
+                "selected_names": selected_names,
+                "fluid": fluid_name,
+                "fluid_T_C": fluid_T_C,
+                "reaction": rxn_name if not reactions.empty else "N/A",
+                "t_rxn": t_rxn,
+                "env_df": env_df,
+                "agg_df": agg_df,
+                "reactor_info": reactor_info,
+                "include_heat": include_heat and rxn_delta_H != 0,
+                "include_particles": include_particles and cmp_d50_um > 0,
+            }
+            _pdf_bytes = build_reactor_comparison_pdf(_p7_snap)
+            st.session_state["_p7_pdf_bytes"] = _pdf_bytes
+            st.session_state["_p7_pdf_name"] = report_filename(
+                "Reactor_Comparison", selected_names[0] if selected_names else ""
+            )
+        except Exception as exc:
+            st.error(f"PDF generation failed: {exc}")
+
+if "_p7_pdf_bytes" in st.session_state:
+    st.download_button(
+        "⬇️ Download PDF",
+        data=st.session_state["_p7_pdf_bytes"],
+        file_name=st.session_state["_p7_pdf_name"],
+        mime="application/pdf",
+    )
+    st.success("PDF ready for download.")

@@ -914,60 +914,157 @@ else:
         "No ΔH data available — consider measuring by calorimetry.",
     ))
 
+# Overall summary verdict
+_n_red = sum(1 for _, s, _ in findings if "🔴" in s)
+_n_yellow = sum(1 for _, s, _ in findings if "🟡" in s)
+
+if _n_red >= 2:
+    st.error(
+        "🔴 **High mixing sensitivity risk** — multiple mechanisms are likely "
+        "to limit this reaction at scale. Detailed characterisation is strongly recommended."
+    )
+elif _n_red == 1:
+    st.warning(
+        "🟡 **Moderate mixing sensitivity risk** — at least one mechanism is likely "
+        "to be sensitive. Targeted investigation is recommended."
+    )
+elif _n_yellow >= 1:
+    st.warning(
+        "🟡 **Low-to-moderate mixing sensitivity risk** — no mechanisms are flagged as "
+        "likely sensitive, but some require verification at scale."
+    )
+else:
+    st.success(
+        "🟢 **Low mixing sensitivity risk** — no mixing mechanisms are expected "
+        "to limit this reaction under typical operating conditions."
+    )
+
 # Render summary table
-summary_df = pd.DataFrame(findings, columns=["Mechanism", "Status", "Detail"])
-for _, row in summary_df.iterrows():
-    st.markdown(f"**{row['Mechanism']}** — {row['Status']}")
-    st.caption(row["Detail"])
+_summary_rows = []
+for mechanism, status, detail in findings:
+    _summary_rows.append({
+        "Sensitivity Type": mechanism,
+        "Finding": status + " — " + detail,
+    })
+
+summary_df = pd.DataFrame(_summary_rows)
+st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+# st.caption(
+#     "🔴 Likely sensitive · 🟡 Potentially sensitive / check at scale · "
+#     "🟢 Unlikely / not applicable · ⚪ Not assessed"
+# )
 
 # Next steps
 st.subheader("Recommended Next Steps")
-_steps = []
+_steps: list[dict[str, str]] = []
 
 if _bourne_sensitive is None:
-    _steps.append(
-        "Run **Bourne Protocol Part 1** (quick screen) on the "
-        "**🧐 Bourne Protocol** page to confirm whether mixing sensitivity "
-        "exists experimentally."
-    )
+    _steps.append({
+        "Area": "Bourne pre-screen",
+        "Action": "Run Bourne Protocol Part 1 (quick screen) on the 🧐 Bourne Protocol page "
+                  "to confirm whether mixing sensitivity exists experimentally.",
+    })
 
 if _using_approximate:
-    _steps.append(
-        "Obtain **measured kinetics and calorimetry** for the actual "
-        "reaction to replace the approximate values used in this assessment."
-    )
+    _steps.append({
+        "Area": "Kinetics",
+        "Action": "Obtain measured kinetics and calorimetry for the actual reaction "
+                  "to replace the approximate values used in this assessment.",
+    })
 
 if _micro_likely or (t_rxn < 60):
-    _steps.append(
-        "Compute **Damköhler numbers** (Da_macro, Da_micro) for your specific "
-        "reactor on the **🌀 Mixing Assessment** page."
-    )
+    _steps.append({
+        "Area": "Damköhler analysis",
+        "Action": "Compute Damköhler numbers (Da_macro, Da_micro) for your specific "
+                  "reactor on the 🌀 Mixing Assessment page.",
+    })
 
 if _meso_sensitive:
-    _steps.append(
-        "Run the **🧐 Bourne Protocol** to experimentally screen micro- and "
-        "mesomixing sensitivity (vary impeller speed to probe micromixing, "
-        "vary feed time/location to probe mesomixing)."
-    )
+    _steps.append({
+        "Area": "Micro/mesomixing",
+        "Action": "Run the 🧐 Bourne Protocol to experimentally screen micro- and "
+                  "mesomixing sensitivity (vary impeller speed to probe micromixing, "
+                  "vary feed time/location to probe mesomixing).",
+    })
 
 if _multiphase:
-    _steps.append(
-        "Assess interphase **mass-transfer coefficients** (kLa, k_SL) on "
-        "the 🌀 Mixing Assessment or 📈 Reactor Comparison pages."
-    )
+    _steps.append({
+        "Area": "Mass transfer",
+        "Action": "Assess interphase mass-transfer coefficients (kLa, k_SL) on "
+                  "the 🌀 Mixing Assessment or 📈 Reactor Comparison pages.",
+    })
 
 if _has_enthalpy and _heat_sensitive:
-    _steps.append(
-        "Run a full **heat balance** (🔥 button on 🌀 Mixing Assessment or "
-        "📈 Reactor Comparison) to evaluate Q_gen vs Q_cool."
-    )
+    _steps.append({
+        "Area": "Heat transfer",
+        "Action": "Run a full heat balance (🔥 button on 🌀 Mixing Assessment or "
+                  "📈 Reactor Comparison) to evaluate Q_gen vs Q_cool.",
+    })
 
 if not _steps:
-    _steps.append(
-        "The reaction appears **low risk** for mixing sensitivity.  "
-        "Standard scale-up practices should be sufficient, but consider "
-        "a quick check on the 🌀 Mixing Assessment page for completeness."
-    )
+    _steps.append({
+        "Area": "General",
+        "Action": "The reaction appears low risk for mixing sensitivity. "
+                  "Standard scale-up practices should be sufficient, but consider "
+                  "a quick check on the 🌀 Mixing Assessment page for completeness.",
+    })
 
-for i, step in enumerate(_steps, 1):
-    st.markdown(f"{i}. {step}")
+steps_df = pd.DataFrame(_steps)
+st.dataframe(steps_df, use_container_width=True, hide_index=True)
+
+# ── Generate PDF Report ──────────────────────────────────────────────────
+st.divider()
+st.header("7 · Export Report")
+
+if st.button("📥 Export PDF Report", type="primary", key="p10_export_pdf"):
+    with st.spinner("Generating PDF…"):
+        try:
+            from utils.report_builder import build_protocol_pdf, report_filename
+
+            # Determine overall verdict text
+            if _n_red >= 2:
+                _verdict = "High mixing sensitivity risk -- multiple mechanisms are likely to limit this reaction at scale."
+            elif _n_red == 1:
+                _verdict = "Moderate mixing sensitivity risk -- at least one mechanism is likely sensitive."
+            elif _n_yellow >= 1:
+                _verdict = "Low-to-moderate mixing sensitivity risk -- some mechanisms require verification at scale."
+            else:
+                _verdict = "Low mixing sensitivity risk -- no mixing mechanisms are expected to limit this reaction."
+
+            # Bourne result text
+            if _bourne_sensitive is True:
+                _bourne_txt = "Mixing sensitivity confirmed experimentally"
+            elif _bourne_sensitive is False:
+                _bourne_txt = "No sensitivity observed"
+            else:
+                _bourne_txt = "Not performed"
+
+            _p10_snap = {
+                "reaction": rxn_name,
+                "t_rxn": t_rxn,
+                "rxn_delta_H": rxn_delta_H,
+                "phases": phases,
+                "findings": findings,
+                "next_steps": _steps,
+                "bourne_result": _bourne_txt,
+                "competing": competing if competing is not None else "Not assessed",
+                "overall_verdict": _verdict,
+                "using_approximate": _using_approximate,
+            }
+            _pdf_bytes = build_protocol_pdf(_p10_snap)
+            st.session_state["_p10_pdf_bytes"] = _pdf_bytes
+            st.session_state["_p10_pdf_name"] = report_filename(
+                "Sensitivity_Protocol", rxn_name
+            )
+        except Exception as exc:
+            st.error(f"PDF generation failed: {exc}")
+
+if "_p10_pdf_bytes" in st.session_state:
+    st.download_button(
+        "⬇️ Download PDF",
+        data=st.session_state["_p10_pdf_bytes"],
+        file_name=st.session_state["_p10_pdf_name"],
+        mime="application/pdf",
+    )
+    st.success("PDF ready for download.")

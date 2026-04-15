@@ -7,8 +7,8 @@ st.badge("v1.0.0", color="blue")
 st.subheader("Hydrodynamics & Mixing-Sensitivity Assessment Tool")
 
 st.markdown("""
-Welcome to **Mixing Lab** – an interactive tool for assessing hydrodynamics and
-mixing sensitivities across different reactor scales.
+Welcome to **Mixing Lab** – an interactive tool for assessing reaction mixing sensitivities,
+            hydrodynamics and scale dependencies.
 
 ### What you can do
 
@@ -19,8 +19,8 @@ mixing sensitivities across different reactor scales.
 | | **💧 Fluid Database** | Define or import fluid properties (density, viscosity, diffusivity) |
 | | **❇️ Particle Database** | Define solid-particle properties (density, PSD, shape factor) |
 | **Analysis** | **🧭 Reaction Sensitivity Protocol** | Interactive decision tree to assess which mixing mechanisms may limit your reaction at scale |
-| | **💎 Crystallization Sensitivity Protocol** | Decision tree for crystallisation mixing sensitivity (nucleation, growth, anti-solvent) |
-| | **🌀 Mixing Assessment** | Step-gated workflow: select system → review parameters → choose correlations → compute hydrodynamics, Damköhler numbers, heat balance, solids suspension & operating envelopes |
+| | **💎 Crystallization Sensitivity Protocol** | Decision tree for crystallization mixing sensitivity (nucleation, growth, anti-solvent) |
+| | **🌀 Mixing Assessment** | Reaction-reactor analysis: compute hydrodynamics, Damköhler numbers, heat balance, solids suspension & operating envelopes |
 | | **🧐 Bourne Protocol** | Step-by-step Bourne mixing-sensitivity screening protocol (Sarafinas modification) |
 | | **📈 Reactor Comparison** | Side-by-side comparison of hydrodynamics and operating envelopes across multiple reactors |
 | **Tools** | **🔄 Unit Converter** | Quick conversion between common engineering units |

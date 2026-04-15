@@ -1030,6 +1030,56 @@ if st.button("📌 Save Bourne Protocol result to Recorded Results", key=_bk("sa
 st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════
+# SECTION 7 – Export Report
+# ══════════════════════════════════════════════════════════════════════════
+st.header("7 · Export Report")
+
+if st.button("📥 Export PDF Report", type="primary", key=_bk("export_pdf")):
+    with st.spinner("Generating PDF…"):
+        try:
+            from utils.report_builder import build_bourne_protocol_pdf, report_filename
+
+            _bp_snap = {
+                "reactor": reactor_name if not reactors.empty else "Manual entry",
+                "fluid": fluid_name,
+                "V_L": V_L,
+                "dominant": dominant,
+                "conclusions": conclusions,
+                "scaleup_notes": scaleup_notes,
+                "t1_conditions": t1_rows,
+                "t1_responses": st.session_state.get(_bk("t1_assessed")),
+                "t2_responses": st.session_state.get(_bk("t2_assessed")),
+                "t3_responses": st.session_state.get(_bk("t3_assessed")),
+                "centerpoint_metrics": {
+                    "N (RPM)": round(N_center_calc * 60, 1),
+                    "P/V (W/kg)": round(PV_center_wkg, 4),
+                    "Re": round(reynolds_number(N_center_calc, D_imp, rho, mu), 0),
+                    "Tip speed (m/s)": round(tip_speed(N_center_calc, D_imp), 3),
+                    "Blend time (s)": round(blend_time_turbulent(Nq_val, V_m3, D_imp, N_center_calc), 2),
+                    "Micromix t_E (s)": round(micromixing_time_engulfment(eps_avg_kg, nu), 5),
+                    "Kolmogorov eta (um)": round(kolmogorov_length(nu, eps_avg_kg) * 1e6, 1),
+                },
+            }
+            _pdf_bytes = build_bourne_protocol_pdf(_bp_snap)
+            st.session_state["_p6_pdf_bytes"] = _pdf_bytes
+            st.session_state["_p6_pdf_name"] = report_filename(
+                "Bourne_Protocol", reactor_name if not reactors.empty else ""
+            )
+        except Exception as exc:
+            st.error(f"PDF generation failed: {exc}")
+
+if "_p6_pdf_bytes" in st.session_state:
+    st.download_button(
+        "⬇️ Download PDF",
+        data=st.session_state["_p6_pdf_bytes"],
+        file_name=st.session_state["_p6_pdf_name"],
+        mime="application/pdf",
+    )
+    st.success("PDF ready for download.")
+
+st.divider()
+
+# ══════════════════════════════════════════════════════════════════════════
 # SECTION 7 – References
 # ══════════════════════════════════════════════════════════════════════════
 st.header("References")

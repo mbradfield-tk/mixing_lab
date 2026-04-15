@@ -1516,3 +1516,28 @@ if st.button("📌 Save this result to Recorded Results"):
     results_csv = DATA_DIR / "recorded_results.csv"
     st.session_state.recorded_results.to_csv(results_csv, index=False)
     st.success("Result saved! View it on the **Recorded Results** page.")
+
+# ── Generate PDF Report ──────────────────────────────────────────────────
+st.divider()
+st.header("7 · Export Report")
+
+if st.button("📥 Export PDF Report", type="primary", key="p5_export_pdf"):
+    with st.spinner("Generating PDF…"):
+        try:
+            from utils.report_builder import build_mixing_assessment_pdf, report_filename
+            _pdf_bytes = build_mixing_assessment_pdf(st.session_state["_ms_report_snapshot"])
+            st.session_state["_p5_pdf_bytes"] = _pdf_bytes
+            st.session_state["_p5_pdf_name"] = report_filename(
+                "Mixing_Assessment", reactor_name
+            )
+        except Exception as exc:
+            st.error(f"PDF generation failed: {exc}")
+
+if "_p5_pdf_bytes" in st.session_state:
+    st.download_button(
+        "⬇️ Download PDF",
+        data=st.session_state["_p5_pdf_bytes"],
+        file_name=st.session_state["_p5_pdf_name"],
+        mime="application/pdf",
+    )
+    st.success("PDF ready for download.")
