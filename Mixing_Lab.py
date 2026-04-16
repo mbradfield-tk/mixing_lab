@@ -28,7 +28,7 @@ analysis = [
     st.Page("pages/10_Mixing_Sensitivity_Protocol.py", title="Reaction Sensitivity Protocol", icon="🧭"),
     st.Page("pages/11_Crystallization_Sensitivity_Protocol.py", title="Crystallization Sensitivity Protocol", icon="💎"),
     st.Page("pages/5_Mixing_Sensitivity.py", title="Mixing Assessment", icon="🌀"),
-    st.Page("pages/6_Bourne_Protocol.py",    title="Bourne Protocol",    icon="🧐"),
+    st.Page("pages/6_Bourne_Protocol.py",    title="Bourne Protocol",    icon="🅱️"),
     st.Page("pages/7_Reactor_Comparison.py", title="Reactor Comparison", icon="📈"),
 ]
 
@@ -41,14 +41,7 @@ results = [
 ]
 
 reference = [
-    st.Page("pages/equations_hydrodynamics.py",  title="Hydrodynamics & Shear",  icon="📐"),
-    st.Page("pages/equations_mixing.py",         title="Mixing & Damköhler",     icon="📐"),
-    st.Page("pages/equations_mass_transfer.py",  title="Mass Transfer & kLa",    icon="📐"),
-    st.Page("pages/equations_heat.py",           title="Heat Balance",            icon="📐"),
-    st.Page("pages/equations_particles.py",      title="Solid Particles",         icon="📐"),
-    st.Page("pages/equations_scaleup.py",        title="Scale-Up & Properties",   icon="📐"),
-    st.Page("pages/equations_rom.py",            title="ROM & Experimental",      icon="📐"),
-    st.Page("pages/equations_crystallization.py", title="Crystallization",         icon="📐"),
+    st.Page("pages/equations_reference.py", title="Equations Reference", icon="📐"),
 ]
 
 admin = [

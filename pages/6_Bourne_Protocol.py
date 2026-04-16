@@ -65,18 +65,11 @@ _custom_names = custom_fluids["fluid_name"].tolist() if not custom_fluids.empty 
 _all_fluid_names = _solvent_names + _custom_names
 
 # ══════════════════════════════════════════════════════════════════════════
-st.title("🧐 Bourne Protocol – Mixing Sensitivity Screening")
+st.title("🅱️ Bourne Protocol – Mixing Sensitivity Screening")
 st.markdown("""
-The **Bourne Protocol** (Bourne 2003, as extended by Sarafinas 2018) is an
-efficient experimental method to determine **which scale of mixing** —
-macro, meso, or micro — controls your process outcome.
-
-The protocol is applicable to **any** semi-batch or fed-batch process in a
-stirred tank where competitive rate processes (reactions, crystallisation,
-precipitation, etc.) can impact the result.
-
-> *"Always assume there is a mixing problem until proven otherwise."*
-> — E. L. Paul (2003)
+Determines **which mixing scale** (macro / meso / micro) controls your
+process outcome. Applicable to any semi-batch stirred-tank process with
+competitive rate processes.
 """)
 
 _BP_IMG = pathlib.Path(__file__).resolve().parent.parent / "images" / "general" / "bourne_protocol_decision_tree.png"
@@ -210,19 +203,13 @@ st.divider()
 # ══════════════════════════════════════════════════════════════════════════
 st.header("1 · Test 1 — Impeller Speed (Does Mixing Matter?)")
 st.markdown("""
-**What to vary:** Impeller speed only (hold feed rate and feed location constant; if any).
+Vary **impeller speed only** (hold feed rate & location constant).\n
+Target ≈**100× P/V range** across three speeds.\n
+If the response changes → mixing matters; proceed to Test 2.
 
-**Goal:** Achieve approximately a **100× change in P/V** across three speeds (low /
-center / high).  If the process response changes, mixing matters — proceed to
-Test 2.  If there is no change, mixing is **not critical** over this range.
-
-**Sarafinas guidelines for choosing speeds:**
-- If targeting existing plant equipment → use the **plant condition** as the
-  centerpoint.
-- Default centerpoint: vessel-average P/V ≈ **0.2 W/kg** (≈ 1 HP / 1000 US gal).
-- Set upper and lower P/V at **10×** and **0.1×** the centerpoint.
-- For turbulent flow, this corresponds to speed ratios of ≈ **2.15×** and
-  **1/2.15×** the centerpoint RPM (since P ∝ N³).
+**Speed selection:** Default centerpoint P/V ≈ **0.2 W/kg**. Set high/low at
+**10×** and **0.1×** (speed ratios ≈ 2.15× and 0.46×, since P ∝ N³).
+Use plant condition as centerpoint if targeting existing equipment.
 """)
 
 st.subheader("Suggested Experimental Conditions")
@@ -340,28 +327,15 @@ if _low_clamped or _high_clamped:
               "\n\nThe achievable P/V range is narrower than the ideal 100× span. "
               "Consider whether this is sufficient to draw conclusions.")
 
-# Additional practical limits
 with st.expander("Practical limits to consider"):
     st.markdown("""
-    **Minimum speed constraints:**
-    - Solid–liquid systems → just-suspended speed (N_js)
-    - Liquid–liquid systems → just-dispersed speed (N_jd)
-    - Gas–liquid systems → flooding condition
-
-    **Maximum speed constraints:**
-    - Surface aeration / vortex formation
-    - Mechanical limits of agitator / seal
-    - Splashing at small scale
+    **Min speed:** N_js (solids), N_jd (liquids), flooding (gas)  
+    **Max speed:** vortex / surface aeration, mechanical limits, splashing
     """)
 
 # ── Quantitative response entry for Test 1 ──────────────────────────────
 st.subheader("Record Test 1 Responses")
-st.markdown(
-    "Enter the measured process response (e.g. yield %, selectivity %, "
-    "impurity level, particle size) at each condition. The app will calculate "
-    "the magnitude of change and determine sensitivity using the "
-    "**Sarafinas criterion** (≥ 5% relative change = sensitive)."
-)
+st.caption("Sensitivity criterion: ≥ 5% relative change from center = sensitive (Sarafinas).")
 
 _t1_resp_name = st.text_input("Response metric name", value="Yield (%)",
                               key=_bk("t1_resp_name"))
@@ -433,17 +407,13 @@ st.caption(f"Maximum relative change from center = **{t1_max_pct:.1f}%**  •  "
 
 if not t1_sensitive:
     st.success(
-        f"✅ **Mixing does not appear to be critical.** Maximum response variation "
-        f"({t1_max_pct:.1f}%) is below the {_SARAFINAS_THRESHOLD:.0f}% threshold. "
-        f"Protocol complete."
+        f"✅ **Mixing not critical.** Max variation {t1_max_pct:.1f}% "
+        f"< {_SARAFINAS_THRESHOLD:.0f}% threshold. Protocol complete."
     )
-    st.info("Consider re-running the protocol if process conditions change significantly "
-            "(concentration, phases, viscosity, reagents).")
 else:
     st.warning(
-        f"⚠️ **Mixing matters!** Response varied by {t1_max_pct:.1f}% "
-        f"(≥ {_SARAFINAS_THRESHOLD:.0f}% threshold). "
-        f"Proceed to **Test 2** to identify which mixing scale is responsible."
+        f"⚠️ **Mixing matters!** {t1_max_pct:.1f}% change "
+        f"(≥ {_SARAFINAS_THRESHOLD:.0f}%). Proceed to **Test 2**."
     )
 
 # Allow user to override the automatic assessment
@@ -467,20 +437,11 @@ st.divider()
 # ══════════════════════════════════════════════════════════════════════════
 st.header("2 · Test 2 — Feed Rate / Feed Time")
 st.markdown("""
-**What to vary:** Feed time (or equivalently, feed rate) **only** — keep impeller
-speed and feed location constant (use the centerpoint speed from Test 1).
+Vary **feed time only** (hold speed & location at centerpoint). Test a **9× flow-rate
+range** (1/3× and 3× the centerpoint feed time).
 
-**Goal:** Determine whether the process is in the **mesomixing-controlled**
-regime (feed-rate sensitive) or **micromixing-controlled** regime
-(feed-rate insensitive).
+Sensitive → mesomixing-controlled. Insensitive → micromixing-controlled.
 
-**Sarafinas guidelines:**
-- Use the **fastest safe and practical plant-scale feed rate** as the midpoint.
-- Test a **9× range** on volumetric flow rate: feed times of **1/3×** and **3×** the
-  centerpoint feed time.
-- Safety considerations (exotherms, gas evolution) must bound the range.
-
-> *Changing the feed rate affects ONLY mesomixing.* — Sarafinas (2018)
 """)
 
 st.subheader("Suggested Feed Time Conditions")
@@ -522,28 +483,16 @@ st.caption(f"Flow-rate ratio (fast/slow) = **9×**  •  Hold impeller speed at 
 
 with st.expander("Understanding mesomixing"):
     st.markdown(r"""
-    The **mesomixing time** characterises the disintegration of the fresh feed
-    plume in the turbulent environment around the feed point.  Two expressions
-    exist depending on whether the impeller-driven flow or the feed jet
-    dominates locally:
-
     $$t_{meso} \propto \frac{Q_{feed}}{k \cdot \varepsilon_{loc}}$$
 
-    Increasing the feed rate **increases** the mesomixing time (the feed plume
-    persists longer), pushing the system toward higher local concentration
-    gradients and more "bad stuff."
-
-    If the process response is **insensitive** to feed rate, you are in the
-    **micromixing-controlled** plateau — the feed plume disperses fast enough
-    that the molecular-scale mixing step is rate-limiting.
+    Higher feed rate → longer plume persistence → more concentration gradients.
+    If response is **insensitive** to feed rate → **micromixing-controlled**
+    (plume disperses fast; molecular-scale mixing is rate-limiting).
     """)
 
 # ── Quantitative response entry for Test 2 ──────────────────────────────
 st.subheader("Record Test 2 Responses")
-st.markdown(
-    "Enter the measured process response at each feed-time condition. "
-    "Use the **same metric** as Test 1."
-)
+st.caption("Use the same response metric as Test 1.")
 
 _t2_resp_name = st.text_input("Response metric name", value=_t1_resp_name,
                               key=_bk("t2_resp_name"))
@@ -599,24 +548,14 @@ st.caption(f"Maximum relative change from center = **{t2_max_pct:.1f}%**  •  "
 
 if not t2_sensitive:
     st.info(
-        f"🔬 **Micromixing appears to control the process.** Response varied by only "
-        f"{t2_max_pct:.1f}% (< {_SARAFINAS_THRESHOLD:.0f}% threshold). "
-        f"The feed plume disintegrates quickly; the molecular-scale engulfment "
-        f"step is rate-limiting."
+        f"🔬 **Micromixing controls.** {t2_max_pct:.1f}% change "
+        f"(< {_SARAFINAS_THRESHOLD:.0f}%). Scale-up: hold **local ε** constant."
     )
-    st.markdown("""
-    **Scale-up recommendation (Bourne 2003):** Hold **local energy dissipation**
-    (ε_loc) constant where the mixing and reaction occur.
-
-    You may optionally run the **confirmatory experiments** below to strengthen
-    this conclusion.
-    """)
     _micro_conclusion = True
 else:
     st.warning(
-        f"⚠️ **Mesomixing (feed-plume dispersion) matters!** Response varied by "
-        f"{t2_max_pct:.1f}% (≥ {_SARAFINAS_THRESHOLD:.0f}% threshold). "
-        f"Proceed to **Test 3** to distinguish mesomixing from macromixing."
+        f"⚠️ **Mesomixing matters!** {t2_max_pct:.1f}% change "
+        f"(≥ {_SARAFINAS_THRESHOLD:.0f}%). Proceed to **Test 3**."
     )
     _micro_conclusion = False
 
@@ -651,22 +590,17 @@ eps_avg_kg = eps_avg / rho  # W/kg for micromixing calculations
 if t2_sensitive:
     st.header("3 · Test 3 — Feed Location")
     st.markdown("""
-    **What to vary:** Feed location **only** — keep impeller speed and feed time at
-    the centerpoint values from Tests 1 & 2.
+    Vary **feed location only** (hold speed & feed time at centerpoint). Move
+    from surface → impeller zone. This changes **local ε** without affecting
+    macromixing.
 
-    **Goal:** Move the feed point from a **low-intensity** region (liquid surface) to
-    a **high-intensity** region (near the impeller), or vice versa.  This changes
-    the **local** ε (and therefore both micro- and mesomixing times) **without
-    affecting macromixing**.
-
-    | Feed location | ε_loc / ε_avg (rule of thumb) |
-    |---------------|-------------------------------|
-    | Surface feed | ≈ 0.1 |
+    | Feed location | ε_loc / ε_avg |
+    |---|---|
+    | Surface | ≈ 0.1 |
     | Sub-surface (mid-tank) | ≈ 1 |
-    | Impeller zone feed | ≈ 2 – 5 |
+    | Impeller zone | ≈ 2 – 5 |
 
-    > *Changing the feed location affects both micromixing and mesomixing,
-    > but not macromixing.* — Sarafinas (2018)
+    Sensitive → **mesomixing**. Insensitive → **macromixing**.
     """)
 
     t3_locs = pd.DataFrame([
@@ -694,22 +628,14 @@ if t2_sensitive:
 
     with st.expander("Practical considerations for feed location"):
         st.markdown("""
-        - **Subsurface feeds** deliver the reagent into a higher-intensity mixing
-          zone but carry a risk of **feed-pipe back-mixing** and plugging.
-        - Design feed velocity to exceed the local bulk fluid velocity to prevent
-          back-mixing (Jo et al., 1994; Vicum & Baldyga, 2004).
-        - Consider the **plant configuration**: can the plant accommodate subsurface
-          feed points?
-        - Ed Paul's 3rd rule of mixing: *"Subsurface addition for reaction and
-          crystallisation — prove that it is not needed!"*
+        - Subsurface feeds → higher local ε but risk of **back-mixing** and plugging.
+        - Feed velocity must exceed local bulk velocity (Jo et al., 1994).
+        - *"Subsurface addition — prove it is not needed!"* — Ed Paul
         """)
 
     # ── Quantitative response entry for Test 3 ──────────────────────────
     st.subheader("Record Test 3 Responses")
-    st.markdown(
-        "Enter the measured process response at each feed-location condition. "
-        "Use the **same metric** as Tests 1 & 2."
-    )
+    st.caption("Use the same response metric as Tests 1 & 2.")
 
     _t3_resp_name = st.text_input("Response metric name", value=_t2_resp_name,
                                   key=_bk("t3_resp_name"))
@@ -765,36 +691,18 @@ if t2_sensitive:
 
     if not t3_sensitive:
         st.info(
-            f"🌀 **Macromixing appears to control the process.** Response varied by only "
-            f"{t3_max_pct:.1f}% (< {_SARAFINAS_THRESHOLD:.0f}% threshold). "
-            f"The bulk blending / circulation time is the rate-limiting mixing step."
+            f"🌀 **Macromixing controls.** {t3_max_pct:.1f}% change "
+            f"(< {_SARAFINAS_THRESHOLD:.0f}%). Bulk blending is rate-limiting."
         )
-        st.markdown("""
-        **Scale-up recommendation (Bourne 2003):**
-        - Maintain short blend times on scale-up.
-        - Consider **high-efficiency hydrofoil impellers** (A310, A320),
-          **static mixers**, or multiple impellers.
-        - Note: *"The feed time for a semi-batch reactor is usually so long that
-          macromixing is not controlling."* — Bourne (2003).  Consider re-examining
-          Test 2 results.
-        """)
+        st.caption("Scale-up: maintain short blend times (hydrofoils, static mixers, multiple impellers).")
         _macro_conclusion = True
         _meso_conclusion = False
     else:
         st.success(
-            f"📐 **Mesomixing controls the process.** Response varied by "
-            f"{t3_max_pct:.1f}% (≥ {_SARAFINAS_THRESHOLD:.0f}% threshold). "
-            f"The disintegration of the feed plume in the local mixing environment "
-            f"is the rate-limiting mixing step."
+            f"📐 **Mesomixing controls.** {t3_max_pct:.1f}% change "
+            f"(≥ {_SARAFINAS_THRESHOLD:.0f}%). Feed-plume dispersion is rate-limiting."
         )
-        st.markdown("""
-        **Scale-up recommendation (Bourne 2003 / Sarafinas 2018):**
-        - **Keep impeller speed constant** on scale-up (expensive but effective).
-        - Or **extend the feed time** proportionally (may be conservative).
-        - Consider **multiple feed points** to reduce local feed intensity.
-        - Design the feed system to control local exit velocity and plume
-          dispersion.
-        """)
+        st.caption("Scale-up: constant impeller speed, extended feed time, or multiple feed points.")
         _macro_conclusion = False
         _meso_conclusion = True
 
@@ -817,33 +725,20 @@ st.divider()
 # SECTION 4 – Confirmatory Experiments
 # ══════════════════════════════════════════════════════════════════════════
 st.header("4 · Confirmatory Experiments (Optional)")
-st.markdown("""
-Bourne proposed two optional confirmatory tests to validate the conclusion
-from Tests 2 and 3.  These are most useful when the Test 2 result is
-ambiguous or when additional confidence is needed before committing to
-a scale-up strategy.
-""")
+st.caption("Optional tests to validate the conclusion from Tests 2–3.")
 
 tab_fp, tab_visc = st.tabs(["A – Number of Feed Points", "B – Viscosity Change"])
 
 with tab_fp:
     st.markdown("""
-    ### Confirmatory Test A — Number of Feed Points
+    ### A — Number of Feed Points
+    Increase feed points (1 → 2–3) at same speed, feed time, and location.
+    More feed points → lower local feed velocity at each point.
 
-    **Procedure:** At the same impeller speed, feed time, and feed location,
-    increase the number of feed points (e.g., from 1 to 2 or 3).
-
-    - **Same total feed time & tube diameter** → each feed point delivers
-      1/N_fp of the total flow → lower local feed velocity → lower mesomixing
-      time at each feed point.
-    - Compare with the equivalent single-feed-point experiment at a longer
-      feed time that gives the same local feed velocity.
-
-    **Interpretation:**
     | Outcome | Conclusion |
-    |---------|------------|
-    | Process response **insensitive** to # feed points | Micromixing controlled |
-    | Process response **changes** with # feed points | Mesomixing controlled |
+    |---|---|
+    | Insensitive to # feed points | Micromixing controlled |
+    | Changes with # feed points | Mesomixing controlled |
     """)
 
     fp_result = st.radio(
@@ -858,25 +753,17 @@ with tab_fp:
         st.info("✅ Confirms **mesomixing** control.")
 
 with tab_visc:
-    st.markdown("""
-    ### Confirmatory Test B — Viscosity Change
+    st.markdown(r"""
+    ### B — Viscosity Change
+    Change bulk viscosity (e.g. co-solvent ratio) while holding recipe constant.
+    $t_E = 17.3 (\nu / \varepsilon)^{1/2}$
 
-    **Procedure:** Change the bulk-fluid viscosity (e.g., co-solvent dilution
-    or different solvent ratio) while keeping the recipe otherwise unchanged.
-
-    Viscosity directly affects the micromixing (engulfment) time:
-
-    $$t_E = 17.3 \\left( \\frac{\\nu}{\\varepsilon} \\right)^{1/2}$$
-
-    **Interpretation:**
     | Outcome | Conclusion |
-    |---------|------------|
-    | Process response **changes** with viscosity | Micromixing controlled |
-    | Process response **insensitive** to viscosity | Not micromixing controlled |
+    |---|---|
+    | Response **changes** with viscosity | Micromixing controlled |
+    | Response **insensitive** | Not micromixing controlled |
 
-    > ⚠️ *Caution:* Large viscosity changes can shift the flow regime from
-    > turbulent to transitional → changing ε distribution and bulk blending.
-    > Only useful when the regime remains turbulent.
+    ⚠️ Large viscosity changes may shift the flow regime — keep Re turbulent.
     """)
 
     visc_result = st.radio(
@@ -948,42 +835,21 @@ st.subheader("Dominant Mixing Limitation")
 
 if dominant == "Micromixing":
     st.success(f"""
-    {dominant_icon} **{dominant}** — The molecular-scale engulfment step is rate-limiting.
+    {dominant_icon} **{dominant}** — Molecular-scale engulfment is rate-limiting.
 
-    The feed plume disperses quickly, but concentration homogenisation at the
-    Kolmogorov / Batchelor scale is slow relative to the reaction time.
-
-    **Scale-up strategy:**
-    - Maintain constant **local energy dissipation** (ε_loc) at the feed point.
-    - ε_loc can be estimated from P/V × (ε_loc / ε_avg) for the feed location.
-    - Consider impeller type and feed-point proximity to the impeller.
+    **Scale-up:** Maintain constant **local ε** at the feed point.
     """)
 elif dominant == "Mesomixing":
     st.warning(f"""
     {dominant_icon} **{dominant}** — Feed-plume disintegration is rate-limiting.
 
-    The fresh feed stream does not break up fast enough before competitive
-    rate processes act on the locally high concentrations.
-
-    **Scale-up strategy:**
-    - **Keep impeller speed constant** on scale-up (costly in power).
-    - Or **extend the feed time** to reduce local feed rate.
-    - Use **multiple feed points** to reduce local feed velocity at each point.
-    - Design feed nozzle diameter and velocity to optimise plume break-up.
+    **Scale-up:** Constant impeller speed, extended feed time, or multiple feed points.
     """)
 elif dominant == "Macromixing":
     st.error(f"""
     {dominant_icon} **{dominant}** — Bulk blending / circulation is rate-limiting.
 
-    The vessel contents are not homogenised quickly enough between feed
-    additions, leading to large-scale concentration or temperature gradients.
-
-    **Scale-up strategy:**
-    - Focus on **blend time reduction**: high-efficiency impellers (hydrofoils),
-      multiple impellers, or static mixers.
-    - Avoid increasing vessel H/T ratio without compensating with additional
-      impellers.
-    - Consider continuous-flow alternatives with in-line mixing.
+    **Scale-up:** Reduce blend time (hydrofoil impellers, multiple impellers, static mixers).
     """)
 else:
     st.info("Complete Tests 2 and 3 to determine the controlling mixing scale.")

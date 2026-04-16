@@ -21,7 +21,7 @@ Welcome to **Mixing Lab** – an interactive tool for assessing reaction mixing 
 | **Analysis** | **🧭 Reaction Sensitivity Protocol** | Interactive decision tree to assess which mixing mechanisms may limit your reaction at scale |
 | | **💎 Crystallization Sensitivity Protocol** | Decision tree for crystallization mixing sensitivity (nucleation, growth, anti-solvent) |
 | | **🌀 Mixing Assessment** | Reaction-reactor analysis: compute hydrodynamics, Damköhler numbers, heat balance, solids suspension & operating envelopes |
-| | **🧐 Bourne Protocol** | Step-by-step Bourne mixing-sensitivity screening protocol (Sarafinas modification) |
+| | **🅱️ Bourne Protocol** | Step-by-step Bourne mixing-sensitivity screening protocol (Sarafinas modification) |
 | | **📈 Reactor Comparison** | Side-by-side comparison of hydrodynamics and operating envelopes across multiple reactors |
 | **Tools** | **🔄 Unit Converter** | Quick conversion between common engineering units |
 | **Results** | **📋 Recorded Results** | Save, review, filter, and export results for specific reactor/reaction combinations |

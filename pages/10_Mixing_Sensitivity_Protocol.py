@@ -9,7 +9,7 @@ The decision tree proceeds through:
   0. Pre-screening – Bourne Protocol Part 1 quick screen
   1. Kinetics – are reaction kinetics available?
   2. Phases – single-phase vs multi-phase considerations
-  3. Competing reactions – mesomixing / feed sensitivity
+  3. Competing reactions
   4. Heat transfer – exothermicity screening
   5. Mixing-time comparison – Damköhler-based screening
   6. Summary & recommendations
@@ -141,7 +141,7 @@ else:
     st.info(
         "💡 **Recommendation:** Performing Bourne Part 1 before this "
         "protocol provides a direct experimental answer.  You can run it "
-        "from the **� Bourne Protocol** page.\n\n"
+        "from the **🅱️ Bourne Protocol** page.\n\n"
         "Proceeding with the theoretical assessment for now."
     )
     _bourne_sensitive = None
@@ -418,7 +418,7 @@ st.divider()
 # ══════════════════════════════════════════════════════════════════════════
 # STEP 3 – COMPETING REACTIONS / MICRO- & MESOMIXING
 # ══════════════════════════════════════════════════════════════════════════
-st.header("3 · Competing Reactions — Micro- & Mesomixing")
+st.header("3 · Competing Reactions")
 
 with st.expander("ℹ️ Background — micromixing & mesomixing theory", expanded=False):
     st.markdown(
@@ -962,7 +962,7 @@ _steps: list[dict[str, str]] = []
 if _bourne_sensitive is None:
     _steps.append({
         "Area": "Bourne pre-screen",
-        "Action": "Run Bourne Protocol Part 1 (quick screen) on the 🧐 Bourne Protocol page "
+        "Action": "Run Bourne Protocol Part 1 (quick screen) on the 🅱️ Bourne Protocol page "
                   "to confirm whether mixing sensitivity exists experimentally.",
     })
 
