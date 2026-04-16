@@ -1563,3 +1563,351 @@ def liquid_liquid_mass_transfer(d32: float, D_mol: float,
     Sc = mu_c / (rho_c * D_mol)
     Sh = 2.0 + 0.6 * Re_d**0.5 * Sc**(1.0 / 3.0)
     return Sh * D_mol / d32
+
+
+# ---------------------------------------------------------------------------
+# Heat-transfer media database
+# ---------------------------------------------------------------------------
+
+HTM_DB: dict[str, dict] = {
+    "Water": {
+        "T_min_C": 5.0, "T_max_C": 95.0,
+        "rho_kg_m3": 997.0, "Cp_J_kgK": 4182.0,
+        "mu_Pa_s": 8.9e-4, "k_W_mK": 0.607,
+        "notes": "Standard cooling/heating medium",
+    },
+    "Water-Glycol (50/50)": {
+        "T_min_C": -30.0, "T_max_C": 105.0,
+        "rho_kg_m3": 1075.0, "Cp_J_kgK": 3350.0,
+        "mu_Pa_s": 3.5e-3, "k_W_mK": 0.400,
+        "notes": "50 wt-% ethylene glycol in water",
+    },
+    "Syltherm 800": {
+        "T_min_C": -40.0, "T_max_C": 400.0,
+        "rho_kg_m3": 935.0, "Cp_J_kgK": 1630.0,
+        "mu_Pa_s": 9.6e-4, "k_W_mK": 0.135,
+        "notes": "Dow silicone HTF, wide range",
+    },
+    "Syltherm HF": {
+        "T_min_C": -73.0, "T_max_C": 260.0,
+        "rho_kg_m3": 873.0, "Cp_J_kgK": 1590.0,
+        "mu_Pa_s": 5.0e-4, "k_W_mK": 0.100,
+        "notes": "Dow silicone HTF, low-temperature focus",
+    },
+    "Dowtherm A": {
+        "T_min_C": 15.0, "T_max_C": 400.0,
+        "rho_kg_m3": 1056.0, "Cp_J_kgK": 1590.0,
+        "mu_Pa_s": 2.5e-3, "k_W_mK": 0.138,
+        "notes": "Eutectic mix of biphenyl / diphenyl oxide",
+    },
+    "Dowtherm Q": {
+        "T_min_C": -35.0, "T_max_C": 330.0,
+        "rho_kg_m3": 993.0, "Cp_J_kgK": 1660.0,
+        "mu_Pa_s": 2.2e-3, "k_W_mK": 0.114,
+        "notes": "Diethylbenzene / alkylated aromatics blend",
+    },
+    "Steam (condensing)": {
+        "T_min_C": 100.0, "T_max_C": 250.0,
+        "rho_kg_m3": 0.6, "Cp_J_kgK": 2010.0,
+        "mu_Pa_s": 1.2e-5, "k_W_mK": 0.025,
+        "h_jacket_override": 8000.0,
+        "notes": "Condensing steam: very high h_o (6000-12000 W/m²·K)",
+    },
+    "Therminol 66": {
+        "T_min_C": -3.0, "T_max_C": 345.0,
+        "rho_kg_m3": 1005.0, "Cp_J_kgK": 1680.0,
+        "mu_Pa_s": 3.0e-3, "k_W_mK": 0.118,
+        "notes": "Partially hydrogenated terphenyl",
+    },
+    "Marlotherm SH": {
+        "T_min_C": -5.0, "T_max_C": 350.0,
+        "rho_kg_m3": 1040.0, "Cp_J_kgK": 1630.0,
+        "mu_Pa_s": 2.8e-3, "k_W_mK": 0.120,
+        "notes": "Benzyltoluene-based HTF",
+    },
+    "Brine (CaCl₂ 25%)": {
+        "T_min_C": -40.0, "T_max_C": 60.0,
+        "rho_kg_m3": 1230.0, "Cp_J_kgK": 2810.0,
+        "mu_Pa_s": 4.5e-3, "k_W_mK": 0.540,
+        "notes": "25 wt-% calcium chloride in water",
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Nusselt number correlations for stirred jacketed vessels
+# ---------------------------------------------------------------------------
+
+NUSSELT_CORRELATIONS: dict[str, dict] = {
+    "DIN 28131 (standard)": {
+        "C": 0.36, "a": 2.0/3.0, "b": 1.0/3.0, "c": 0.14,
+        "description": "DIN 28131 standard: Nu = 0.36 Re^(2/3) Pr^(1/3) (μ/μ_w)^0.14. "
+                       "General-purpose, baffled vessels with turbine impellers.",
+        "ref": "DIN 28131:1979",
+    },
+    "Chilton–Drew–Jebens": {
+        "C": 0.36, "a": 2.0/3.0, "b": 1.0/3.0, "c": 0.14,
+        "description": "Nu = 0.36 Re^(2/3) Pr^(1/3) (μ/μ_w)^0.14. "
+                       "Classic correlation for jacketed stirred vessels (1944).",
+        "ref": "Chilton, Drew, Jebens (1944) Ind. Eng. Chem. 36(6):510",
+    },
+    "Lehrer (anchor/helical)": {
+        "C": 0.54, "a": 2.0/3.0, "b": 1.0/3.0, "c": 0.14,
+        "description": "Nu = 0.54 Re^(2/3) Pr^(1/3). "
+                       "Anchor and helical ribbon impellers.",
+        "ref": "Lehrer (1970) Chem. Eng. Sci. 25:1397",
+    },
+    "Stein–Schmidt (high Re)": {
+        "C": 0.50, "a": 2.0/3.0, "b": 1.0/3.0, "c": 0.14,
+        "description": "Nu = 0.50 Re^(2/3) Pr^(1/3) (μ/μ_w)^0.14. "
+                       "Higher coefficient for high-Re turbulent regimes (Re > 40 000).",
+        "ref": "Stein & Schmidt (1993) Chem. Eng. Process. 32:305",
+    },
+    "Brooks–Su (Retreat Blade)": {
+        "C": 0.33, "a": 2.0/3.0, "b": 1.0/3.0, "c": 0.14,
+        "description": "Nu = 0.33 Re^(2/3) Pr^(1/3) (μ/μ_w)^0.14. "
+                       "Retreat-blade impellers in glass-lined vessels.",
+        "ref": "Brooks & Su (1959)",
+    },
+    "Nagata (paddle)": {
+        "C": 0.36, "a": 2.0/3.0, "b": 1.0/3.0, "c": 0.18,
+        "description": "Nu = 0.36 Re^(2/3) Pr^(1/3) (μ/μ_w)^0.18. "
+                       "Paddle impellers with stronger wall viscosity correction.",
+        "ref": "Nagata (1975) Mixing: Principles and Applications",
+    },
+}
+
+
+def nusselt_jacket(Re: float, Pr: float, mu_ratio: float = 1.0,
+                   correlation: str = "DIN 28131 (standard)") -> float:
+    """Compute process-side Nusselt number for a jacketed stirred vessel.
+
+    Parameters
+    ----------
+    Re          : impeller Reynolds number  Re = ρ N D² / μ
+    Pr          : Prandtl number  Pr = Cp μ / k
+    mu_ratio    : μ_bulk / μ_wall (usually ≈ 1 unless large ΔT)
+    correlation : name key from NUSSELT_CORRELATIONS
+
+    Returns Nu (dimensionless).
+    """
+    corr = NUSSELT_CORRELATIONS.get(correlation, NUSSELT_CORRELATIONS["DIN 28131 (standard)"])
+    C = corr["C"]
+    a = corr["a"]
+    b = corr["b"]
+    c = corr["c"]
+    return C * Re**a * Pr**b * mu_ratio**c
+
+
+def process_side_htc(N_rps: float, D_imp: float, D_tank: float,
+                     rho: float, mu: float, Cp: float, k_fluid: float,
+                     mu_wall: float = 0.0,
+                     correlation: str = "DIN 28131 (standard)") -> float:
+    """Compute process-side heat transfer coefficient h_i (W/m²·K).
+
+    h_i = Nu · k_fluid / D_tank
+
+    Parameters
+    ----------
+    N_rps       : impeller speed (rev/s)
+    D_imp       : impeller diameter (m)
+    D_tank      : tank diameter (m)
+    rho         : fluid density (kg/m³)
+    mu          : bulk viscosity (Pa·s)
+    Cp          : specific heat capacity (J/(kg·K))
+    k_fluid     : thermal conductivity (W/(m·K))
+    mu_wall     : viscosity at wall temperature (Pa·s); 0 = assume mu_wall = mu
+    correlation : Nusselt correlation name
+
+    Returns h_i in W/(m²·K).
+    """
+    if N_rps <= 0 or D_imp <= 0 or D_tank <= 0 or rho <= 0 or mu <= 0 or Cp <= 0 or k_fluid <= 0:
+        return 0.0
+    Re = rho * N_rps * D_imp**2 / mu
+    Pr = Cp * mu / k_fluid
+    mu_r = mu / mu_wall if mu_wall > 0 else 1.0
+    Nu = nusselt_jacket(Re, Pr, mu_r, correlation)
+    return Nu * k_fluid / D_tank
+
+
+def jacket_side_htc(htm_name: str = "", v_jacket: float = 0.0,
+                    D_hyd: float = 0.05) -> float:
+    """Estimate jacket-side heat-transfer coefficient h_o (W/m²·K).
+
+    For condensing steam, a fixed high value is returned.
+    For liquid media in a jacket, uses Dittus-Boelter:
+        Nu = 0.023 Re^0.8 Pr^0.4
+        h_o = Nu · k / D_hyd
+
+    Parameters
+    ----------
+    htm_name : heat transfer medium name (key in HTM_DB)
+    v_jacket : jacket fluid velocity (m/s); 0 = use default estimate
+    D_hyd    : hydraulic diameter of jacket annulus (m)
+
+    Returns h_o in W/(m²·K).
+    """
+    if htm_name not in HTM_DB:
+        return JACKET_HTC_DEFAULT
+    htm = HTM_DB[htm_name]
+    if "h_jacket_override" in htm:
+        return htm["h_jacket_override"]
+    rho_j = htm["rho_kg_m3"]
+    mu_j = htm["mu_Pa_s"]
+    Cp_j = htm["Cp_J_kgK"]
+    k_j = htm["k_W_mK"]
+    if v_jacket <= 0:
+        v_jacket = 1.0  # default 1 m/s jacket velocity
+    if mu_j <= 0 or k_j <= 0 or D_hyd <= 0:
+        return JACKET_HTC_DEFAULT
+    Re_j = rho_j * v_jacket * D_hyd / mu_j
+    Pr_j = Cp_j * mu_j / k_j
+    if Re_j < 2300:
+        Nu_j = 3.66 + 0.065 * (D_hyd / 1.0) * Re_j * Pr_j / (1.0 + 0.04 * ((D_hyd / 1.0) * Re_j * Pr_j) ** (2.0/3.0))
+    else:
+        Nu_j = 0.023 * Re_j**0.8 * Pr_j**0.4
+    return Nu_j * k_j / D_hyd
+
+
+def estimate_U_from_resistances(h_i: float, h_o: float,
+                                wall_k: float = 16.0,
+                                wall_thickness_m: float = 0.0,
+                                lining_k: float = 0.0,
+                                lining_thickness_m: float = 0.0,
+                                fouling: float = FOULING_DEFAULT) -> float:
+    """Compute overall U from individual resistances.
+
+    1/U = 1/h_i + x_w/k_w + x_l/k_l + 1/h_o + R_fouling
+
+    Returns U in W/(m²·K).
+    """
+    if h_i <= 0 or h_o <= 0:
+        return 0.0
+    R = 1.0 / h_i + 1.0 / h_o + fouling
+    if wall_k > 0 and wall_thickness_m > 0:
+        R += wall_thickness_m / wall_k
+    if lining_k > 0 and lining_thickness_m > 0:
+        R += lining_thickness_m / lining_k
+    return 1.0 / R
+
+
+def batch_temperature_profile(
+    rho: float, V_L_m3: float, Cp: float,
+    U: float, A: float,
+    T_start: float, T_target: float, T_jacket: float,
+    P_agitator: float = 0.0,
+    Q_rxn: float = 0.0,
+    dt: float = 1.0, t_max: float = 36000.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Simulate batch temperature vs time with variable driving force.
+
+    Uses an Euler integration:
+        dT/dt = [ U·A·(T_jacket − T) − P_agitator − Q_rxn ] / (ρ·V·Cp)
+
+    Sign convention: positive Q_rxn = exothermic heat input to batch.
+    P_agitator always adds heat to the batch.
+
+    Integration stops when T reaches T_target or t reaches t_max.
+
+    Parameters
+    ----------
+    rho          : fluid density (kg/m³)
+    V_L_m3       : liquid volume (m³)
+    Cp           : specific heat capacity (J/(kg·K))
+    U            : overall heat-transfer coefficient (W/(m²·K))
+    A            : heat-transfer area (m²)
+    T_start      : initial batch temperature (°C)
+    T_target     : target batch temperature (°C)
+    T_jacket     : jacket/utility temperature (°C), constant
+    P_agitator   : agitator power dissipated as heat (W)
+    Q_rxn        : heat from reaction (W), positive = exothermic
+    dt           : time step (s)
+    t_max        : maximum simulation time (s)
+
+    Returns
+    -------
+    (t_arr, T_arr) – numpy arrays of time (s) and temperature (°C).
+    """
+    if rho <= 0 or V_L_m3 <= 0 or Cp <= 0 or U <= 0 or A <= 0:
+        return np.array([0.0]), np.array([T_start])
+
+    m_Cp = rho * V_L_m3 * Cp  # thermal mass J/K
+    cooling = T_target < T_start
+    n_steps = int(t_max / dt) + 1
+    t_arr = np.empty(n_steps)
+    T_arr = np.empty(n_steps)
+    t_arr[0] = 0.0
+    T_arr[0] = T_start
+    for i in range(1, n_steps):
+        T_prev = T_arr[i - 1]
+        Q_jacket = U * A * (T_jacket - T_prev)  # positive = heating batch
+        dTdt = (Q_jacket + P_agitator + Q_rxn) / m_Cp
+        T_new = T_prev + dTdt * dt
+        t_arr[i] = i * dt
+        T_arr[i] = T_new
+        if cooling and T_new <= T_target:
+            return t_arr[: i + 1], T_arr[: i + 1]
+        if not cooling and T_new >= T_target:
+            return t_arr[: i + 1], T_arr[: i + 1]
+    return t_arr, T_arr
+
+
+def batch_temp_profile_variable_jacket(
+    rho: float, V_L_m3: float, Cp: float,
+    U: float, A: float,
+    T_start: float, T_target: float,
+    T_jacket_in: float,
+    m_dot_jacket: float,
+    Cp_jacket: float,
+    P_agitator: float = 0.0,
+    Q_rxn: float = 0.0,
+    dt: float = 1.0, t_max: float = 36000.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Simulate batch temperature with non-isothermal jacket.
+
+    Jacket outlet temperature varies:
+        T_jacket_out = T_batch - (T_batch - T_jacket_in) · exp(-U·A / (m_dot·Cp_j))
+
+    LMTD approach each time step:
+        Q = m_dot_j · Cp_j · (T_j_out - T_j_in)
+
+    Parameters
+    ----------
+    m_dot_jacket : jacket mass flow rate (kg/s)
+    Cp_jacket    : jacket fluid Cp (J/(kg·K))
+    (other parameters as batch_temperature_profile)
+
+    Returns (t_arr, T_batch_arr, T_jacket_out_arr).
+    """
+    if rho <= 0 or V_L_m3 <= 0 or Cp <= 0 or U <= 0 or A <= 0 or m_dot_jacket <= 0 or Cp_jacket <= 0:
+        return np.array([0.0]), np.array([T_start]), np.array([T_jacket_in])
+
+    m_Cp = rho * V_L_m3 * Cp
+    cooling = T_target < T_start
+    NTU = U * A / (m_dot_jacket * Cp_jacket) if m_dot_jacket * Cp_jacket > 0 else 0.0
+    n_steps = int(t_max / dt) + 1
+    t_arr = np.empty(n_steps)
+    T_arr = np.empty(n_steps)
+    Tj_out = np.empty(n_steps)
+    t_arr[0] = 0.0
+    T_arr[0] = T_start
+    Tj_out[0] = T_jacket_in
+    for i in range(1, n_steps):
+        T_prev = T_arr[i - 1]
+        if NTU > 0:
+            effectiveness = 1.0 - np.exp(-NTU)
+            Q_jacket = effectiveness * m_dot_jacket * Cp_jacket * (T_jacket_in - T_prev)
+            Tj_out_i = T_jacket_in + Q_jacket / (m_dot_jacket * Cp_jacket)
+        else:
+            Q_jacket = U * A * (T_jacket_in - T_prev)
+            Tj_out_i = T_jacket_in
+        dTdt = (Q_jacket + P_agitator + Q_rxn) / m_Cp
+        T_new = T_prev + dTdt * dt
+        t_arr[i] = i * dt
+        T_arr[i] = T_new
+        Tj_out[i] = Tj_out_i
+        if cooling and T_new <= T_target:
+            return t_arr[: i + 1], T_arr[: i + 1], Tj_out[: i + 1]
+        if not cooling and T_new >= T_target:
+            return t_arr[: i + 1], T_arr[: i + 1], Tj_out[: i + 1]
+    return t_arr, T_arr, Tj_out

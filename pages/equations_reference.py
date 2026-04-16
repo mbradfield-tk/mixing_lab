@@ -1385,3 +1385,258 @@ $$\\frac{d\\sigma}{dt} \\propto -k_g \\, \\sigma^g \\, A_{seed}$$
 4. Mersmann, A. (2001). [*Crystallization Technology Handbook*](https://doi.org/10.1201/9780203908280), 2nd ed. Marcel Dekker.
 5. Kashchiev, D. & van Rosmalen, G.M. (2003). [*Cryst. Res. Technol.*](https://doi.org/10.1002/crat.200310070), 38(7–8), 555–574.
 """)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# HEAT TRANSFER TOOL
+# ══════════════════════════════════════════════════════════════════════════
+with st.expander("**Heat Transfer Tool**", expanded=False):
+
+    st.markdown("""
+Equations used in the **Heat Transfer Modeling** page (Tools → Heat Transfer).
+This page builds on the basic heat-balance equations above with multiple
+Nusselt correlations, jacket-side modeling, transient simulations, and
+NTU-effectiveness analysis.
+""")
+
+    # ── Process-side Nusselt correlations
+    st.header("Process-Side Nusselt Correlations")
+    st.latex(r"\mathrm{Nu} = C \cdot \mathrm{Re}^{a} \cdot \mathrm{Pr}^{b} \cdot \left(\frac{\mu}{\mu_w}\right)^{c}")
+    st.latex(r"h_i = \frac{\mathrm{Nu} \cdot k_f}{D_T}")
+    st.markdown("""
+| Correlation | $C$ | $a$ | $b$ | $c$ | Application | Reference |
+|-------------|-----|-----|-----|-----|-------------|-----------|
+| DIN 28131 (standard) | 0.36 | 2/3 | 1/3 | 0.14 | General-purpose, baffled vessels with turbine impellers | DIN 28131:1979 |
+| Chilton–Drew–Jebens | 0.36 | 2/3 | 1/3 | 0.14 | Classic correlation for jacketed stirred vessels | Chilton, Drew, Jebens (1944) *Ind. Eng. Chem.* 36(6):510 |
+| Lehrer (anchor/helical) | 0.54 | 2/3 | 1/3 | 0.14 | Anchor and helical ribbon impellers | Lehrer (1970) *Chem. Eng. Sci.* 25:1397 |
+| Stein–Schmidt (high Re) | 0.50 | 2/3 | 1/3 | 0.14 | High-Re turbulent regimes (Re > 40 000) | Stein & Schmidt (1993) *Chem. Eng. Process.* 32:305 |
+| Brooks–Su (Retreat Blade) | 0.33 | 2/3 | 1/3 | 0.14 | Retreat-blade impellers in glass-lined vessels | Brooks & Su (1959) |
+| Nagata (paddle) | 0.36 | 2/3 | 1/3 | 0.18 | Paddle impellers with stronger wall viscosity correction | Nagata (1975) *Mixing: Principles and Applications* |
+
+Where:
+
+$$\\mathrm{Re} = \\frac{\\rho \\, N \\, D_i^2}{\\mu} \\qquad \\mathrm{Pr} = \\frac{C_p \\, \\mu}{k_f}$$
+
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $C, a, b, c$ | Correlation constants | — |
+| $N$ | Impeller speed | rev/s |
+| $D_i$ | Impeller diameter | m |
+| $D_T$ | Tank diameter | m |
+| $k_f$ | Fluid thermal conductivity | W/(m·K) |
+| $C_p$ | Specific heat capacity | J/(kg·K) |
+| $\\mu$ | Bulk viscosity | Pa·s |
+| $\\mu_w$ | Viscosity at wall temperature | Pa·s |
+""")
+
+    # ── Overall U from individual resistances
+    st.header("Overall Heat-Transfer Coefficient (Resistance Model)")
+    st.latex(r"\frac{1}{U} = \frac{1}{h_i} + \frac{x_w}{k_w} + \frac{x_l}{k_l} + \frac{1}{h_o} + R_f")
+    st.markdown("""
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $h_i$ | Process-side heat-transfer coefficient | W/(m²·K) |
+| $x_w$ | Wall thickness | m |
+| $k_w$ | Wall thermal conductivity | W/(m·K) |
+| $x_l$ | Lining thickness | m |
+| $k_l$ | Lining thermal conductivity | W/(m·K) |
+| $h_o$ | Jacket-side (utility) heat-transfer coefficient | W/(m²·K) |
+| $R_f$ | Fouling resistance | m²·K/W |
+
+When a lining is present (glass, PTFE, etc.), both wall and lining resistances
+are summed. Typical lining conductivities:
+
+| Lining | $k_l$ (W/(m·K)) | Default thickness (mm) |
+|--------|-----------------|----------------------|
+| Glass | 1.0 | 1.5 |
+| PTFE / Teflon / PFA | 0.25 | 2.0 |
+| PVDF | 0.19 | 3.0 |
+| Rubber | 0.16 | 6.0 |
+| Epoxy | 0.20 | 3.0 |
+
+**Reference:** Incropera, F.P. *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 3.
+""")
+
+    # ── Jacket-side h_o
+    st.header("Jacket-Side Heat-Transfer Coefficient")
+
+    st.subheader("Turbulent Flow — Dittus-Boelter Equation")
+    st.latex(r"\mathrm{Nu}_j = 0.023 \cdot \mathrm{Re}_j^{0.8} \cdot \mathrm{Pr}_j^{0.4} \qquad (\mathrm{Re}_j > 2300)")
+    st.latex(r"h_o = \frac{\mathrm{Nu}_j \cdot k_j}{D_h}")
+    st.markdown("""
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $\\mathrm{Re}_j$ | Jacket Reynolds number $= \\rho_j \\, v_j \\, D_h / \\mu_j$ | — |
+| $\\mathrm{Pr}_j$ | Jacket Prandtl number $= C_{p,j} \\, \\mu_j / k_j$ | — |
+| $v_j$ | Jacket fluid velocity | m/s |
+| $D_h$ | Hydraulic diameter of jacket annulus | m |
+| $k_j$ | Jacket fluid thermal conductivity | W/(m·K) |
+
+**Reference:** Dittus, F.W. & Boelter, L.M.K. (1930). *Univ. Calif. Publ. Eng.* 2:443; Incropera *et al.* (2007), Ch. 8.
+""")
+
+    st.subheader("Laminar Flow")
+    st.latex(r"\mathrm{Nu}_j = 3.66 + \frac{0.065 \,(D_h / L)\, \mathrm{Re}_j \, \mathrm{Pr}_j}{1 + 0.04 \,\left[(D_h / L)\, \mathrm{Re}_j \, \mathrm{Pr}_j\right]^{2/3}} \qquad (\mathrm{Re}_j < 2300)")
+    st.markdown("""
+Combined developing / fully-developed laminar flow correlation.
+
+**Reference:** Sieder, E.N. & Tate, G.E. (1936). *Ind. Eng. Chem.* 28(12):1429.
+""")
+
+    st.subheader("Condensing Steam")
+    st.markdown("""
+For condensing steam, the jacket-side coefficient is very high
+($h_o \\approx$ 6 000 – 12 000 W/(m²·K)) and is treated as a fixed value
+rather than computed from a Nusselt correlation.
+
+**Default:** $h_o$ = 8 000 W/(m²·K) for condensing steam.
+""")
+
+    # ── Impeller power
+    st.header("Impeller Power (Agitator Heat Input)")
+    st.latex(r"P = N_p \, \rho \, N^3 \, D_i^5")
+    st.markdown("""
+All mechanical energy dissipated by the impeller is ultimately converted to
+heat in the fluid. This is added as a heat source in the transient energy balance.
+
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $N_p$ | Power number | — |
+| $\\rho$ | Fluid density | kg/m³ |
+| $N$ | Impeller speed | rev/s |
+| $D_i$ | Impeller diameter | m |
+| $P$ | Impeller power draw | W |
+""")
+
+    # ── Steady-state heat duty
+    st.header("Steady-State Heat Duty")
+    st.latex(r"Q = U \, A \, \Delta T")
+    st.latex(r"\Delta T = |T_{\text{batch}} - T_{\text{jacket}}|")
+    st.markdown("""
+The maximum instantaneous heat removal/addition rate at any point in time.
+As the batch temperature approaches the jacket temperature, $\\Delta T$ and
+therefore $Q$ decrease exponentially.
+
+**Reference:** Incropera *et al.* (2007), Ch. 3.
+""")
+
+    # ── Instantaneous cooling/heating rate
+    st.header("Instantaneous Cooling / Heating Rate")
+    st.latex(r"\frac{dT}{dt} = \frac{Q_{\text{jacket}} - P_{\text{agitator}} - Q_{\text{rxn}}}{\rho \, V \, C_p}")
+    st.markdown("""
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $Q_{\\text{jacket}}$ | Heat transfer through jacket (positive = cooling) | W |
+| $P_{\\text{agitator}}$ | Impeller power dissipation (always heats) | W |
+| $Q_{\\text{rxn}}$ | Reaction heat (positive = exothermic, heats) | W |
+| $\\rho \\, V \\, C_p$ | Thermal mass of batch | J/K |
+""")
+
+    # ── Analytical time (log-mean)
+    st.header("Analytical Batch Time (Log-Mean)")
+    st.latex(r"t = \frac{\rho \, V \, C_p}{U \, A} \, \ln \frac{T_{\text{start}} - T_{\text{jacket}}}{T_{\text{end}} - T_{\text{jacket}}}")
+    st.markdown("""
+Assumes constant $U$, $A$, and jacket temperature, with no agitator heat or
+reaction heat. This is the standard analytical solution for an
+exponentially-decaying driving force.
+
+**Reference:** Incropera *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 5.
+""")
+
+    # ── Transient model: constant jacket
+    st.header("Transient Model — Constant Jacket Temperature (Euler Integration)")
+    st.latex(r"\frac{dT}{dt} = \frac{U \, A \,(T_{\text{jacket}} - T) + P_{\text{agitator}} + Q_{\text{rxn}}}{\rho \, V \, C_p}")
+    st.latex(r"T(t + \Delta t) = T(t) + \frac{dT}{dt} \cdot \Delta t")
+    st.markdown("""
+A forward Euler integration of the energy balance at each time step.
+
+**Sign convention:**
+- $U \\cdot A \\cdot (T_{\\text{jacket}} - T)$: positive when jacket is hotter (heating), negative when cooler (cooling)
+- $P_{\\text{agitator}}$: always positive (adds heat to batch)
+- $Q_{\\text{rxn}}$: positive = exothermic (adds heat)
+
+Integration stops when $T$ reaches $T_{\\text{target}}$ or $t$ reaches $t_{\\text{max}}$.
+""")
+
+    # ── Transient model: variable jacket (NTU-effectiveness)
+    st.header("Transient Model — Variable Jacket Temperature (NTU-Effectiveness)")
+    st.latex(r"\mathrm{NTU} = \frac{U \, A}{\dot{m}_j \, C_{p,j}}")
+    st.latex(r"\varepsilon = 1 - e^{-\mathrm{NTU}}")
+    st.latex(r"Q_{\text{jacket}} = \varepsilon \, \dot{m}_j \, C_{p,j} \, (T_{j,\text{in}} - T_{\text{batch}})")
+    st.latex(r"T_{j,\text{out}} = T_{j,\text{in}} + \frac{Q_{\text{jacket}}}{\dot{m}_j \, C_{p,j}}")
+    st.markdown("""
+When the jacket fluid has a finite flow rate, the outlet temperature differs
+from the inlet. The NTU-effectiveness method models this:
+
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $\\mathrm{NTU}$ | Number of Transfer Units | — |
+| $\\varepsilon$ | Heat exchanger effectiveness | — |
+| $\\dot{m}_j$ | Jacket mass flow rate | kg/s |
+| $C_{p,j}$ | Jacket fluid specific heat capacity | J/(kg·K) |
+| $T_{j,\\text{in}}$ | Jacket inlet temperature (constant) | °C |
+| $T_{j,\\text{out}}$ | Jacket outlet temperature (varies) | °C |
+
+At each time step, $Q_{\\text{jacket}}$ is computed using the current batch
+temperature and the effectiveness, then the batch temperature is updated
+via the same Euler integration as the constant-jacket model.
+
+**Key insight:** Lower jacket flow rates → higher NTU → higher effectiveness
+but also higher jacket outlet temperature, which reduces the effective $\\Delta T$.
+
+**Reference:** Incropera *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 11 (Heat Exchangers).
+""")
+
+    # ── Heat transfer media
+    st.header("Heat Transfer Media Database")
+    st.markdown("""
+The tool includes a built-in database of common heat transfer fluids:
+
+| Medium | T range (°C) | ρ (kg/m³) | Cp (J/(kg·K)) | μ (Pa·s) | k (W/(m·K)) |
+|--------|-------------|-----------|---------------|----------|-------------|
+| Water | 5 – 95 | 997 | 4182 | 8.9×10⁻⁴ | 0.607 |
+| Water-Glycol (50/50) | −30 – 105 | 1075 | 3350 | 3.5×10⁻³ | 0.400 |
+| Syltherm 800 | −40 – 400 | 935 | 1630 | 9.6×10⁻⁴ | 0.135 |
+| Syltherm HF | −73 – 260 | 873 | 1590 | 5.0×10⁻⁴ | 0.100 |
+| Dowtherm A | 15 – 400 | 1056 | 1590 | 2.5×10⁻³ | 0.138 |
+| Dowtherm Q | −35 – 330 | 993 | 1660 | 2.2×10⁻³ | 0.114 |
+| Steam (condensing) | 100 – 250 | — | — | — | — |
+| Therminol 66 | −3 – 345 | 1005 | 1680 | 3.0×10⁻³ | 0.118 |
+| Marlotherm SH | −5 – 350 | 1040 | 1630 | 2.8×10⁻³ | 0.120 |
+| Brine (CaCl₂ 25%) | −40 – 60 | 1230 | 2810 | 4.5×10⁻³ | 0.540 |
+
+Properties are at approximately 25 °C (nominal). All values are user-overridable.
+
+**Sources:** Dow Chemical product data sheets; Perry & Green (2019), Section 11.
+""")
+
+    # ── Jacket area estimation
+    st.header("Wetted Heat-Transfer Area")
+    st.latex(r"A_{\text{total}} = A_{\text{dish}} + \pi \, D_T \, (H - h_{\text{dish}})")
+    st.markdown("""
+The wetted heat-transfer area is computed from the liquid height and vessel
+geometry. When liquid partially fills the bottom dish, only the wetted
+fraction of the dish area is counted.
+
+| Bottom Dish Type | $h_{\\text{dish}}$ | $A_{\\text{dish,full}}$ |
+|-----------------|-------------------|----------------------|
+| Flat | 0 | $\\pi/4 \\cdot D_T^2$ |
+| 2:1 Elliptical | $D_T / 4$ | $1.09 \\cdot \\pi/4 \\cdot D_T^2$ |
+| Torispherical / DIN | $0.194 \\cdot D_T$ | $1.06 \\cdot \\pi/4 \\cdot D_T^2$ |
+| Conical (45°) | $D_T / 2$ | $1.20 \\cdot \\pi/4 \\cdot D_T^2$ |
+
+**Reference:** DIN 28131 (Jacketed agitated vessels).
+""")
+
+    # ── References
+    st.header("Key References")
+    st.markdown("""
+1. Incropera, F.P., DeWitt, D.P., Bergman, T.L. & Lavine, A.S. (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), 6th ed. Wiley.
+2. Perry, R.H. & Green, D.W. (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), 9th ed. McGraw-Hill.
+3. DIN 28131:1979 — Agitated vessels; heat transfer at the wall of agitated vessels.
+4. Chilton, T.H., Drew, T.B. & Jebens, R.H. (1944). Heat transfer coefficients in agitated vessels. *Ind. Eng. Chem.* 36(6):510–516.
+5. Dittus, F.W. & Boelter, L.M.K. (1930). Heat transfer in automobile radiators of the tubular type. *Univ. Calif. Publ. Eng.* 2:443–461.
+6. Lehrer, I.H. (1970). Jacket-side Nusselt number. *Chem. Eng. Sci.* 25:1397.
+7. Stein, W.A. & Schmidt, M. (1993). Heat transfer for agitated vessels with large impellers. *Chem. Eng. Process.* 32:305.
+8. Nagata, S. (1975). *Mixing: Principles and Applications.* Wiley.
+""")

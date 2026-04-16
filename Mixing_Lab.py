@@ -34,6 +34,7 @@ analysis = [
 
 tools = [
     st.Page("pages/9_Unit_Converter.py", title="Unit Converter", icon="🔄"),
+    st.Page("pages/14_Heat_Transfer.py", title="Heat Transfer", icon="🔥"),
 ]
 
 results = [
