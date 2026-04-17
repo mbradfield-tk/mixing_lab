@@ -923,3 +923,139 @@ if st.session_state.get("_ht_computed"):
     }
     st.dataframe(pd.DataFrame([_summary]).T.rename(columns={0: "Value"}),
                  use_container_width=True)
+
+    # ── Export PDF Report ─────────────────────────────────────────────
+    st.divider()
+    st.header("9 · Export Report")
+
+    if st.button("📥 Export PDF Report", type="primary", key="ht_export_pdf"):
+        with st.spinner("Generating PDF…"):
+            try:
+                from utils.report_builder import build_heat_transfer_pdf, report_filename, fig_to_png_bytes
+
+                # Capture chart images
+                def _try_png(fig):
+                    try:
+                        png = fig_to_png_bytes(fig)
+                        return png if png and png[:4] == b"\x89PNG" else None
+                    except Exception:
+                        return None
+
+                # Build resistance data for PDF
+                _res_data = []
+                for _lbl, _val, _ck, _grp in _res_items:
+                    _short = _lbl.split("\n")[0]
+                    _pct = _val / R_total * 100 if R_total > 0 else 0.0
+                    _res_data.append((_short, _val, _pct))
+
+                _max_idx = max(range(len(_res_items)), key=lambda i: _res_items[i][1]) if _res_items else 0
+                _ctrl_label = _res_items[_max_idx][0].split("\n")[0] if _res_items else ""
+
+                # Build Nusselt comparison rows (clean for PDF)
+                _nu_rows_pdf = []
+                for _cn, _cv in NUSSELT_CORRELATIONS.items():
+                    _Nu_c = nusselt_jacket(Re, Pr, mu_r, _cn)
+                    _hi_c = _Nu_c * k_fluid / D_tank if D_tank > 0 else 0.0
+                    _U_c = estimate_U_from_resistances(
+                        h_i=_hi_c, h_o=h_o,
+                        wall_k=wall_k, wall_thickness_m=wall_m,
+                        lining_k=lining_k, lining_thickness_m=lining_m,
+                        fouling=fouling_R,
+                    )
+                    _t_c = time_to_cool_or_heat(rho, V_L_m3, Cp, _U_c, A_ht,
+                                                 T_start, T_target, T_jacket_in)
+                    _nu_rows_pdf.append({
+                        "Correlation": _cn,
+                        "Nu": f"{_Nu_c:.1f}",
+                        "h_i (W/(m2.K))": f"{_hi_c:.1f}",
+                        "U (W/(m2.K))": f"{_U_c:.1f}",
+                        "Time (min)": f"{_t_c / 60:.1f}" if _t_c < np.inf else "inf",
+                    })
+
+                # Build HTM comparison rows (clean for PDF)
+                _htm_rows_pdf = []
+                for _hname, _hdata in HTM_DB.items():
+                    if "h_jacket_override" in _hdata:
+                        _ho_c = _hdata["h_jacket_override"]
+                    elif _hdata["mu_Pa_s"] > 0 and _hdata["k_W_mK"] > 0:
+                        _Re_hc = _hdata["rho_kg_m3"] * v_jacket * D_hyd_jacket / _hdata["mu_Pa_s"]
+                        _Pr_hc = _hdata["Cp_J_kgK"] * _hdata["mu_Pa_s"] / _hdata["k_W_mK"]
+                        if _Re_hc < 2300:
+                            _Nu_hc = 3.66
+                        else:
+                            _Nu_hc = 0.023 * _Re_hc**0.8 * _Pr_hc**0.4
+                        _ho_c = _Nu_hc * _hdata["k_W_mK"] / D_hyd_jacket
+                    else:
+                        _ho_c = JACKET_HTC_DEFAULT
+                    _U_hc = estimate_U_from_resistances(
+                        h_i=h_i, h_o=_ho_c,
+                        wall_k=wall_k, wall_thickness_m=wall_m,
+                        lining_k=lining_k, lining_thickness_m=lining_m,
+                        fouling=fouling_R,
+                    )
+                    _t_hc = time_to_cool_or_heat(rho, V_L_m3, Cp, _U_hc, A_ht,
+                                                  T_start, T_target, T_jacket_in)
+                    _in_range = (_hdata["T_min_C"] <= T_jacket_in <= _hdata["T_max_C"])
+                    _htm_rows_pdf.append({
+                        "Medium": _hname,
+                        "h_o (W/(m2.K))": f"{_ho_c:.0f}",
+                        "U (W/(m2.K))": f"{_U_hc:.1f}",
+                        "Time (min)": f"{_t_hc / 60:.1f}" if _t_hc < np.inf else "inf",
+                        "In range?": "YES" if _in_range else "NO",
+                    })
+
+                _snap = {
+                    "reactor": reactor_name,
+                    "fluid": fluid_name,
+                    "fluid_T_C": fluid_T_C,
+                    "N_rpm": N_rpm,
+                    "V_L": V_L,
+                    "htm_name": htm_name,
+                    "nu_corr": nu_corr,
+                    "T_start": T_start,
+                    "T_target": T_target,
+                    "T_jacket_in": T_jacket_in,
+                    "wall_material": wall_material,
+                    "wall_mm": wall_mm,
+                    "lining_material": lining_material,
+                    "fouling_R": fouling_R,
+                    "coefficients": {
+                        "h_i": h_i, "h_o": h_o, "U": U, "Nu": Nu,
+                        "Re": Re, "Pr": Pr, "A_ht": A_ht,
+                        "P_agitator": P_agitator_W,
+                    },
+                    "resistances": _res_data,
+                    "controlling_resistance": _ctrl_label,
+                    "time_estimates": {
+                        "Q_max": Q_max,
+                        "dT_dt_init": _dT_dt * 60,
+                        "t_analytical_min": t_log / 60 if t_log < np.inf else 1e7,
+                        "t_sim_const_min": _t_target_1 / 60,
+                        "t_sim_var_min": _t_target_2 / 60,
+                    },
+                    "nusselt_comparison": _nu_rows_pdf,
+                    "htm_comparison": _htm_rows_pdf,
+                    "fig_T_png": _try_png(fig_T),
+                    "fig_Q_png": _try_png(fig_Q),
+                    "fig_rate_png": _try_png(fig_rate),
+                    "fig_rpm_U_png": _try_png(fig_rpm),
+                    "fig_rpm_time_png": _try_png(fig_trpm),
+                    "fig_resistance_png": _try_png(fig_res) if _res_items else None,
+                }
+
+                _pdf_bytes = build_heat_transfer_pdf(_snap)
+                st.session_state["_ht_pdf_bytes"] = _pdf_bytes
+                st.session_state["_ht_pdf_name"] = report_filename(
+                    "Heat_Transfer", reactor_name
+                )
+            except Exception as exc:
+                st.error(f"PDF generation failed: {exc}")
+
+    if "_ht_pdf_bytes" in st.session_state:
+        st.download_button(
+            "⬇️ Download PDF",
+            data=st.session_state["_ht_pdf_bytes"],
+            file_name=st.session_state["_ht_pdf_name"],
+            mime="application/pdf",
+        )
+        st.success("PDF ready for download.")

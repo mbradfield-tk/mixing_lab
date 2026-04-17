@@ -200,6 +200,37 @@ class MixingReport(FPDF):
         self.ln(9)
         self.set_text_color(0, 0, 0)
 
+    def data_table(self, headers: list[str], rows: list[list[str]],
+                   col_widths: list[float] | None = None):
+        """Render a bordered table with a header row and data rows."""
+        usable = self.w - 20
+        n = len(headers)
+        if col_widths is None:
+            col_widths = [usable / n] * n
+        row_h = 6
+        # Header
+        self.set_font(self._FONT, "B", 8)
+        self.set_fill_color(230, 230, 240)
+        self.set_text_color(30, 30, 80)
+        for i, h in enumerate(headers):
+            self.cell(col_widths[i], row_h, self._s(h), border=1, fill=True)
+        self.ln(row_h)
+        # Data rows
+        self.set_font(self._FONT, "", 8)
+        self.set_text_color(40, 40, 40)
+        _alt = False
+        for row in rows:
+            if _alt:
+                self.set_fill_color(245, 245, 250)
+            else:
+                self.set_fill_color(255, 255, 255)
+            for i, val in enumerate(row):
+                self.cell(col_widths[i], row_h, self._s(str(val)),
+                          border=1, fill=True)
+            self.ln(row_h)
+            _alt = not _alt
+        self.ln(4)
+
     def findings_table(self, findings: list[tuple[str, str, str]]):
         """Render a list of (mechanism, status_icon, detail) rows."""
         self.set_font(self._FONT, "B", 9)
@@ -416,55 +447,55 @@ def build_mixing_assessment_pdf(snap: dict) -> bytes:
 
     # ── Hydrodynamic metrics ─────────────────────────────────────────────
     pdf.section_title("Hydrodynamic & Mixing Metrics")
-    metrics = [
-        ("Re", f"{hydro['Re']:.0f}"),
-        ("P/V (W/L)", f"{hydro['P/V (W/L)']:.3g}"),
-        ("Blend time 95% (s)", f"{hydro['Blend time 95% (s)']:.2f}"),
-        ("Micromix t_E (s)", f"{hydro['Micromix time t_E (s)']:.4g}"),
-        ("Tip speed (m/s)", f"{hydro['Tip speed (m/s)']:.2f}"),
-        ("Kolmogorov eta (um)", f"{hydro['Kolmogorov η (µm)']:.1f}"),
-        ("Batchelor lambda_B (um)", f"{batchelor_um:.2f}"),
-        ("Circulation time (s)", f"{hydro['Circulation time (s)']:.2f}"),
-        ("Avg shear rate (1/s)", f"{hydro['Avg shear rate (1/s)']:.1f}"),
-        ("Max shear rate (1/s)", f"{hydro['Max shear rate (1/s)']:.0f}"),
-        ("Avg shear stress (Pa)", f"{hydro['Avg shear stress (Pa)']:.3g}"),
-        ("EDCF (W/kg/s)", f"{hydro['EDCF (W/kg/s)']:.3g}"),
-        ("Torque (N.m)", f"{hydro['Torque (N·m)']:.3g}"),
-        ("Froude number", f"{hydro['Froude number']:.4g}"),
+    _hydro_headers = ["Parameter", "Value"]
+    _hydro_rows = [
+        ["Re", f"{hydro['Re']:.0f}"],
+        ["P/V (W/L)", f"{hydro['P/V (W/L)']:.3g}"],
+        ["Blend time 95% (s)", f"{hydro['Blend time 95% (s)']:.2f}"],
+        ["Micromix t_E (s)", f"{hydro['Micromix time t_E (s)']:.4g}"],
+        ["Tip speed (m/s)", f"{hydro['Tip speed (m/s)']:.2f}"],
+        ["Kolmogorov eta (um)", f"{hydro['Kolmogorov η (µm)']:.1f}"],
+        ["Batchelor lambda_B (um)", f"{batchelor_um:.2f}"],
+        ["Circulation time (s)", f"{hydro['Circulation time (s)']:.2f}"],
+        ["Avg shear rate (1/s)", f"{hydro['Avg shear rate (1/s)']:.1f}"],
+        ["Max shear rate (1/s)", f"{hydro['Max shear rate (1/s)']:.0f}"],
+        ["Avg shear stress (Pa)", f"{hydro['Avg shear stress (Pa)']:.3g}"],
+        ["EDCF (W/kg/s)", f"{hydro['EDCF (W/kg/s)']:.3g}"],
+        ["Torque (N.m)", f"{hydro['Torque (N·m)']:.3g}"],
+        ["Froude number", f"{hydro['Froude number']:.4g}"],
     ]
-    pdf.metric_table(metrics, cols=2)
+    pdf.data_table(_hydro_headers, _hydro_rows, col_widths=[90, 80])
     pdf.ln(2)
 
     pdf.sub_title("Mass Transfer")
-    mt_rows = [
-        ("kLa surface (1/s)", f"{hydro['kLa_surface (1/s)']:.4g}"),
-    ]
+    _mt_rows = []
     if hydro.get("kLa (1/s)", 0) > 0:
-        mt_rows.insert(0, ("kLa sparged (1/s)", f"{hydro['kLa (1/s)']:.4g}"))
-    pdf.metric_table(mt_rows, cols=2)
+        _mt_rows.append(["kLa sparged (1/s)", f"{hydro['kLa (1/s)']:.4g}"])
+    _mt_rows.append(["kLa surface (1/s)", f"{hydro['kLa_surface (1/s)']:.4g}"])
+    pdf.data_table(["Parameter", "Value"], _mt_rows, col_widths=[90, 80])
 
     if heat_results:
         pdf.sub_title("Heat Transfer")
-        ht_rows = [
-            ("Q_gen (W)", f"{heat_results['Q_gen (W)']:.1f}"),
-            ("Q_cool (W)", f"{heat_results['Q_cool (W)']:.1f}"),
-            ("U (W/m2.K)", f"{heat_results['U (W/m²·K)']:.0f}"),
-            ("A_ht (m2)", f"{heat_results['A_ht (m²)']:.3f}"),
-            ("Q_gen/Q_cool (%)", f"{heat_results['Q_gen/Q_cool (%)']:.1f}%"),
+        _ht_rows = [
+            ["Q_gen (W)", f"{heat_results['Q_gen (W)']:.1f}"],
+            ["Q_cool (W)", f"{heat_results['Q_cool (W)']:.1f}"],
+            ["U (W/m2.K)", f"{heat_results['U (W/m²·K)']:.0f}"],
+            ["A_ht (m2)", f"{heat_results['A_ht (m²)']:.3f}"],
+            ["Q_gen/Q_cool (%)", f"{heat_results['Q_gen/Q_cool (%)']:.1f}%"],
         ]
-        pdf.metric_table(ht_rows, cols=2)
+        pdf.data_table(["Parameter", "Value"], _ht_rows, col_widths=[90, 80])
 
     if particle_results:
         pdf.sub_title("Solid Particles")
-        sp_rows = [
-            ("Particle", particle_meta.get("Particle", "")),
-            ("d50 (um)", f"{particle_results['d50 (µm)']:.1f}"),
-            ("rho_p (kg/m3)", f"{particle_results['ρ_p (kg/m³)']:.0f}"),
-            ("N_js design (RPM)", f"{particle_results['N_js (RPM)']:.1f}"),
-            ("v_t (m/s)", f"{particle_results['v_t (m/s)']:.3e}"),
-            ("k_SL (m/s)", f"{particle_results['k_SL (m/s)']:.3e}"),
+        _sp_rows = [
+            ["Particle", particle_meta.get("Particle", "")],
+            ["d50 (um)", f"{particle_results['d50 (µm)']:.1f}"],
+            ["rho_p (kg/m3)", f"{particle_results['ρ_p (kg/m³)']:.0f}"],
+            ["N_js design (RPM)", f"{particle_results['N_js (RPM)']:.1f}"],
+            ["v_t (m/s)", f"{particle_results['v_t (m/s)']:.3e}"],
+            ["k_SL (m/s)", f"{particle_results['k_SL (m/s)']:.3e}"],
         ]
-        pdf.metric_table(sp_rows, cols=2)
+        pdf.data_table(["Parameter", "Value"], _sp_rows, col_widths=[90, 80])
         susp = particle_meta.get("Suspension", "")
         _susp_col = "GREEN" if "Well" in susp or "Just" in susp else ("AMBER" if "Partial" in susp else "RED")
         pdf.assessment_box(susp, _susp_col)
@@ -591,7 +622,7 @@ def build_reactor_comparison_pdf(snap: dict) -> bytes:
             vol_min = a.get("Volume (L)_min", 0)
             vol_max = a.get("Volume (L)_max", 0)
             pdf.kv("Volume range (L)", f"{vol_min:.1f} - {vol_max:.1f}")
-            rows = []
+            _env_rows = []
             for p in _key_params:
                 p_min_col = f"{p}_min"
                 p_max_col = f"{p}_max"
@@ -599,9 +630,10 @@ def build_reactor_comparison_pdf(snap: dict) -> bytes:
                     lo = a[p_min_col]
                     hi = a[p_max_col]
                     if np.isfinite(lo) and np.isfinite(hi):
-                        rows.append((p, f"{lo:.3g} - {hi:.3g}"))
-            if rows:
-                pdf.metric_table(rows, cols=2)
+                        _env_rows.append([p, f"{lo:.3g}", f"{hi:.3g}"])
+            if _env_rows:
+                pdf.data_table(["Parameter", "Min", "Max"], _env_rows,
+                               col_widths=[70, 50, 50])
             pdf.ln(2)
 
     # ── Scale-up ratios page ─────────────────────────────────────────────
@@ -619,14 +651,16 @@ def build_reactor_comparison_pdf(snap: dict) -> bytes:
             ref = mid_df.iloc[0]
             for _, row in mid_df.iloc[1:].iterrows():
                 pdf.sub_title(f"{row['Reactor']} vs {ref['Reactor']}")
-                ratio_rows = []
+                _ratio_rows = []
                 for p in _su_params:
                     ref_val = ref[p]
                     row_val = row[p]
                     if np.isfinite(ref_val) and np.isfinite(row_val) and ref_val != 0:
-                        ratio_rows.append((p, f"{row_val / ref_val:.2f}x"))
-                if ratio_rows:
-                    pdf.metric_table(ratio_rows, cols=2)
+                        _ratio_rows.append([p, f"{ref_val:.3g}", f"{row_val:.3g}",
+                                            f"{row_val / ref_val:.2f}x"])
+                if _ratio_rows:
+                    pdf.data_table(["Parameter", ref['Reactor'], row['Reactor'], "Ratio"],
+                                   _ratio_rows, col_widths=[50, 35, 35, 25])
 
     # ── Recommendations ──────────────────────────────────────────────────
     pdf.add_page()
@@ -701,30 +735,23 @@ def build_protocol_pdf(snap: dict) -> bytes:
     # Findings table
     if findings:
         pdf.sub_title("Detailed Findings")
+        _find_rows = []
         for mechanism, status, detail in findings:
-            # Clean status icons for PDF
             status_clean = status.replace("🔴", "[RED]").replace("🟡", "[AMBER]").replace("🟢", "[GREEN]").replace("⚪", "[N/A]")
-            if "[RED]" in status_clean:
-                colour = "RED"
-            elif "[AMBER]" in status_clean:
-                colour = "AMBER"
-            else:
-                colour = "GREEN"
-            pdf.kv(mechanism, status_clean.split(" — ")[0].strip() if " — " in status_clean else status_clean)
-            pdf.body_text(detail)
-            pdf.ln(1)
+            status_short = status_clean.split(" — ")[0].strip() if " — " in status_clean else status_clean
+            _find_rows.append([mechanism, status_short, detail])
+        pdf.data_table(["Mechanism", "Status", "Detail"], _find_rows,
+                       col_widths=[35, 40, 95])
         pdf.ln(4)
 
     # ── Recommendations page ─────────────────────────────────────────────
     pdf.add_page()
     pdf.section_title("Recommended Next Steps")
     if next_steps:
-        for step in next_steps:
-            area = step.get("Area", "")
-            action = step.get("Action", "")
-            pdf.sub_title(area)
-            pdf.body_text(action)
-            pdf.ln(2)
+        _step_rows = [[step.get("Area", ""), step.get("Action", "")]
+                      for step in next_steps]
+        pdf.data_table(["Area", "Recommended Action"], _step_rows,
+                       col_widths=[40, 130])
     else:
         pdf.body_text(
             "The reaction appears low risk for mixing sensitivity. "
@@ -774,18 +801,23 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     # ── Test 1 ───────────────────────────────────────────────────────────
     pdf.section_title("Test 1 -- Impeller Speed")
     if t1_conditions:
+        _t1_cond_rows = []
+        _t1_cond_headers = ["Condition", "N (RPM)", "P/V (W/kg)"]
         for cond in t1_conditions:
-            label = cond.get("Condition", "")
-            rpm = cond.get("N (RPM)", 0)
-            pv = cond.get("P/V (W/kg)", 0)
-            pdf.kv(label, f"{rpm:.0f} RPM  |  P/V = {pv:.4g} W/kg")
+            _t1_cond_rows.append([
+                cond.get("Condition", ""),
+                f"{cond.get('N (RPM)', 0):.0f}",
+                f"{cond.get('P/V (W/kg)', 0):.4g}",
+            ])
+        pdf.data_table(_t1_cond_headers, _t1_cond_rows, col_widths=[65, 40, 40])
     if t1_responses:
         pdf.ln(2)
         pdf.sub_title(f"Responses ({t1_responses.get('resp_name', '')})")
         labels = t1_responses.get("labels", [])
         resp = t1_responses.get("resp", [])
-        for lbl, val in zip(labels, resp):
-            pdf.kv(lbl, f"{val:.4g}")
+        _t1_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(labels, resp)]
+        pdf.data_table(["Condition", "Response"], _t1_resp_rows,
+                       col_widths=[80, 60])
         max_pct = t1_responses.get("max_pct", 0)
         sensitive = t1_responses.get("sensitive", False)
         colour = "RED" if sensitive else "GREEN"
@@ -800,8 +832,9 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
         pdf.sub_title(f"Responses ({t2_responses.get('resp_name', '')})")
         t2_labels = ["Fast (1/3x)", "Center (1x)", "Slow (3x)"]
         t2_resp = t2_responses.get("resp", [])
-        for lbl, val in zip(t2_labels, t2_resp):
-            pdf.kv(lbl, f"{val:.4g}")
+        _t2_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(t2_labels, t2_resp)]
+        pdf.data_table(["Condition", "Response"], _t2_resp_rows,
+                       col_widths=[80, 60])
         t2_pct = t2_responses.get("max_pct", 0)
         t2_sens = t2_responses.get("sensitive", False)
         colour = "RED" if t2_sens else "GREEN"
@@ -816,8 +849,9 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
         pdf.sub_title(f"Responses ({t3_responses.get('resp_name', '')})")
         t3_labels = ["Surface", "Sub-surface (mid)", "Impeller zone"]
         t3_resp = t3_responses.get("resp", [])
-        for lbl, val in zip(t3_labels, t3_resp):
-            pdf.kv(lbl, f"{val:.4g}")
+        _t3_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(t3_labels, t3_resp)]
+        pdf.data_table(["Feed Location", "Response"], _t3_resp_rows,
+                       col_widths=[80, 60])
         t3_pct = t3_responses.get("max_pct", 0)
         t3_sens = t3_responses.get("sensitive", False)
         colour = "RED" if t3_sens else "GREEN"
@@ -831,8 +865,9 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     pdf.section_title("Conclusion")
 
     if conclusions:
-        for test_name, result, icon in conclusions:
-            pdf.kv(test_name, result)
+        _concl_rows = [[test_name, icon, result] for test_name, result, icon in conclusions]
+        pdf.data_table(["Test", "Result", "Detail"], _concl_rows,
+                       col_widths=[55, 15, 100])
         pdf.ln(4)
 
     if dominant == "Micromixing":
@@ -867,5 +902,167 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
         pdf.ln(2)
         for note in scaleup_notes:
             pdf.body_text(f"- {note}")
+
+    return report_bytes(pdf)
+
+
+def build_heat_transfer_pdf(snap: dict) -> bytes:
+    """Build PDF report for Page 14 -- Heat Transfer Modeling."""
+    reactor_name = snap["reactor"]
+    fluid_name = snap["fluid"]
+    fluid_T_C = snap["fluid_T_C"]
+    N_rpm = snap["N_rpm"]
+    V_L = snap["V_L"]
+    htm_name = snap["htm_name"]
+    nu_corr = snap["nu_corr"]
+    T_start = snap["T_start"]
+    T_target = snap["T_target"]
+    T_jacket_in = snap["T_jacket_in"]
+    wall_material = snap["wall_material"]
+    wall_mm = snap["wall_mm"]
+    lining_material = snap["lining_material"]
+    fouling_R = snap["fouling_R"]
+
+    coefficients = snap["coefficients"]
+    resistances = snap["resistances"]
+    time_estimates = snap["time_estimates"]
+    rpm_sensitivity = snap.get("rpm_sensitivity")
+    nusselt_comparison = snap.get("nusselt_comparison", [])
+    htm_comparison = snap.get("htm_comparison", [])
+
+    fig_T_png = snap.get("fig_T_png")
+    fig_Q_png = snap.get("fig_Q_png")
+    fig_rate_png = snap.get("fig_rate_png")
+    fig_rpm_png = snap.get("fig_rpm_U_png")
+    fig_trpm_png = snap.get("fig_rpm_time_png")
+    fig_res_png = snap.get("fig_resistance_png")
+
+    _is_cooling = T_target < T_start
+    _mode_label = "Cooling" if _is_cooling else "Heating"
+
+    title = f"Heat Transfer -- {reactor_name}"
+    pdf = new_report(title)
+
+    # ── Page 1: Title & System Info ──────────────────────────────────────
+    pdf.add_page()
+    pdf.set_font(pdf._FONT, "B", 20)
+    pdf.set_text_color(30, 30, 80)
+    pdf.cell(0, 14, pdf._s("Heat Transfer Report"), align="C")
+    pdf.ln(18)
+
+    pdf.section_title("System Configuration")
+    pdf.kv("Reactor", reactor_name, bold_val=True)
+    pdf.kv("Fluid", f"{fluid_name}  ({fluid_T_C:.1f} deg C)", bold_val=True)
+    pdf.kv("Stir speed", f"{N_rpm:.0f} RPM")
+    pdf.kv("Liquid volume", f"{V_L:.2f} L")
+    pdf.kv("Heat transfer medium", htm_name, bold_val=True)
+    pdf.kv("Nusselt correlation", nu_corr)
+    pdf.kv("Mode", _mode_label)
+    pdf.kv("T_start", f"{T_start:.1f} deg C")
+    pdf.kv("T_target", f"{T_target:.1f} deg C")
+    pdf.kv("T_jacket inlet", f"{T_jacket_in:.1f} deg C")
+    pdf.ln(2)
+
+    pdf.sub_title("Wall & Lining")
+    pdf.kv("Wall material", wall_material)
+    pdf.kv("Wall thickness", f"{wall_mm:.1f} mm")
+    pdf.kv("Lining", lining_material)
+    pdf.kv("Fouling resistance", f"{fouling_R:.5f} m2.K/W")
+    pdf.ln(4)
+
+    # ── Heat Transfer Coefficients ───────────────────────────────────────
+    pdf.section_title("Heat Transfer Coefficients")
+    coeff_rows = [
+        ("h_i (process side)", f"{coefficients['h_i']:.1f} W/(m2.K)"),
+        ("h_o (jacket side)", f"{coefficients['h_o']:.1f} W/(m2.K)"),
+        ("U (overall)", f"{coefficients['U']:.1f} W/(m2.K)"),
+        ("Nu (process side)", f"{coefficients['Nu']:.1f}"),
+        ("Re (impeller)", f"{coefficients['Re']:.0f}"),
+        ("Pr (process)", f"{coefficients['Pr']:.1f}"),
+        ("A_ht (m2)", f"{coefficients['A_ht']:.4f}"),
+        ("P_agitator (W)", f"{coefficients['P_agitator']:.2f}"),
+    ]
+    pdf.metric_table(coeff_rows, cols=2)
+    pdf.ln(2)
+
+    # ── Resistance Breakdown ─────────────────────────────────────────────
+    pdf.section_title("Thermal Resistance Breakdown")
+    if resistances:
+        _res_headers = ["Layer", "R (m2.K/W)", "% of Total"]
+        _res_rows = [[name, f"{value:.5f}", f"{pct:.1f}%"] for name, value, pct in resistances]
+        pdf.data_table(_res_headers, _res_rows, col_widths=[70, 55, 45])
+    _ctrl = snap.get("controlling_resistance", "")
+    if _ctrl:
+        pdf.body_text(f"Controlling resistance: {_ctrl}")
+
+    if fig_res_png:
+        pdf.ln(2)
+        pdf.image(io.BytesIO(fig_res_png), x=15, w=180)
+        pdf.ln(5)
+
+    # ── Time Estimates ───────────────────────────────────────────────────
+    pdf.add_page()
+    pdf.section_title("Time Estimates")
+    te_rows = [
+        ("Q_max initial (W)", f"{time_estimates['Q_max']:.1f}"),
+        ("Initial dT/dt (deg C/min)", f"{time_estimates['dT_dt_init']:.3f}"),
+        ("Analytical time (log-mean)", f"{time_estimates['t_analytical_min']:.1f} min"
+         if time_estimates["t_analytical_min"] < 1e6 else "inf"),
+        ("Simulated (const. jacket)", f"{time_estimates['t_sim_const_min']:.1f} min"),
+        ("Simulated (variable jacket)", f"{time_estimates['t_sim_var_min']:.1f} min"),
+    ]
+    pdf.metric_table(te_rows, cols=1)
+    pdf.ln(4)
+
+    # ── Temperature Profile Charts ───────────────────────────────────────
+    if fig_T_png:
+        pdf.section_title("Temperature Profile")
+        pdf.image(io.BytesIO(fig_T_png), x=15, w=180)
+        pdf.ln(5)
+
+    if fig_Q_png:
+        pdf.add_page()
+        pdf.section_title("Jacket Heat Duty vs. Time")
+        pdf.image(io.BytesIO(fig_Q_png), x=15, w=180)
+        pdf.ln(5)
+
+    if fig_rate_png:
+        pdf.section_title("Rate of Change vs. Time")
+        pdf.image(io.BytesIO(fig_rate_png), x=15, w=180)
+        pdf.ln(5)
+
+    # ── RPM Sensitivity ──────────────────────────────────────────────────
+    if fig_rpm_png or fig_trpm_png:
+        pdf.add_page()
+        pdf.section_title("RPM Sensitivity")
+        if fig_rpm_png:
+            pdf.image(io.BytesIO(fig_rpm_png), x=15, w=180)
+            pdf.ln(5)
+        if fig_trpm_png:
+            pdf.image(io.BytesIO(fig_trpm_png), x=15, w=180)
+            pdf.ln(5)
+
+    # ── Nusselt Correlation Comparison ────────────────────────────────────
+    if nusselt_comparison:
+        pdf.add_page()
+        pdf.section_title("Nusselt Correlation Comparison")
+        _nu_headers = ["Correlation", "Nu", "h_i (W/(m2.K))", "U (W/(m2.K))", "Time (min)"]
+        _nu_rows = [
+            [r["Correlation"], r["Nu"], r["h_i (W/(m2.K))"], r["U (W/(m2.K))"], r["Time (min)"]]
+            for r in nusselt_comparison
+        ]
+        pdf.data_table(_nu_headers, _nu_rows, col_widths=[52, 22, 35, 35, 26])
+        pdf.ln(4)
+
+    # ── HTM Comparison ───────────────────────────────────────────────────
+    if htm_comparison:
+        pdf.section_title("Heat Transfer Media Comparison")
+        _htm_headers = ["Medium", "h_o (W/(m2.K))", "U (W/(m2.K))", "Time (min)", "In range?"]
+        _htm_rows = [
+            [r["Medium"], r["h_o (W/(m2.K))"], r["U (W/(m2.K))"], r["Time (min)"], r.get("In range?", "")]
+            for r in htm_comparison
+        ]
+        pdf.data_table(_htm_headers, _htm_rows, col_widths=[52, 35, 35, 28, 20])
+        pdf.ln(4)
 
     return report_bytes(pdf)
