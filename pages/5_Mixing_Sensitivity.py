@@ -468,8 +468,9 @@ _IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "reactors
 _IMG_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
 def _find_image(name: str, suffix: str) -> pathlib.Path | None:
-    prefix = name.replace(" – ", "_").replace(" - ", "_")
-    if not _IMG_DIR.exists():
+    _row = reactors[reactors["reactor_name"] == name]
+    prefix = str(_row.iloc[0]["reactor_id"]) if not _row.empty and pd.notna(_row.iloc[0].get("reactor_id")) else ""
+    if not prefix or not _IMG_DIR.exists():
         return None
     for p in _IMG_DIR.iterdir():
         if p.is_file() and p.suffix.lower() in _IMG_SUFFIXES:

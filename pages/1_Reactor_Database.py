@@ -25,6 +25,7 @@ if _HTM_CSV.exists():
 
 # Columns the app expects (superset – legacy + enriched)
 CORE_COLS = [
+    "reactor_id",
     "reactor_name", "owner", "tag", "location", "manufacturer", "manufacturer_model",
     "type", "scale",
     "D_tank_m", "H_m", "D_imp_m", "impeller_type", "impeller_flow", "impeller_model", "Np", "Nq",
@@ -49,6 +50,7 @@ CORE_COLS = [
 
 # Columns that must be treated as text (not numeric) in the data editor
 _STR_COLS = {
+    "reactor_id",
     "reactor_name", "owner", "tag", "location", "manufacturer", "manufacturer_model",
     "type", "scale",
     "impeller_type", "impeller_type2", "impeller_type3",
@@ -80,6 +82,17 @@ def _load_reactors() -> pd.DataFrame:
 
 def _save_reactors(df: pd.DataFrame):
     df.to_csv(REACTOR_CSV, index=False)
+
+
+def _next_reactor_id(df: pd.DataFrame) -> str:
+    """Generate the next sequential reactor ID (RX-001, RX-002, …)."""
+    existing = df["reactor_id"].dropna().tolist()
+    nums = []
+    for rid in existing:
+        rid = str(rid)
+        if rid.startswith("RX-") and rid[3:].isdigit():
+            nums.append(int(rid[3:]))
+    return f"RX-{max(nums, default=0) + 1:03d}"
 
 
 # ── Load into session state ──────────────────────────────────────────────
@@ -130,7 +143,7 @@ with tab_browse:
 
     # Column visibility selector
     _all_cols = df_display.columns.tolist()
-    _default_cols = [c for c in ["reactor_name", "owner", "tag", "location", "type", "scale",
+    _default_cols = [c for c in ["reactor_id", "reactor_name", "owner", "tag", "location", "type", "scale",
                                   "D_tank_m", "H_m", "D_imp_m", "impeller_type",
                                   "N_rpm_min", "N_rpm_max", "V_L_min", "V_L_max",
                                   "shell_material"] if c in _all_cols]
@@ -196,8 +209,9 @@ with tab_browse:
         )
 
         if selected_reactor != "(none)":
-            # Build a file-matching prefix: "Cambrex – R-802" → "Cambrex_R-802"
-            prefix = selected_reactor.replace(" – ", "_").replace(" - ", "_")
+            # Use reactor_id as file-matching prefix (e.g. "RX-012")
+            _sel_row = df_display[df_display["reactor_name"] == selected_reactor].iloc[0]
+            prefix = str(_sel_row.get("reactor_id", "")) if pd.notna(_sel_row.get("reactor_id")) else ""
 
             def _find_images(folder: pathlib.Path) -> list[pathlib.Path]:
                 if not folder.exists():
@@ -228,7 +242,7 @@ with tab_browse:
 
             # ── Reactor Schematic ─────────────────────────────────────────
             if st.session_state.get("_show_reactor_schematic"):
-                _r = df_display[df_display["reactor_name"] == selected_reactor].iloc[0]
+                _r = _sel_row
                 _D = float(_r["D_tank_m"]) if pd.notna(_r.get("D_tank_m")) else None
                 _H = float(_r["H_m"]) if pd.notna(_r.get("H_m")) else None
 
@@ -547,9 +561,9 @@ with tab_browse:
             if st.session_state.get("_show_reactor_images"):
                 if not reactor_imgs and not cfd_imgs:
                     st.info(
-                        f"No images found for **{selected_reactor}**. "
+                        f"No images found for **{selected_reactor}** (ID: `{prefix}`). "
                         "Place files in `images/reactors/` or `images/CFD/` "
-                        "named `{Owner}_{Reactor}_*.png`."
+                        f"named `{prefix}_*.png`."
                     )
 
                 if reactor_imgs:
@@ -709,6 +723,8 @@ with tab_add:
 
         # ── Vessel Identity ───────────────────────────────────────────────
         st.markdown("##### Vessel Identity")
+        _auto_id = _next_reactor_id(st.session_state.reactor_db)
+        st.text_input("Reactor ID (auto-generated)", value=_auto_id, disabled=True, key="_display_reactor_id")
         id1, id2, id3, id4 = st.columns(4)
         with id1:
             owner = st.text_input("Owner / site", key="add_owner")
@@ -853,6 +869,7 @@ with tab_add:
 
         if submitted and tag:
             new_row = pd.DataFrame([{
+                "reactor_id": _auto_id,
                 "reactor_name": name,
                 "owner": owner,
                 "tag": tag,
