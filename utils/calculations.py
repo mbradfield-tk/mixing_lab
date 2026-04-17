@@ -6,6 +6,7 @@ All equations referenced in the Equations Summary page of the Streamlit app.
 
 import numpy as np
 import pandas as pd
+from scipy.integrate import solve_ivp
 
 
 # ---------------------------------------------------------------------------
@@ -1911,3 +1912,197 @@ def batch_temp_profile_variable_jacket(
         if not cooling and T_new >= T_target:
             return t_arr[: i + 1], T_arr[: i + 1], Tj_out[: i + 1]
     return t_arr, T_arr, Tj_out
+
+
+# ---------------------------------------------------------------------------
+# Temperature-dependent property simulations  (scipy solve_ivp, adaptive RK45)
+# ---------------------------------------------------------------------------
+
+def batch_temperature_profile_tdep(
+    props_fn,
+    V_L_m3: float,
+    N_rps: float, D_imp: float, D_tank: float,
+    h_o: float,
+    wall_k: float, wall_m: float,
+    lining_k: float, lining_m: float,
+    fouling_R: float,
+    A: float,
+    T_start: float, T_target: float, T_jacket: float,
+    mu_wall: float = 0.0,
+    nu_corr: str = "DIN 28131 (standard)",
+    P_agitator_fn=None,
+    Q_rxn: float = 0.0,
+    dt: float = 1.0, t_max: float = 36000.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Batch temperature profile with temperature-dependent fluid properties.
+
+    Uses ``scipy.integrate.solve_ivp`` (adaptive RK45) with a terminal event
+    that stops integration when the batch reaches *T_target*.
+
+    At each evaluation, ``props_fn(T_C)`` is called to obtain
+    ``(rho, mu, Cp, k_fluid)`` at the current batch temperature.
+    h_i and U are then recomputed from those properties.
+
+    Parameters
+    ----------
+    props_fn       : callable(T_C) -> (rho, mu, Cp, k_fluid)
+    V_L_m3         : liquid volume (m³)
+    N_rps          : impeller speed (rev/s)
+    D_imp, D_tank  : impeller and tank diameter (m)
+    h_o            : jacket-side heat-transfer coefficient (W/(m²·K))
+    wall_k, wall_m : wall conductivity (W/(m·K)) and thickness (m)
+    lining_k, lining_m : lining conductivity and thickness
+    fouling_R      : fouling resistance (m²·K/W)
+    A              : heat-transfer area (m²)
+    T_start, T_target, T_jacket : temperatures (°C)
+    mu_wall        : viscosity at wall temperature (Pa·s); 0 = no correction
+    nu_corr        : Nusselt correlation name
+    P_agitator_fn  : None or float — fixed agitator power (W)
+    Q_rxn          : reaction heat (W)
+    dt             : maximum reporting interval (s); solver adapts internally
+    t_max          : maximum simulation time (s)
+
+    Returns
+    -------
+    (t_arr, T_arr, U_arr) – time (s), batch temperature (°C),
+    and overall U (W/(m²·K)) at each reported step.
+    """
+    if V_L_m3 <= 0 or A <= 0:
+        return np.array([0.0]), np.array([T_start]), np.array([0.0])
+
+    P_agit = P_agitator_fn if isinstance(P_agitator_fn, (int, float)) else 0.0
+
+    def _rhs(_t, y):
+        T = y[0]
+        rho_i, mu_i, Cp_i, k_i = props_fn(T)
+        h_i = _compute_hi(rho_i, mu_i, Cp_i, k_i, N_rps, D_imp, D_tank, mu_wall, nu_corr)
+        U_i = estimate_U_from_resistances(h_i, h_o, wall_k, wall_m,
+                                           lining_k, lining_m, fouling_R)
+        m_Cp = rho_i * V_L_m3 * Cp_i
+        if m_Cp <= 0:
+            m_Cp = 1.0
+        Q_jacket = U_i * A * (T_jacket - T)
+        return [(Q_jacket + P_agit + Q_rxn) / m_Cp]
+
+    # Terminal event: stop when T reaches T_target
+    def _hit_target(_t, y):
+        return y[0] - T_target
+    _hit_target.terminal = True
+    _hit_target.direction = -1.0 if T_target < T_start else 1.0
+
+    t_eval = np.arange(0.0, t_max + dt, dt)
+
+    sol = solve_ivp(
+        _rhs, [0.0, t_max], [T_start],
+        method="RK45",
+        t_eval=t_eval,
+        events=_hit_target,
+        rtol=1e-8, atol=1e-10,
+        max_step=dt,
+    )
+
+    t_arr = sol.t
+    T_arr = sol.y[0]
+
+    # Recompute U at each output point
+    U_arr = np.empty_like(t_arr)
+    for i, T in enumerate(T_arr):
+        rho_i, mu_i, Cp_i, k_i = props_fn(T)
+        h_i = _compute_hi(rho_i, mu_i, Cp_i, k_i, N_rps, D_imp, D_tank, mu_wall, nu_corr)
+        U_arr[i] = estimate_U_from_resistances(h_i, h_o, wall_k, wall_m,
+                                                lining_k, lining_m, fouling_R)
+
+    return t_arr, T_arr, U_arr
+
+
+def batch_temp_profile_variable_jacket_tdep(
+    props_fn,
+    V_L_m3: float,
+    N_rps: float, D_imp: float, D_tank: float,
+    h_o: float,
+    wall_k: float, wall_m: float,
+    lining_k: float, lining_m: float,
+    fouling_R: float,
+    A: float,
+    T_start: float, T_target: float,
+    T_jacket_in: float,
+    m_dot_jacket: float,
+    Cp_jacket: float,
+    mu_wall: float = 0.0,
+    nu_corr: str = "DIN 28131 (standard)",
+    P_agitator: float = 0.0,
+    Q_rxn: float = 0.0,
+    dt: float = 1.0, t_max: float = 36000.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Variable-jacket simulation with temperature-dependent fluid properties.
+
+    Uses ``scipy.integrate.solve_ivp`` (adaptive RK45). The jacket outlet
+    temperature is computed from the NTU–effectiveness model at each step.
+
+    Returns
+    -------
+    (t_arr, T_batch_arr, T_jacket_out_arr, U_arr)
+    """
+    if (V_L_m3 <= 0 or A <= 0 or m_dot_jacket <= 0 or Cp_jacket <= 0):
+        return (np.array([0.0]), np.array([T_start]),
+                np.array([T_jacket_in]), np.array([0.0]))
+
+    def _rhs(_t, y):
+        T = y[0]
+        rho_i, mu_i, Cp_i, k_i = props_fn(T)
+        h_i = _compute_hi(rho_i, mu_i, Cp_i, k_i, N_rps, D_imp, D_tank, mu_wall, nu_corr)
+        U_i = estimate_U_from_resistances(h_i, h_o, wall_k, wall_m,
+                                           lining_k, lining_m, fouling_R)
+        m_Cp = rho_i * V_L_m3 * Cp_i
+        if m_Cp <= 0:
+            m_Cp = 1.0
+        NTU = U_i * A / (m_dot_jacket * Cp_jacket)
+        eff = 1.0 - np.exp(-NTU) if NTU > 0 else 0.0
+        Q_jacket = eff * m_dot_jacket * Cp_jacket * (T_jacket_in - T)
+        return [(Q_jacket + P_agitator + Q_rxn) / m_Cp]
+
+    def _hit_target(_t, y):
+        return y[0] - T_target
+    _hit_target.terminal = True
+    _hit_target.direction = -1.0 if T_target < T_start else 1.0
+
+    t_eval = np.arange(0.0, t_max + dt, dt)
+
+    sol = solve_ivp(
+        _rhs, [0.0, t_max], [T_start],
+        method="RK45",
+        t_eval=t_eval,
+        events=_hit_target,
+        rtol=1e-8, atol=1e-10,
+        max_step=dt,
+    )
+
+    t_arr = sol.t
+    T_arr = sol.y[0]
+
+    # Recompute U and T_jacket_out at each output point
+    U_arr = np.empty_like(t_arr)
+    Tj_out = np.empty_like(t_arr)
+    for i, T in enumerate(T_arr):
+        rho_i, mu_i, Cp_i, k_i = props_fn(T)
+        h_i = _compute_hi(rho_i, mu_i, Cp_i, k_i, N_rps, D_imp, D_tank, mu_wall, nu_corr)
+        U_i = estimate_U_from_resistances(h_i, h_o, wall_k, wall_m,
+                                           lining_k, lining_m, fouling_R)
+        NTU = U_i * A / (m_dot_jacket * Cp_jacket)
+        eff = 1.0 - np.exp(-NTU) if NTU > 0 else 0.0
+        Q_jacket = eff * m_dot_jacket * Cp_jacket * (T_jacket_in - T)
+        Tj_out[i] = T_jacket_in + Q_jacket / (m_dot_jacket * Cp_jacket)
+        U_arr[i] = U_i
+
+    return t_arr, T_arr, Tj_out, U_arr
+
+
+def _compute_hi(rho, mu, Cp, k_fluid, N_rps, D_imp, D_tank, mu_wall, nu_corr):
+    """Helper: compute process-side h_i from fluid properties."""
+    if rho <= 0 or mu <= 0 or Cp <= 0 or k_fluid <= 0 or N_rps <= 0 or D_imp <= 0 or D_tank <= 0:
+        return 0.0
+    Re = rho * N_rps * D_imp**2 / mu
+    Pr = Cp * mu / k_fluid
+    mu_r = mu / mu_wall if mu_wall > 0 else 1.0
+    Nu = nusselt_jacket(Re, Pr, mu_r, nu_corr)
+    return Nu * k_fluid / D_tank

@@ -432,6 +432,41 @@ _add(SolventData(
     aliases=("Et2O", "Ether", "DEE", "Ethoxyethane"),
 ))
 
+# ─── Trifluoroacetic Acid ───────────────────────────────────────────────
+# Refs: CRC Handbook 86th Ed (Lide 2005); Merck Index 13th Ed;
+#       NIST WebBook (Kreglewski 1962); Hansen Handbook (2007)
+_add(SolventData(
+    name="Trifluoroacetic Acid", cas="76-05-1", mw=114.02,
+    mp_C=-15.4, bp_C=72.4,
+    rho_25=1480.0, drho_dT=-1.8,
+    mu_25=8.50e-4, Ea_mu=10000.0,
+    sig_25=0.0133, dsig_dT=-8.0e-5,
+    D_ref_25=1.0e-9,
+    Cp_25=1050.0, dCp_dT=1.5,
+    k_25=0.105, dk_dT=-0.00012,
+    antoine_A=7.4860, antoine_B=1392.0, antoine_C=230.0,
+    hsp_d=15.6, hsp_p=9.7, hsp_h=11.4,
+    aliases=("TFA", "CF3COOH", "Perfluoroacetic Acid", "Trifluoroethanoic Acid"),
+    notes="Strong acid (pKa ~0.0). Miscible with water, ethanol, ether, acetone, benzene, hexane.",
+))
+
+# ─── Trifluoroacetic Anhydride ──────────────────────────────────────────
+# Refs: Sigma-Aldrich SDS; CRC Handbook; Ullmann's Encyclopedia
+_add(SolventData(
+    name="Trifluoroacetic Anhydride", cas="407-25-0", mw=210.03,
+    mp_C=-65.0, bp_C=40.0,
+    rho_25=1501.0, drho_dT=-2.0,
+    mu_25=5.50e-4, Ea_mu=7000.0,
+    sig_25=0.0145, dsig_dT=-1.0e-4,
+    D_ref_25=0.7e-9,
+    Cp_25=1000.0, dCp_dT=2.0,
+    k_25=0.095, dk_dT=-0.00012,
+    antoine_A=6.8510, antoine_B=1072.0, antoine_C=230.0,
+    hsp_d=14.0, hsp_p=7.0, hsp_h=5.0,
+    aliases=("TFAA", "(CF3CO)2O", "Trifluoroacetic acid anhydride"),
+    notes="Reacts violently with water. Soluble in benzene, DCM, ether, DMF, THF, MeCN.",
+))
+
 
 # ---------------------------------------------------------------------------
 # Property computation

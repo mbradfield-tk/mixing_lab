@@ -28,6 +28,8 @@ from utils.calculations import (
     jacket_side_htc,
     batch_temperature_profile,
     batch_temp_profile_variable_jacket,
+    batch_temperature_profile_tdep,
+    batch_temp_profile_variable_jacket_tdep,
     NUSSELT_CORRELATIONS,
     HTM_DB,
     WALL_CONDUCTIVITY,
@@ -541,12 +543,18 @@ if st.session_state.get("_ht_computed"):
             textposition="auto",
         ))
 
-        # Add group annotations at the top
-        _seen_groups = {}
+        # Add group annotations – split into contiguous runs so
+        # non-adjacent bars of the same group get separate brackets.
+        _runs = []  # list of (grp, [contiguous indices])
+        _prev_grp = None
         for i, grp in enumerate(_groups):
-            _seen_groups.setdefault(grp, []).append(i)
+            if grp == _prev_grp:
+                _runs[-1][1].append(i)
+            else:
+                _runs.append((grp, [i]))
+                _prev_grp = grp
 
-        for grp, indices in _seen_groups.items():
+        for grp, indices in _runs:
             x0, x1 = min(indices) - 0.4, max(indices) + 0.4
             fig_res.add_shape(
                 type="rect", xref="x", yref="paper",
@@ -616,29 +624,58 @@ if st.session_state.get("_ht_computed"):
     else:
         te1.metric("Analytical time", "∞ (unreachable)")
 
+    # ── Build property function for temperature-dependent simulation ──
+    if _is_solvent:
+        def _props_fn(T_C):
+            p = get_properties(fluid_name, T_C, fluid_P_atm)
+            return (p["rho_kg_m3"], p["mu_Pa_s"],
+                    p["Cp_J_per_kgK"], p["k_W_per_mK"])
+        _tdep_available = True
+    else:
+        def _props_fn(T_C):
+            return (rho, mu, Cp, k_fluid)
+        _tdep_available = False
+
     # ── Transient temperature profiles ────────────────────────────────
     st.subheader("Temperature vs. Time Profiles")
+    if _tdep_available:
+        st.caption("🌡️ **Temperature-dependent properties** — ρ, μ, Cp, k, h_i, "
+                   "and U are recomputed at each time step from the solvent model.")
 
     _dt_sim = max(0.5, t_log / 2000) if t_log < np.inf else 1.0
     _t_max_sim = min(t_log * 2.0 if t_log < np.inf else 36000.0, 86400.0)
 
     # Model 1: Constant jacket temperature (isothermal utility)
-    t1, T1 = batch_temperature_profile(
-        rho=rho, V_L_m3=V_L_m3, Cp=Cp,
-        U=U, A=A_ht,
+    t1, T1, U1 = batch_temperature_profile_tdep(
+        props_fn=_props_fn,
+        V_L_m3=V_L_m3,
+        N_rps=N_rps, D_imp=D_imp, D_tank=D_tank,
+        h_o=h_o,
+        wall_k=wall_k, wall_m=wall_m,
+        lining_k=lining_k, lining_m=lining_m,
+        fouling_R=fouling_R,
+        A=A_ht,
         T_start=T_start, T_target=T_target, T_jacket=T_jacket_in,
-        P_agitator=P_agitator_W, Q_rxn=Q_rxn,
+        mu_wall=mu_wall, nu_corr=nu_corr,
+        P_agitator_fn=P_agitator_W, Q_rxn=Q_rxn,
         dt=_dt_sim, t_max=_t_max_sim,
     )
 
     # Model 2: Variable jacket (finite flow rate)
-    t2, T2, Tj2 = batch_temp_profile_variable_jacket(
-        rho=rho, V_L_m3=V_L_m3, Cp=Cp,
-        U=U, A=A_ht,
+    t2, T2, Tj2, U2 = batch_temp_profile_variable_jacket_tdep(
+        props_fn=_props_fn,
+        V_L_m3=V_L_m3,
+        N_rps=N_rps, D_imp=D_imp, D_tank=D_tank,
+        h_o=h_o,
+        wall_k=wall_k, wall_m=wall_m,
+        lining_k=lining_k, lining_m=lining_m,
+        fouling_R=fouling_R,
+        A=A_ht,
         T_start=T_start, T_target=T_target,
         T_jacket_in=T_jacket_in,
         m_dot_jacket=m_dot_jacket,
         Cp_jacket=htm_Cp,
+        mu_wall=mu_wall, nu_corr=nu_corr,
         P_agitator=P_agitator_W, Q_rxn=Q_rxn,
         dt=_dt_sim, t_max=_t_max_sim,
     )
@@ -693,16 +730,16 @@ if st.session_state.get("_ht_computed"):
     )
     st.plotly_chart(fig_T, use_container_width=True)
 
-    # Heat duty vs time
+    # Heat duty vs time (using per-step U from T-dependent simulation)
     st.subheader("Heat Duty vs. Time")
-    Q_jacket_1 = U * A_ht * (T_jacket_in - T1)
+    Q_jacket_1 = U1 * A_ht * (T_jacket_in - T1)
     Q_jacket_2 = np.zeros_like(t2)
     if m_dot_jacket > 0 and htm_Cp > 0:
-        NTU = U * A_ht / (m_dot_jacket * htm_Cp)
-        eff = 1.0 - np.exp(-NTU)
-        Q_jacket_2 = eff * m_dot_jacket * htm_Cp * (T_jacket_in - T2)
+        NTU_2 = U2 * A_ht / (m_dot_jacket * htm_Cp)
+        eff_2 = 1.0 - np.exp(-NTU_2)
+        Q_jacket_2 = eff_2 * m_dot_jacket * htm_Cp * (T_jacket_in - T2)
     else:
-        Q_jacket_2 = U * A_ht * (T_jacket_in - T2)
+        Q_jacket_2 = U2 * A_ht * (T_jacket_in - T2)
 
     fig_Q = go.Figure()
     fig_Q.add_trace(go.Scatter(
@@ -724,15 +761,20 @@ if st.session_state.get("_ht_computed"):
     )
     st.plotly_chart(fig_Q, use_container_width=True)
 
-    # dT/dt vs time
+    # dT/dt vs time (use per-step thermal mass from T-dependent properties)
     st.subheader("Cooling / Heating Rate vs. Time")
-    _m_Cp = rho * V_L_m3 * Cp
-    if _m_Cp > 0:
-        dTdt_1 = (Q_jacket_1 + P_agitator_W + Q_rxn) / _m_Cp * 60  # °C/min
-        dTdt_2 = (Q_jacket_2 + P_agitator_W + Q_rxn) / _m_Cp * 60
-    else:
-        dTdt_1 = np.zeros_like(t1)
-        dTdt_2 = np.zeros_like(t2)
+    # Compute per-step thermal mass for model 1
+    _rho_1 = np.array([_props_fn(T)[0] for T in T1])
+    _Cp_1 = np.array([_props_fn(T)[2] for T in T1])
+    _mCp_1 = _rho_1 * V_L_m3 * _Cp_1
+    _mCp_1 = np.where(_mCp_1 > 0, _mCp_1, 1.0)
+    dTdt_1 = (Q_jacket_1 + P_agitator_W + Q_rxn) / _mCp_1 * 60  # °C/min
+
+    _rho_2 = np.array([_props_fn(T)[0] for T in T2])
+    _Cp_2 = np.array([_props_fn(T)[2] for T in T2])
+    _mCp_2 = _rho_2 * V_L_m3 * _Cp_2
+    _mCp_2 = np.where(_mCp_2 > 0, _mCp_2, 1.0)
+    dTdt_2 = (Q_jacket_2 + P_agitator_W + Q_rxn) / _mCp_2 * 60
 
     fig_rate = go.Figure()
     fig_rate.add_trace(go.Scatter(
@@ -753,6 +795,33 @@ if st.session_state.get("_ht_computed"):
         hovermode="x unified",
     )
     st.plotly_chart(fig_rate, use_container_width=True)
+
+    # ── U vs time (temperature-dependent) ─────────────────────────────
+    if _tdep_available:
+        st.subheader("Overall U vs. Time")
+        st.caption("Overall heat-transfer coefficient evolving as fluid "
+                   "properties change with batch temperature.")
+        fig_U = go.Figure()
+        fig_U.add_trace(go.Scatter(
+            x=t1 / _t_factor, y=U1,
+            mode="lines", name="U (const. jacket)",
+            line=dict(color="#4A90D9", width=2),
+        ))
+        fig_U.add_trace(go.Scatter(
+            x=t2 / _t_factor, y=U2,
+            mode="lines", name="U (variable jacket)",
+            line=dict(color="#E8A838", width=2),
+        ))
+        fig_U.add_hline(y=U, line_dash="dot", line_color="grey",
+                         annotation_text=f"U @ {fluid_T_C:.0f} °C = {U:.1f}")
+        fig_U.update_layout(
+            title="Overall Heat Transfer Coefficient vs. Time",
+            xaxis_title=f"Time ({_t_label})",
+            yaxis_title="U (W/(m²·K))",
+            height=400,
+            hovermode="x unified",
+        )
+        st.plotly_chart(fig_U, use_container_width=True)
 
     # ── RPM sensitivity ───────────────────────────────────────────────
     st.subheader("RPM Sensitivity")
@@ -896,11 +965,11 @@ if st.session_state.get("_ht_computed"):
     _summary = {
         "Reactor": reactor_name,
         "Fluid": fluid_name,
-        "Volume (L)": V_L,
-        "RPM": N_rpm,
-        "T_start (°C)": T_start,
-        "T_target (°C)": T_target,
-        "T_jacket (°C)": T_jacket_in,
+        "Volume (L)": f"{V_L:.2f}",
+        "RPM": f"{N_rpm:.0f}",
+        "T_start (°C)": f"{T_start:.1f}",
+        "T_target (°C)": f"{T_target:.1f}",
+        "T_jacket (°C)": f"{T_jacket_in:.1f}",
         "HTM": htm_name,
         "Nusselt correlation": nu_corr,
         "Re": f"{Re:.0f}",
@@ -917,9 +986,9 @@ if st.session_state.get("_ht_computed"):
         "Time simulated const. jacket (min)": f"{_t_target_1 / 60:.1f}",
         "Time simulated var. jacket (min)": f"{_t_target_2 / 60:.1f}",
         "Wall material": wall_material,
-        "Wall thickness (mm)": wall_mm,
+        "Wall thickness (mm)": f"{wall_mm:.1f}",
         "Lining": lining_material,
-        "Fouling R (m²·K/W)": fouling_R,
+        "Fouling R (m²·K/W)": f"{fouling_R:.5f}",
     }
     st.dataframe(pd.DataFrame([_summary]).T.rename(columns={0: "Value"}),
                  use_container_width=True)
@@ -1041,6 +1110,8 @@ if st.session_state.get("_ht_computed"):
                     "fig_rpm_U_png": _try_png(fig_rpm),
                     "fig_rpm_time_png": _try_png(fig_trpm),
                     "fig_resistance_png": _try_png(fig_res) if _res_items else None,
+                    "fig_U_png": _try_png(fig_U) if _tdep_available else None,
+                    "tdep_available": _tdep_available,
                 }
 
                 _pdf_bytes = build_heat_transfer_pdf(_snap)
