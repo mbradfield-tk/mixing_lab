@@ -17,22 +17,50 @@ CFD_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "CFD"
 REACTOR_IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "reactors"
 IMG_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
+# Load HTM names for heat_transfer_medium dropdown
+_HTM_CSV = DATA_DIR / "HTM.csv"
+_HTM_NAMES: list[str] = []
+if _HTM_CSV.exists():
+    _HTM_NAMES = pd.read_csv(_HTM_CSV)["htm_name"].tolist()
+
 # Columns the app expects (superset – legacy + enriched)
 CORE_COLS = [
-    "reactor_name", "owner", "type", "scale",
-    "D_tank_m", "H_m", "D_imp_m", "impeller_type", "Np", "Nq",
+    "reactor_name", "owner", "tag", "location", "manufacturer", "manufacturer_model",
+    "type", "scale",
+    "D_tank_m", "H_m", "D_imp_m", "impeller_type", "impeller_flow", "impeller_model", "Np", "Nq",
     "N_rpm_min", "N_rpm_max", "N_rps",
     "V_L_min", "V_L_max", "V_L",
-    "shell_material", "lining_material", "baffles",
+    "T_max_C", "P_max_atm",
+    "shell_material", "lining", "lining_material", "baffles",
     "bottom_dish", "top_dish",
     "impeller_count",
     "imp1_clearance_m", "imp1_height_m",
-    "D_imp2_m", "Np2", "imp2_clearance_m", "imp2_height_m",
-    "D_imp3_m", "Np3", "imp3_clearance_m", "imp3_height_m",
+    "D_imp2_m", "impeller_type2", "impeller_flow2", "impeller_model2", "Np2", "imp2_clearance_m", "imp2_height_m",
+    "D_imp3_m", "impeller_type3", "impeller_flow3", "impeller_model3", "Np3", "imp3_clearance_m", "imp3_height_m",
     "Zwietering_S", "GMB_z",
     "wall_thickness_mm", "OD_m", "knuckle_radius_m",
     "notes",
+    "instrumentation", "discharge_location", "insulated",
+    "gas_addition", "gas_feed_control",
+    "no_ports", "motor_power_kW", "aux_units",
+    "cip", "heating_cooling", "heat_transfer_medium", "heat_exchanger",
 ]
+
+
+# Columns that must be treated as text (not numeric) in the data editor
+_STR_COLS = {
+    "reactor_name", "owner", "tag", "location", "manufacturer", "manufacturer_model",
+    "type", "scale",
+    "impeller_type", "impeller_type2", "impeller_type3",
+    "impeller_flow", "impeller_flow2", "impeller_flow3",
+    "impeller_model", "impeller_model2", "impeller_model3",
+    "shell_material", "lining", "lining_material", "baffles",
+    "bottom_dish", "top_dish",
+    "notes",
+    "instrumentation", "discharge_location", "insulated",
+    "gas_addition", "gas_feed_control", "aux_units",
+    "cip", "heating_cooling", "heat_transfer_medium", "heat_exchanger",
+}
 
 
 def _load_reactors() -> pd.DataFrame:
@@ -42,6 +70,10 @@ def _load_reactors() -> pd.DataFrame:
         for c in CORE_COLS:
             if c not in df.columns:
                 df[c] = np.nan
+        # Force string columns to object dtype so data_editor allows text input
+        for c in _STR_COLS:
+            if c in df.columns:
+                df[c] = df[c].astype(object)
         return df
     return pd.DataFrame(columns=CORE_COLS)
 
@@ -58,6 +90,10 @@ else:
     for c in CORE_COLS:
         if c not in st.session_state.reactor_db.columns:
             st.session_state.reactor_db[c] = np.nan
+    # Keep string columns as object dtype so data_editor allows text input
+    for c in _STR_COLS:
+        if c in st.session_state.reactor_db.columns:
+            st.session_state.reactor_db[c] = st.session_state.reactor_db[c].astype(object)
 
 st.title("⚗️ Reactor Database")
 
@@ -92,8 +128,35 @@ with tab_browse:
 
     _filters_active = bool(filt_owner or filt_scale or filt_type or filt_impeller)
 
+    # Column visibility selector
+    _all_cols = df_display.columns.tolist()
+    _default_cols = [c for c in ["reactor_name", "owner", "tag", "location", "type", "scale",
+                                  "D_tank_m", "H_m", "D_imp_m", "impeller_type",
+                                  "N_rpm_min", "N_rpm_max", "V_L_min", "V_L_max",
+                                  "shell_material"] if c in _all_cols]
+    with st.expander("Column visibility", expanded=False):
+        _preset_col1, _preset_col2 = st.columns(2)
+        with _preset_col1:
+            if st.button("Select all columns", key="cols_all"):
+                st.session_state["browse_columns"] = _all_cols
+                st.rerun()
+        with _preset_col2:
+            if st.button("Reset to defaults", key="cols_default"):
+                st.session_state["browse_columns"] = _default_cols
+                st.rerun()
+        visible_cols = st.multiselect(
+            "Columns to display",
+            options=_all_cols,
+            default=st.session_state.get("browse_columns", _default_cols),
+            key="browse_columns",
+        )
+
+    # Apply column selection for display; keep full df for saving
+    _visible_cols = visible_cols if visible_cols else _all_cols
+    df_editor = df_display[_visible_cols]
+
     edited_df = st.data_editor(
-        df_display,
+        df_editor,
         num_rows="dynamic",
         width='content',
         key="reactor_editor",
@@ -103,15 +166,22 @@ with tab_browse:
     with col_s1:
         if st.button("💾 Save changes", key="save_reactor_browse",
                      disabled=not _is_admin, help=None if _is_admin else _ADMIN_HINT):
+            # Merge visible-column edits back into the full dataframe
+            _save_df = df_display.copy()
+            # Update only the columns that were visible/editable
+            for col in edited_df.columns:
+                if col in _save_df.columns:
+                    _save_df[col] = edited_df[col].values
+
             if _filters_active:
-                # Merge edits back: keep unfiltered rows, replace filtered rows with edits
                 full = st.session_state.reactor_db.copy()
                 full = full.drop(index=df_display.index, errors='ignore')
-                st.session_state.reactor_db = pd.concat([full, edited_df], ignore_index=True)
+                st.session_state.reactor_db = pd.concat([full, _save_df], ignore_index=True)
             else:
-                st.session_state.reactor_db = edited_df.copy()
+                st.session_state.reactor_db = _save_df
             _save_reactors(st.session_state.reactor_db)
-            st.success("Reactor database saved.")
+            st.toast("Reactor database saved.")
+            st.rerun()
 
     # ── Reactor Viewer ────────────────────────────────────────────────────
     st.divider()
@@ -488,7 +558,7 @@ with tab_browse:
                     for idx, img_path in enumerate(reactor_imgs):
                         with cols[idx % len(cols)]:
                             label = img_path.stem.removeprefix(prefix).lstrip("_") or img_path.stem
-                            st.image(str(img_path), caption=label, width=250)
+                            st.image(Image.open(img_path), caption=label, width=250)
 
                 if cfd_imgs:
                     st.markdown("#### CFD Results")
@@ -506,7 +576,7 @@ with tab_browse:
                         for idx, img_path in enumerate(imgs):
                             with cols[idx % len(cols)]:
                                 st.image(
-                                    str(img_path),
+                                    Image.open(img_path),
                                     caption=img_path.stem.split("_CFD_")[-1],
                                     width=300,
                                 )
@@ -529,10 +599,18 @@ with tab_add:
     _TYPE_OPTIONS = ["Batch", "Continuous", "Semi-batch", "Fed-batch"]
     _SCALE_OPTIONS = ["Lab", "Pilot", "Manufacturing"]
     _BAFFLE_OPTIONS = ["", "Yes", "No"]
+    _YES_NO_OPTIONS = ["", "Yes", "No"]
+    _DISCHARGE_OPTIONS = ["", "Top", "Bottom", "Side"]
+    _GAS_ADDITION_OPTIONS = ["", "Headspace", "Sparged"]
+    _GAS_FEED_CONTROL_OPTIONS = ["", "Continuous", "Constant Pressure"]
+    _AUX_UNITS_OPTIONS = ["", "Sparger", "Mixer", "Condenser", "Baffle"]
+    _HEAT_EXCHANGER_OPTIONS = ["", "Jacket", "Internal"]
+    _HTM_OPTIONS = [""] + _HTM_NAMES
     _IMP_TYPE_OPTIONS = [
         "Pitched-blade turbine", "Rushton turbine", "Retreat-curve impeller",
         "Anchor", "Magnetic stir bar", "A310 hydrofoil", "A320 hydrofoil", "Other",
     ]
+    _IMP_FLOW_OPTIONS = ["", "Axial", "Radial"]
 
     if template_reactor != "(none)" and st.session_state.get("_applied_template") != template_reactor:
         st.session_state["_applied_template"] = template_reactor
@@ -553,8 +631,11 @@ with tab_add:
             return v if v in options else options[default_idx]
 
         # Push template values into widget session-state keys
-        st.session_state["add_name"] = _ts("reactor_name")
         st.session_state["add_owner"] = _ts("owner")
+        st.session_state["add_tag"] = _ts("tag")
+        st.session_state["add_location"] = _ts("location")
+        st.session_state["add_manufacturer"] = _ts("manufacturer")
+        st.session_state["add_manufacturer_model"] = _ts("manufacturer_model")
         st.session_state["add_type"] = _tsel("type", _TYPE_OPTIONS)
         st.session_state["add_scale"] = _tsel("scale", _SCALE_OPTIONS)
         st.session_state["add_D_tank"] = _tv("D_tank_m", 0.10)
@@ -563,9 +644,12 @@ with tab_add:
         st.session_state["add_wall"] = _tv("wall_thickness_mm")
         st.session_state["add_V_min"] = _tv("V_L_min")
         st.session_state["add_V_max"] = _tv("V_L_max", 1.0)
+        st.session_state["add_T_max"] = _tv("T_max_C")
+        st.session_state["add_P_max"] = _tv("P_max_atm")
         st.session_state["add_bottom_dish"] = _ts("bottom_dish")
         st.session_state["add_top_dish"] = _ts("top_dish")
         st.session_state["add_shell_material"] = _ts("shell_material")
+        st.session_state["add_lining"] = _tsel("lining", _YES_NO_OPTIONS)
         st.session_state["add_lining_material"] = _ts("lining_material")
         st.session_state["add_baffles"] = _tsel("baffles", _BAFFLE_OPTIONS)
         st.session_state["add_knuckle"] = _tv("knuckle_radius_m")
@@ -576,21 +660,41 @@ with tab_add:
         st.session_state["add_reactor_imp_count"] = _imp_count
         st.session_state["imp1_d"] = _tv("D_imp_m", 0.05)
         st.session_state["imp1_type"] = _tsel("impeller_type", _IMP_TYPE_OPTIONS)
+        st.session_state["imp1_flow"] = _tsel("impeller_flow", _IMP_FLOW_OPTIONS)
+        st.session_state["imp1_model"] = _ts("impeller_model")
         st.session_state["imp1_np"] = _tv("Np")
         st.session_state["imp1_nq"] = _tv("Nq")
         st.session_state["imp1_clr"] = _tv("imp1_clearance_m")
         st.session_state["imp1_h"] = _tv("imp1_height_m")
         st.session_state["imp2_d"] = _tv("D_imp2_m")
+        st.session_state["imp2_type"] = _tsel("impeller_type2", _IMP_TYPE_OPTIONS)
+        st.session_state["imp2_flow"] = _tsel("impeller_flow2", _IMP_FLOW_OPTIONS)
+        st.session_state["imp2_model"] = _ts("impeller_model2")
         st.session_state["imp2_np"] = _tv("Np2")
         st.session_state["imp2_clr"] = _tv("imp2_clearance_m")
         st.session_state["imp2_h"] = _tv("imp2_height_m")
         st.session_state["imp3_d"] = _tv("D_imp3_m")
+        st.session_state["imp3_type"] = _tsel("impeller_type3", _IMP_TYPE_OPTIONS)
+        st.session_state["imp3_flow"] = _tsel("impeller_flow3", _IMP_FLOW_OPTIONS)
+        st.session_state["imp3_model"] = _ts("impeller_model3")
         st.session_state["imp3_np"] = _tv("Np3")
         st.session_state["imp3_clr"] = _tv("imp3_clearance_m")
         st.session_state["imp3_h"] = _tv("imp3_height_m")
         st.session_state["add_zwietering"] = _tv("Zwietering_S")
         st.session_state["add_gmb"] = _tv("GMB_z")
         st.session_state["add_notes"] = _ts("notes")
+        st.session_state["add_instrumentation"] = _ts("instrumentation")
+        st.session_state["add_discharge_location"] = _tsel("discharge_location", _DISCHARGE_OPTIONS)
+        st.session_state["add_insulated"] = _tsel("insulated", _YES_NO_OPTIONS)
+        st.session_state["add_gas_addition"] = _tsel("gas_addition", _GAS_ADDITION_OPTIONS)
+        st.session_state["add_gas_feed_control"] = _tsel("gas_feed_control", _GAS_FEED_CONTROL_OPTIONS)
+        st.session_state["add_no_ports"] = _tv("no_ports")
+        st.session_state["add_motor_power_kW"] = _tv("motor_power_kW")
+        st.session_state["add_aux_units"] = _tsel("aux_units", _AUX_UNITS_OPTIONS)
+        st.session_state["add_cip"] = _tsel("cip", _YES_NO_OPTIONS)
+        st.session_state["add_heating_cooling"] = _tsel("heating_cooling", _YES_NO_OPTIONS)
+        st.session_state["add_heat_transfer_medium"] = _tsel("heat_transfer_medium", _HTM_OPTIONS)
+        st.session_state["add_heat_exchanger"] = _tsel("heat_exchanger", _HEAT_EXCHANGER_OPTIONS)
         st.rerun()
     elif template_reactor == "(none)":
         st.session_state.pop("_applied_template", None)
@@ -603,40 +707,59 @@ with tab_add:
 
     with st.form("add_reactor_form"):
 
-        # ── Row 1: Identity & Vessel ──────────────────────────────────────
-        st.markdown("##### Identity & Vessel Geometry")
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            name = st.text_input("Reactor name *", key="add_name")
+        # ── Vessel Identity ───────────────────────────────────────────────
+        st.markdown("##### Vessel Identity")
+        id1, id2, id3, id4 = st.columns(4)
+        with id1:
             owner = st.text_input("Owner / site", key="add_owner")
+            tag = st.text_input("Tag *", key="add_tag")
+        with id2:
+            location = st.text_input("Location", key="add_location")
             rtype = st.selectbox("Type", _TYPE_OPTIONS, key="add_type")
+        with id3:
+            manufacturer = st.text_input("Manufacturer", key="add_manufacturer")
             scale = st.selectbox("Scale", _SCALE_OPTIONS, key="add_scale")
-        with c2:
+        with id4:
+            manufacturer_model = st.text_input("Manufacturer model", key="add_manufacturer_model")
+
+        # ── Geometry ──────────────────────────────────────────────────────
+        st.markdown("##### Geometry")
+        g1, g2, g3, g4 = st.columns(4)
+        with g1:
             D_tank = st.number_input("Tank ID (m)", min_value=0.0, value=0.10, format="%.4f", key="add_D_tank")
             H = st.number_input("Height tan-tan (m)", min_value=0.0, value=0.13, format="%.4f", key="add_H")
             OD = st.number_input("Outside diameter (m)", min_value=0.0, value=0.0, format="%.4f", key="add_OD")
+        with g2:
             wall_thickness = st.number_input("Wall thickness (mm)", min_value=0.0, value=0.0, format="%.2f", key="add_wall")
-        with c3:
-            V_L_min = st.number_input("Volume min (L)", min_value=0.0, value=0.0, format="%.2f", key="add_V_min")
-            V_L_max = st.number_input("Volume max (L)", min_value=0.0, value=1.0, format="%.2f", key="add_V_max")
+            knuckle_radius = st.number_input("Knuckle radius (m)", min_value=0.0, value=0.0, format="%.4f", key="add_knuckle")
+            baffles = st.selectbox("Baffles", _BAFFLE_OPTIONS, key="add_baffles")
+        with g3:
             bottom_dish = st.text_input("Bottom dish type", "", key="add_bottom_dish")
             top_dish = st.text_input("Top dish type", "", key="add_top_dish")
-        with c4:
+        with g4:
             shell_material = st.text_input("Shell material", "", key="add_shell_material")
+            lining = st.selectbox("Lining?", _YES_NO_OPTIONS, key="add_lining")
             lining_material = st.text_input("Lining material", "", key="add_lining_material")
-            baffles = st.selectbox("Baffles", _BAFFLE_OPTIONS, key="add_baffles")
-            knuckle_radius = st.number_input("Knuckle radius (m)", min_value=0.0, value=0.0, format="%.4f", key="add_knuckle")
 
-        # ── Row 2: Agitation ──────────────────────────────────────────────
-        st.markdown("##### Agitation")
-        a1, a2, a3 = st.columns(3)
-        with a1:
+        # ── Operating Ranges ──────────────────────────────────────────────
+        st.markdown("##### Operating Ranges")
+        or1, or2, or3, or4, or5 = st.columns(5)
+        with or1:
             N_rpm_min = st.number_input("RPM min", min_value=0.0, value=0.0, format="%.0f", key="add_rpm_min")
-        with a2:
+        with or2:
             N_rpm_max = st.number_input("RPM max", min_value=0.0, value=400.0, format="%.0f", key="add_rpm_max")
-        with a3:
+        with or3:
             N_rps = st.number_input("Default speed (rev/s)", min_value=0.0, value=0.0, format="%.2f",
                                     key="add_rps", help="Leave at 0 to auto-compute from RPM midpoint.")
+        with or4:
+            V_L_min = st.number_input("Volume min (L)", min_value=0.0, value=0.0, format="%.2f", key="add_V_min")
+        with or5:
+            V_L_max = st.number_input("Volume max (L)", min_value=0.0, value=1.0, format="%.2f", key="add_V_max")
+        or6, or7, _ = st.columns(3)
+        with or6:
+            T_max_C = st.number_input("Temperature max (°C)", min_value=0.0, value=0.0, format="%.1f", key="add_T_max")
+        with or7:
+            P_max_atm = st.number_input("Pressure max (atm)", min_value=0.0, value=0.0, format="%.2f", key="add_P_max")
 
         # ── Impeller 1 (always shown) ────────────────────────────────────
         st.markdown("##### Impeller 1 (primary)")
@@ -644,6 +767,8 @@ with tab_add:
         with i1a:
             D_imp = st.number_input("Diameter (m)", min_value=0.0, value=0.05, format="%.4f", key="imp1_d")
             impeller_type = st.selectbox("Type", _IMP_TYPE_OPTIONS, key="imp1_type")
+            impeller_flow = st.selectbox("Flow", _IMP_FLOW_OPTIONS, key="imp1_flow")
+            impeller_model_val = st.text_input("Impeller model", "", key="imp1_model")
         with i1b:
             Np_val = st.number_input("Np", min_value=0.0, value=0.0, format="%.2f", key="imp1_np")
             Nq_val = st.number_input("Nq", min_value=0.0, value=0.0, format="%.2f", key="imp1_nq")
@@ -654,11 +779,15 @@ with tab_add:
 
         # ── Impeller 2 (shown when count ≥ 2) ───────────────────────────
         D_imp2 = Np2_val = imp2_clearance = imp2_height = 0.0
+        impeller_type2 = impeller_flow2 = impeller_model2 = ""
         if impeller_count >= 2:
             st.markdown("##### Impeller 2")
             i2a, i2b, i2c, i2d = st.columns(4)
             with i2a:
                 D_imp2 = st.number_input("Diameter (m)", min_value=0.0, value=0.0, format="%.4f", key="imp2_d")
+                impeller_type2 = st.selectbox("Type", _IMP_TYPE_OPTIONS, key="imp2_type")
+                impeller_flow2 = st.selectbox("Flow", _IMP_FLOW_OPTIONS, key="imp2_flow")
+                impeller_model2 = st.text_input("Impeller model", "", key="imp2_model")
             with i2b:
                 Np2_val = st.number_input("Np", min_value=0.0, value=0.0, format="%.2f", key="imp2_np")
             with i2c:
@@ -668,11 +797,15 @@ with tab_add:
 
         # ── Impeller 3 (shown when count ≥ 3) ───────────────────────────
         D_imp3 = Np3_val = imp3_clearance = imp3_height = 0.0
+        impeller_type3 = impeller_flow3 = impeller_model3 = ""
         if impeller_count >= 3:
             st.markdown("##### Impeller 3")
             i3a, i3b, i3c, i3d = st.columns(4)
             with i3a:
                 D_imp3 = st.number_input("Diameter (m)", min_value=0.0, value=0.0, format="%.4f", key="imp3_d")
+                impeller_type3 = st.selectbox("Type", _IMP_TYPE_OPTIONS, key="imp3_type")
+                impeller_flow3 = st.selectbox("Flow", _IMP_FLOW_OPTIONS, key="imp3_flow")
+                impeller_model3 = st.text_input("Impeller model", "", key="imp3_model")
             with i3b:
                 Np3_val = st.number_input("Np", min_value=0.0, value=0.0, format="%.2f", key="imp3_np")
             with i3c:
@@ -688,6 +821,26 @@ with tab_add:
         with s2:
             gmb_z = st.number_input("GMB z parameter", min_value=0.0, value=0.0, format="%.4f", key="add_gmb")
 
+        # ── Row 7: Equipment & Process ────────────────────────────────────
+        st.markdown("##### Equipment & Process")
+        e1, e2, e3, e4 = st.columns(4)
+        with e1:
+            instrumentation = st.text_input("Instrumentation", "", key="add_instrumentation")
+            discharge_location = st.selectbox("Discharge location", _DISCHARGE_OPTIONS, key="add_discharge_location")
+            insulated = st.selectbox("Insulated?", _YES_NO_OPTIONS, key="add_insulated")
+        with e2:
+            gas_addition = st.selectbox("Gas addition type", _GAS_ADDITION_OPTIONS, key="add_gas_addition")
+            gas_feed_control = st.selectbox("Gas feed control", _GAS_FEED_CONTROL_OPTIONS, key="add_gas_feed_control")
+            aux_units = st.selectbox("Auxiliary units", _AUX_UNITS_OPTIONS, key="add_aux_units")
+        with e3:
+            no_ports = st.number_input("Number of ports", min_value=0.0, value=0.0, format="%.0f", key="add_no_ports")
+            motor_power_kW = st.number_input("Motor power (kW)", min_value=0.0, value=0.0, format="%.2f", key="add_motor_power_kW")
+            heat_exchanger = st.selectbox("Heat exchanger", _HEAT_EXCHANGER_OPTIONS, key="add_heat_exchanger")
+        with e4:
+            cip = st.selectbox("CIP?", _YES_NO_OPTIONS, key="add_cip")
+            heating_cooling = st.selectbox("Heating/Cooling?", _YES_NO_OPTIONS, key="add_heating_cooling")
+            heat_transfer_medium = st.selectbox("Heat transfer medium", _HTM_OPTIONS, key="add_heat_transfer_medium")
+            
         notes = st.text_area("Notes", key="add_notes")
         submitted = st.form_submit_button("Add reactor")
 
@@ -695,16 +848,25 @@ with tab_add:
             """Return NaN for zero / empty values."""
             return v if v else np.nan
 
-        if submitted and name:
+        # Auto-generate reactor_name from owner + tag
+        name = f"{owner} \u2013 {tag}".strip(" \u2013 ") if (owner or tag) else ""
+
+        if submitted and tag:
             new_row = pd.DataFrame([{
                 "reactor_name": name,
                 "owner": owner,
+                "tag": tag,
+                "location": location,
+                "manufacturer": manufacturer,
+                "manufacturer_model": manufacturer_model,
                 "type": rtype,
                 "scale": scale,
                 "D_tank_m": _or_nan(D_tank),
                 "H_m": _or_nan(H),
                 "D_imp_m": _or_nan(D_imp),
                 "impeller_type": impeller_type,
+                "impeller_flow": impeller_flow,
+                "impeller_model": impeller_model_val,
                 "Np": _or_nan(Np_val),
                 "Nq": _or_nan(Nq_val),
                 "N_rpm_min": _or_nan(N_rpm_min),
@@ -713,7 +875,10 @@ with tab_add:
                 "V_L_min": _or_nan(V_L_min),
                 "V_L_max": _or_nan(V_L_max),
                 "V_L": V_L_max if V_L_max > 0 else np.nan,
+                "T_max_C": _or_nan(T_max_C),
+                "P_max_atm": _or_nan(P_max_atm),
                 "shell_material": shell_material,
+                "lining": lining,
                 "lining_material": lining_material,
                 "baffles": baffles,
                 "bottom_dish": bottom_dish,
@@ -722,10 +887,16 @@ with tab_add:
                 "imp1_clearance_m": _or_nan(imp1_clearance),
                 "imp1_height_m": _or_nan(imp1_height),
                 "D_imp2_m": _or_nan(D_imp2),
+                "impeller_type2": impeller_type2,
+                "impeller_flow2": impeller_flow2,
+                "impeller_model2": impeller_model2,
                 "Np2": _or_nan(Np2_val),
                 "imp2_clearance_m": _or_nan(imp2_clearance),
                 "imp2_height_m": _or_nan(imp2_height),
                 "D_imp3_m": _or_nan(D_imp3),
+                "impeller_type3": impeller_type3,
+                "impeller_flow3": impeller_flow3,
+                "impeller_model3": impeller_model3,
                 "Np3": _or_nan(Np3_val),
                 "imp3_clearance_m": _or_nan(imp3_clearance),
                 "imp3_height_m": _or_nan(imp3_height),
@@ -735,13 +906,25 @@ with tab_add:
                 "OD_m": _or_nan(OD),
                 "knuckle_radius_m": _or_nan(knuckle_radius),
                 "notes": notes,
+                "instrumentation": instrumentation,
+                "discharge_location": discharge_location,
+                "insulated": insulated,
+                "gas_addition": gas_addition,
+                "gas_feed_control": gas_feed_control,
+                "no_ports": _or_nan(no_ports),
+                "motor_power_kW": _or_nan(motor_power_kW),
+                "aux_units": aux_units,
+                "cip": cip,
+                "heating_cooling": heating_cooling,
+                "heat_transfer_medium": heat_transfer_medium,
+                "heat_exchanger": heat_exchanger,
             }])
             st.session_state.reactor_db = pd.concat(
                 [st.session_state.reactor_db, new_row], ignore_index=True)
             _save_reactors(st.session_state.reactor_db)
             st.success(f"Added **{name}** to the reactor database.")
         elif submitted:
-            st.warning("Please enter a reactor name.")
+            st.warning("Please enter a tag.")
 
 # ── Import / Export ───────────────────────────────────────────────────────
 with tab_import:

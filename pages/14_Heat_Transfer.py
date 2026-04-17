@@ -236,9 +236,7 @@ st.header("3 · Vessel Wall & Jacket Configuration")
 with st.expander("Wall and lining", expanded=True):
     wc1, wc2, wc3 = st.columns(3)
     _mat_options = list(WALL_CONDUCTIVITY.keys())
-    _default_mat = str(reactor.get("material", "")) if pd.notna(reactor.get("material")) else ""
-    if not _default_mat:
-        _default_mat = str(reactor.get("shell_material", "")) if pd.notna(reactor.get("shell_material")) else ""
+    _default_mat = str(reactor.get("shell_material", "")) if pd.notna(reactor.get("shell_material")) else ""
     _mat_idx = 0
     for i, m in enumerate(_mat_options):
         if _default_mat.lower() in m.lower() or m.lower() in _default_mat.lower():

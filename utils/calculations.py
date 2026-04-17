@@ -1567,72 +1567,35 @@ def liquid_liquid_mass_transfer(d32: float, D_mol: float,
 
 
 # ---------------------------------------------------------------------------
-# Heat-transfer media database
+# Heat-transfer media database  (loaded from data/HTM.csv)
 # ---------------------------------------------------------------------------
 
-HTM_DB: dict[str, dict] = {
-    "Water": {
-        "T_min_C": 5.0, "T_max_C": 95.0,
-        "rho_kg_m3": 997.0, "Cp_J_kgK": 4182.0,
-        "mu_Pa_s": 8.9e-4, "k_W_mK": 0.607,
-        "notes": "Standard cooling/heating medium",
-    },
-    "Water-Glycol (50/50)": {
-        "T_min_C": -30.0, "T_max_C": 105.0,
-        "rho_kg_m3": 1075.0, "Cp_J_kgK": 3350.0,
-        "mu_Pa_s": 3.5e-3, "k_W_mK": 0.400,
-        "notes": "50 wt-% ethylene glycol in water",
-    },
-    "Syltherm 800": {
-        "T_min_C": -40.0, "T_max_C": 400.0,
-        "rho_kg_m3": 935.0, "Cp_J_kgK": 1630.0,
-        "mu_Pa_s": 9.6e-4, "k_W_mK": 0.135,
-        "notes": "Dow silicone HTF, wide range",
-    },
-    "Syltherm HF": {
-        "T_min_C": -73.0, "T_max_C": 260.0,
-        "rho_kg_m3": 873.0, "Cp_J_kgK": 1590.0,
-        "mu_Pa_s": 5.0e-4, "k_W_mK": 0.100,
-        "notes": "Dow silicone HTF, low-temperature focus",
-    },
-    "Dowtherm A": {
-        "T_min_C": 15.0, "T_max_C": 400.0,
-        "rho_kg_m3": 1056.0, "Cp_J_kgK": 1590.0,
-        "mu_Pa_s": 2.5e-3, "k_W_mK": 0.138,
-        "notes": "Eutectic mix of biphenyl / diphenyl oxide",
-    },
-    "Dowtherm Q": {
-        "T_min_C": -35.0, "T_max_C": 330.0,
-        "rho_kg_m3": 993.0, "Cp_J_kgK": 1660.0,
-        "mu_Pa_s": 2.2e-3, "k_W_mK": 0.114,
-        "notes": "Diethylbenzene / alkylated aromatics blend",
-    },
-    "Steam (condensing)": {
-        "T_min_C": 100.0, "T_max_C": 250.0,
-        "rho_kg_m3": 0.6, "Cp_J_kgK": 2010.0,
-        "mu_Pa_s": 1.2e-5, "k_W_mK": 0.025,
-        "h_jacket_override": 8000.0,
-        "notes": "Condensing steam: very high h_o (6000-12000 W/m²·K)",
-    },
-    "Therminol 66": {
-        "T_min_C": -3.0, "T_max_C": 345.0,
-        "rho_kg_m3": 1005.0, "Cp_J_kgK": 1680.0,
-        "mu_Pa_s": 3.0e-3, "k_W_mK": 0.118,
-        "notes": "Partially hydrogenated terphenyl",
-    },
-    "Marlotherm SH": {
-        "T_min_C": -5.0, "T_max_C": 350.0,
-        "rho_kg_m3": 1040.0, "Cp_J_kgK": 1630.0,
-        "mu_Pa_s": 2.8e-3, "k_W_mK": 0.120,
-        "notes": "Benzyltoluene-based HTF",
-    },
-    "Brine (CaCl₂ 25%)": {
-        "T_min_C": -40.0, "T_max_C": 60.0,
-        "rho_kg_m3": 1230.0, "Cp_J_kgK": 2810.0,
-        "mu_Pa_s": 4.5e-3, "k_W_mK": 0.540,
-        "notes": "25 wt-% calcium chloride in water",
-    },
-}
+import pathlib as _pathlib
+
+_HTM_CSV = _pathlib.Path(__file__).resolve().parent.parent / "data" / "HTM.csv"
+
+
+def load_htm_db(csv_path=_HTM_CSV) -> dict[str, dict]:
+    """Load heat-transfer media from CSV into the same dict structure."""
+    df = pd.read_csv(csv_path)
+    db: dict[str, dict] = {}
+    for _, row in df.iterrows():
+        entry: dict = {
+            "T_min_C": float(row["T_min_C"]),
+            "T_max_C": float(row["T_max_C"]),
+            "rho_kg_m3": float(row["rho_kg_m3"]),
+            "Cp_J_kgK": float(row["Cp_J_kgK"]),
+            "mu_Pa_s": float(row["mu_Pa_s"]),
+            "k_W_mK": float(row["k_W_mK"]),
+            "notes": str(row.get("notes", "")),
+        }
+        if pd.notna(row.get("h_jacket_override")):
+            entry["h_jacket_override"] = float(row["h_jacket_override"])
+        db[str(row["htm_name"])] = entry
+    return db
+
+
+HTM_DB: dict[str, dict] = load_htm_db()
 
 
 # ---------------------------------------------------------------------------

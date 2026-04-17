@@ -1031,6 +1031,14 @@ def build_heat_transfer_pdf(snap: dict) -> bytes:
         pdf.image(io.BytesIO(fig_rate_png), x=15, w=180)
         pdf.ln(5)
 
+    # ── U vs Time (temperature-dependent) ────────────────────────────────
+    fig_U_png = snap.get("fig_U_png")
+    if fig_U_png:
+        pdf.add_page()
+        pdf.section_title("Overall U vs. Time (Temperature-Dependent Properties)")
+        pdf.image(io.BytesIO(fig_U_png), x=15, w=180)
+        pdf.ln(5)
+
     # ── RPM Sensitivity ──────────────────────────────────────────────────
     if fig_rpm_png or fig_trpm_png:
         pdf.add_page()
