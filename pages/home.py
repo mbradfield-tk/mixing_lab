@@ -15,19 +15,20 @@ Welcome to **Mixing Lab** – an interactive tool for assessing reaction mixing 
 | Group | Page | Purpose |
 |-------|------|---------|
 | **Databases** | **⚗️ Reactor Database** | Browse, add, and edit reactor geometries with 2D/3D schematics; use existing reactors as templates |
-| | **🧪 Reaction Database** | Manage reactions with kinetic parameters (rate constants, orders, temps, ΔH) |
-| | **💧 Fluid Database** | Define or import fluid properties (density, viscosity, diffusivity) |
+| | **🧪 Reaction Database** | Manage reactions with kinetic parameters (rate constants, orders, concentrations, ΔH) |
+| | **💧 Fluid Database** | Browse built-in solvents, explore temperature-dependent properties, and manage custom fluids |
 | | **❇️ Particle Database** | Define solid-particle properties (density, PSD, shape factor) |
 | **Analysis** | **🧭 Reaction Sensitivity Protocol** | Interactive decision tree to assess which mixing mechanisms may limit your reaction at scale |
 | | **💎 Crystallization Sensitivity Protocol** | Decision tree for crystallization mixing sensitivity (nucleation, growth, anti-solvent) |
-| | **🌀 Mixing Assessment** | Reaction-reactor analysis: compute hydrodynamics, Damköhler numbers, heat balance, solids suspension & operating envelopes |
-| | **🅱️ Bourne Protocol** | Step-by-step Bourne mixing-sensitivity screening protocol (Sarafinas modification) |
+| | **🌀 Mixing Assessment** | Reactor–reaction–fluid analysis: compute hydrodynamics, Damköhler numbers, heat balance, solids suspension & operating envelopes |
+| | **🅱️ Bourne Protocol** | Step-by-step Bourne/Sarafinas mixing-sensitivity screening – vary speed, feed rate, and feed location to identify the controlling mixing scale |
 | | **📈 Reactor Comparison** | Side-by-side comparison of hydrodynamics and operating envelopes across multiple reactors |
 | **Tools** | **🔄 Unit Converter** | Quick conversion between common engineering units |
+| | **🔥 Heat Transfer** | Estimate heating/cooling times, compute overall U from first principles, visualize batch temperature profiles, and compare heat-transfer media |
 | **Results** | **📋 Recorded Results** | Save, review, filter, and export results for specific reactor/reaction combinations |
-| | **📄 Mixing Report** | Preview and export a PDF report of the latest Mixing Assessment (metrics, sensitivity, envelope charts) |
-| **Reference** | **📐 Equations** | Reference pages for all correlations (hydrodynamics, mixing, mass transfer, heat balance, particles, scale-up, ROM, crystallisation) |
-| **Admin** | **🛠️ Admin Tools** | Import reactors from CSV/Excel, generate decision-tree images |
+| **Reference** | **📐 Equations Reference** | Reference pages for all correlations (hydrodynamics, mixing, mass transfer, heat balance, particles, scale-up, ROM, crystallisation) |
+| **Admin** | **🛠️ Admin Tools** | Import reactors from CSV/Excel, convert transposed master files to row-per-reactor format |
+| | **🔧 ROM / Correlation Fitting** | Upload measured or CFD data, fit reduced-order models, and register correlations for use throughout Mixing Lab |
 
 ---
 
