@@ -71,7 +71,7 @@ st.caption(
 
 # ── Visual overview of the decision tree ─────────────────────────────────
 _IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "general"
-_MSP_IMG = _IMG_DIR / "mixing_sensitivity_protocol-2.png"
+_MSP_IMG = _IMG_DIR / "mixing_sensitivity_protocol-3.png"
 
 with st.expander("📋 Protocol overview", expanded=False):
     if _MSP_IMG.exists():
