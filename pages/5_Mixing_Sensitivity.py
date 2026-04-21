@@ -194,10 +194,7 @@ _xk = reaction_name  # reaction key fragment
 # ── System type selection ────────────────────────────────────────────────
 st.subheader("System Type")
 st.caption(
-    "Define the multiphase nature of the system. Select all that apply. "
-    "Leave empty for a **single-phase (liquid-only)** system — the app will "
-    "compute hydrodynamics, mixing times, and Damköhler numbers for the "
-    "continuous liquid phase only."
+    "Select multiphase types as applicable. Leave empty for single-phase liquid."
 )
 _SYSTEM_OPTIONS = ["Gas-Liquid (GL)", "Liquid-Liquid (LL)", "Solid-Liquid (SL)"]
 system_types = st.multiselect(
@@ -214,7 +211,17 @@ include_LL = "Liquid-Liquid (LL)" in system_types
 include_SL = "Solid-Liquid (SL)" in system_types
 
 if not system_types:
-    st.info("**Liquid-only** — single-phase hydrodynamics, mixing, and Damköhler analysis.")
+    st.info("**Liquid-only** mode.")
+
+# ── Process mode ─────────────────────────────────────────────────────────
+is_semi_batch = st.checkbox(
+    "Semi-batch (fed-batch) process",
+    value=st.session_state.get("_sel_semi_batch", False),
+    key="ms_semi_batch",
+    on_change=_reset_p5,
+    help="Reagent or anti-solvent is dosed during the reaction.",
+)
+st.session_state["_sel_semi_batch"] = is_semi_batch
 
 # ── GL inputs ────────────────────────────────────────────────────────────
 v_s = 0.0
@@ -223,12 +230,10 @@ gl_bubble_d_mm = 3.0
 gl_sparged = False
 if include_GL:
     with st.expander("Gas-Liquid — sparging & gas phase", expanded=True):
-        st.caption("Define gas-liquid mass-transfer mode and sparging conditions.")
         gl_mode = st.radio(
-            "Gas-liquid mass-transfer mode",
+            "GL mass-transfer mode",
             ["Sparged (gas fed through sparger)", "Headspace only (free-surface transfer)"],
             horizontal=True, key="ov_gl_mode",
-            help="Sparged: gas is actively injected. Headspace: transfer occurs only through the liquid surface.",
         )
         gl_sparged = gl_mode.startswith("Sparged")
         if gl_sparged:
@@ -247,11 +252,10 @@ if include_GL:
             gl_bubble_d_mm = gc3.number_input(
                 "Estimated bubble diameter (mm)", value=3.0, min_value=0.1,
                 max_value=50.0, format="%.1f", key="ov_bubble_d",
-                help="Initial estimate; Calderbank d₃₂ will be computed.",
+                help="Initial estimate; d₃₂ computed via Calderbank.",
             )
         else:
-            st.caption("Mass transfer via the free liquid surface only (Lamont-Scott model). "
-                       "No sparger — kLa_surface will be computed.")
+            st.caption("Headspace only — kLa_surface via Lamont-Scott model.")
 
 # ── LL inputs ────────────────────────────────────────────────────────────
 ll_rho_d = 800.0
@@ -261,10 +265,7 @@ ll_phi_d = 0.10
 ll_D_mol_LL = 1e-9
 if include_LL:
     with st.expander("Liquid-Liquid — dispersed phase", expanded=True):
-        st.caption(
-            "Define the immiscible dispersed-phase liquid. The continuous "
-            "phase is the fluid selected above."
-        )
+        st.caption("Define the dispersed phase (continuous phase = fluid above).")
         _ll_source = st.radio(
             "Dispersed-phase definition",
             ["Select from fluid database", "Enter properties manually"],
@@ -323,18 +324,18 @@ if include_LL:
         ll_sigma_LL = ll_c1.number_input(
             "Interfacial tension σ (N/m)", value=0.030, min_value=1e-5,
             format="%.4f", key="ov_ll_sigma",
-            help="Interfacial tension between continuous and dispersed phases",
+            help="Between continuous and dispersed phases",
         )
         ll_phi_d = ll_c2.number_input(
             "Dispersed-phase volume fraction φ_d", value=0.10,
             min_value=0.001, max_value=0.70, format="%.3f",
             key="ov_ll_phi_d",
-            help="Volume fraction of the dispersed phase (0–0.7)",
+            help="Range 0–0.7",
         )
         ll_D_mol_LL = ll_c3.number_input(
             "D_mol for LL transfer (m²/s)", value=1e-9,
             format="%.2e", key="ov_ll_Dmol",
-            help="Molecular diffusivity of solute across the L-L interface",
+            help="Solute diffusivity across L-L interface",
         )
 
         # ── Miscibility screening ─────────────────────────────────────────
@@ -358,36 +359,32 @@ if include_LL:
                 _hd2.caption(f"δ ({_disp_name}): ({_misc['hsp_2'][0]:.1f}, {_misc['hsp_2'][1]:.1f}, {_misc['hsp_2'][2]:.1f}) MPa½")
 
             if _misc["source"] == "lookup":
-                _src_note = "Based on experimental miscibility data."
+                _src_note = "Experimental data."
             elif _misc["source"] == "Hansen estimate":
-                _src_note = "Estimated via Hansen Solubility Parameters — verify experimentally."
+                _src_note = "Hansen estimate — verify experimentally."
             else:
                 _src_note = ""
 
             if _misc["miscible"] is True:
                 if "Partially" in _misc["assessment"]:
-                    st.warning(f"🟡 **{_misc['assessment']}** — "
-                               "these liquids have limited mutual solubility. "
-                               "L-L dispersion calculations may still apply at higher phase fractions.")
+                    st.warning(f"🟡 **{_misc['assessment']}** — limited mutual solubility; L-L may apply at higher φ.")
                 else:
-                    st.error(f"🔴 **{_misc['assessment']}** — "
-                             "these liquids form a single phase. L-L dispersion does not apply.")
+                    st.error(f"🔴 **{_misc['assessment']}** — single phase; L-L dispersion N/A.")
             elif _misc["miscible"] is False:
-                st.success(f"🟢 **{_misc['assessment']}** — "
-                           "suitable for L-L dispersion calculations.")
+                st.success(f"🟢 **{_misc['assessment']}** — suitable for L-L dispersion.")
             else:
-                st.info("Miscibility unknown — no data available for this pair.")
+                st.info("Miscibility unknown for this pair.")
 
             if _src_note:
                 st.caption(_src_note)
         else:
-            st.caption("Miscibility screening available when dispersed phase is selected from the fluid database.")
+            st.caption("Miscibility screening requires dispersed phase from fluid database.")
 
 # ── SL inputs ────────────────────────────────────────────────────────────
 include_particles = include_SL
 if include_SL and not particles.empty:
     with st.expander("Solid-Liquid — particle properties", expanded=True):
-        st.caption("Define the solid phase for suspension and S-L mass transfer calculations.")
+        st.caption("Solid-phase properties for suspension and S-L mass transfer.")
 
         def _on_particle_change():
             """Reset override widgets when a new particle is selected."""
@@ -426,19 +423,19 @@ if include_SL and not particles.empty:
         if _solids_basis == "Mass (wt-%)":
             X_wt = pc4.number_input("Solids loading X (wt-%)", value=5.0,
                                     min_value=0.01, format="%.2f", key="ov_Xwt",
-                                    help="Mass of solids / mass of liquid × 100")
+                                    help="(mass solids / mass liquid) × 100")
             X_vol = 100.0 * X_wt * rho_p / (X_wt * rho_p + 100.0 * _rho_default) if rho_p > 0 else 0.0
             pc5.metric("Xv (vol-%)", f"{X_vol:.2f}")
         else:
             X_vol = pc4.number_input("Solids loading Xv (vol-%)", value=2.0,
                                      min_value=0.01, max_value=99.0,
                                      format="%.2f", key="ov_Xv",
-                                     help="Volume of solids / volume of slurry × 100")
+                                     help="(vol solids / vol slurry) × 100")
             X_wt = 100.0 * rho_p * X_vol / (_rho_default * (100.0 - X_vol)) if (100.0 - X_vol) > 0 and _rho_default > 0 else 0.0
             pc5.metric("X (wt-%)", f"{X_wt:.2f}")
         S_zw = pc6.number_input("Zwietering S constant", value=5.5, min_value=0.5,
                                 max_value=20.0, format="%.1f", key="ov_Szw",
-                                help="Geometry-dependent constant (typ. 1–10, PBT ≈ 5.5)")
+                                help="Typ. 1–10, PBT ≈ 5.5")
 
         st.markdown("**Grenville, Mak & Brown (GMB) parameters**")
         _gmb_z_default = _safe(reactor.get("GMB_z"), 0.0)
@@ -447,17 +444,17 @@ if include_SL and not particles.empty:
         pc7, pc8 = st.columns(2)
         gmb_z = pc7.number_input("GMB z constant", value=_gmb_z_default if _gmb_z_default > 0 else 3.0,
                                   min_value=0.1, max_value=30.0, format="%.2f", key="ov_gmb_z",
-                                  help="Geometry constant (impeller-type dependent)")
+                                  help="Impeller-type dependent")
         C_D_ratio = pc8.number_input("C/D (clearance / impeller dia)",
                                       value=_C_D_default, min_value=0.01,
                                       max_value=2.0, format="%.3f", key="ov_CD",
-                                      help="Impeller clearance / impeller diameter")
+                                      help="Clearance / impeller diameter")
 elif include_SL and particles.empty:
     st.warning("Particle database is empty. Add particles on the Particle Database page.")
 
 # ── Gate 1: confirm system selection ─────────────────────────────────────
 if st.session_state["_p5_step"] < 1:
-    st.info("👆 Review the system selection above, then confirm to continue.")
+    st.info("Confirm the system selection above to continue.")
     if st.button("✅ Confirm system selection", key="p5_gate1", type="primary"):
         st.session_state["_p5_step"] = 1
         st.rerun()
@@ -542,18 +539,18 @@ with st.expander("Fluid properties (continuous phase)", expanded=False):
     mu = fc2.number_input("μ (Pa·s)", value=_mu_default, format="%.6f", key=f"ov_mu_{_fk}")
     D_mol = fc3.number_input("D_mol (m²/s)", value=_D_mol_default, format="%.2e", key=f"ov_Dmol_{_fk}")
     sigma_c = fc4.number_input("σ surface tension (N/m)", value=_sigma_default, format="%.4f", key=f"ov_sigma_{_fk}",
-                               help="Continuous-phase surface tension (used for GL/LL calculations)")
+                               help="Used for GL/LL calculations")
 
 with st.expander("Reaction parameters", expanded=False):
     rc1, rc2, rc3 = st.columns(3)
     k_val = rc1.number_input("k", value=float(reaction["k_value"]), format="%.6g", key=f"ov_k_{_xk}")
     C0 = rc2.number_input("C₀ (mol/L)", value=float(reaction["C0_mol_L"]), format="%.4g", key=f"ov_C0_{_xk}")
     t_rxn_input = rc3.number_input("t_rxn (s)", value=float(reaction["t_rxn_s"]), format="%.4g", key=f"ov_trxn_{_xk}",
-                                    help="Characteristic reaction time. 0 = auto-compute.")
+                                    help="0 = auto-compute from k and C₀")
 
 # ── Gate 2: confirm parameter overrides ──────────────────────────────────
 if st.session_state["_p5_step"] < 2:
-    st.info("👆 Review the parameter overrides above, then confirm to continue.")
+    st.info("Confirm parameters above to continue.")
     if st.button("✅ Confirm parameters", key="p5_gate2", type="primary"):
         st.session_state["_p5_step"] = 2
         st.rerun()
@@ -566,17 +563,13 @@ st.header("3 · Correlation Source Selection")
 if has_any_alt_correlations(reactor_name):
     with st.expander("Correlation source selection", expanded=False):
         st.caption(
-            "Select one or more of **Literature**, **ROM**, **Experimental** per "
-            "parameter.  Each selection generates its own operating envelope.  "
-            "Metrics show the highest-priority value "
-            "(Experimental → ROM → Literature)."
+            "Select sources per parameter. Priority: Experimental → ROM → Literature."
         )
         corr_selections = render_correlation_matrix_multi(
             reactor_name, key_prefix="ms_corr",
         )
 else:
-    st.info(f"Only **Literature** correlations available for **{reactor_name}**. "
-            "Register ROM or Experimental correlations to enable source comparison.")
+    st.info(f"Only **Literature** correlations for **{reactor_name}**. Register ROM/Experimental to compare sources.")
     corr_selections = {p: ["Literature"] for p in SUPPORTED_PARAMS}
 
 # Derive a single priority mode dict for the main metrics
@@ -594,7 +587,7 @@ include_heat = rxn_delta_H != 0
 
 # ── Gate 3: confirm correlations & compute ───────────────────────────────
 if st.session_state["_p5_step"] < 3:
-    st.info("👆 Review the correlation sources above, then confirm to compute results.")
+    st.info("Confirm correlation sources to compute results.")
     if st.button("🔬 Confirm & Compute", key="p5_gate3", type="primary"):
         st.session_state["_p5_step"] = 3
         st.rerun()
@@ -686,6 +679,19 @@ _da_banner("Micromixing", da["Da_micro"])
 lam_B = batchelor_length(mu / rho, hydro["P/V (W/kg)"], D_mol)
 st.info(f"Batchelor microscale λ_B = {lam_B * 1e6:.2f} µm  |  Reaction time t_rxn = {t_rxn:.4g} s")
 
+if is_semi_batch:
+    st.warning(
+        "⚠️ **Semi-batch process** — three mixing scales act in series at the feed point:\n\n"
+        "1. **Macromixing** (θ₉₅) — bulk blending of added reagent into the vessel\n"
+        "2. **Mesomixing** ($t_{meso}$) — turbulent dispersion of the feed plume; "
+        "controls local concentration before molecular homogenisation\n"
+        "3. **Micromixing** ($t_E$) — engulfment at the Kolmogorov scale\n\n"
+        "To distinguish these experimentally, run the full **🅱️ Bourne Protocol**:\n"
+        "- Vary **impeller speed** → probes micromixing (ε changes)\n"
+        "- Vary **feed rate / addition time** → probes mesomixing\n"
+        "- Vary **feed location** → probes meso- and macromixing"
+    )
+
 # ── 4b · Gas-Liquid Mass Transfer ─────────────────────────────────────────
 gl_results = {}
 if include_GL:
@@ -715,11 +721,11 @@ if include_GL:
         mt8.metric("N/N_flood", f"{_flood_ratio:.2f}")
 
         if _flood_ratio < 1.0:
-            st.error("🔴 **Impeller is flooded** — operating below flooding speed. Gas dispersion is poor.")
+            st.error("🔴 **Flooded** — below flooding speed.")
         elif _flood_ratio < 1.3:
-            st.warning("🟡 **Near flooding** — increase impeller speed for effective gas dispersion.")
+            st.warning("🟡 **Near flooding** — increase speed.")
         else:
-            st.success(f"🟢 **Good gas dispersion** — N/N_flood = {_flood_ratio:.2f}")
+            st.success(f"🟢 **Good dispersion** — N/N_flood = {_flood_ratio:.2f}")
 
         gl_results = {
             "GL mode": "Sparged",
@@ -739,9 +745,9 @@ if include_GL:
         if da_gl_val > 0:
             mt2.metric("Da_GL (surface)", f"{da_gl_val:.3g}")
         if gl_sparged and v_s <= 0:
-            st.caption("Sparged mode selected but v_s = 0. Set superficial gas velocity > 0.")
+            st.caption("Sparged selected but v_s = 0 — set v_s > 0.")
         else:
-            st.caption("Headspace-only mode — free-surface kLa (Lamont-Scott model).")
+            st.caption("Headspace only — kLa via Lamont-Scott.")
         gl_results = {
             "GL mode": "Headspace",
             "kLa surface (1/s)": hydro["kLa_surface (1/s)"],
@@ -756,7 +762,7 @@ else:
     da_gl_val = da["Da_GL"]
     if da_gl_val > 0:
         mt2.metric("Da_GL (surface)", f"{da_gl_val:.3g}")
-    st.caption("GL system type not selected. Only free-surface kLa (Lamont-Scott) is shown.")
+    st.caption("GL not selected — free-surface kLa only (Lamont-Scott).")
 
 # ── 4c · Liquid-Liquid ───────────────────────────────────────────────────
 ll_results = {}
@@ -795,9 +801,9 @@ if include_LL:
     # Dispersion stability assessment
     _disp_ratio = N_rps / _N_min_disp if _N_min_disp > 0 else 0
     if _disp_ratio < 0.8:
-        st.error(f"🔴 **Poor dispersion** — N/N_min = {_disp_ratio:.2f}. Phases may separate rapidly.")
+        st.error(f"🔴 **Poor dispersion** — N/N_min = {_disp_ratio:.2f}")
     elif _disp_ratio < 1.0:
-        st.warning(f"🟡 **Marginal dispersion** — close to minimum dispersing speed.")
+        st.warning(f"🟡 **Marginal** — near minimum dispersing speed.")
     else:
         st.success(f"🟢 **Good dispersion** — N/N_min = {_disp_ratio:.2f}")
 
@@ -876,7 +882,7 @@ if include_heat:
         "Q_gen/Q_cool (%)": _ratio_pct,
     }
 else:
-    st.caption("No enthalpy data (ΔH) for the selected reaction — heat balance skipped.")
+    st.caption("No ΔH data — heat balance skipped.")
 
 # ── 4e · Solid-Liquid ────────────────────────────────────────────────────
 particle_results = {}
@@ -951,18 +957,18 @@ if include_SL and not particles.empty:
     _da_banner("Solid-liquid mass transfer", _Da_SL)
 
     if "Poorly" in susp:
-        st.error(f"🔴 **{susp}** — current speed is below just-suspended speed")
+        st.error(f"🔴 **{susp}** — below N_js")
     elif "Partially" in susp:
-        st.warning(f"🟡 **{susp}** — increase speed to achieve full suspension")
+        st.warning(f"🟡 **{susp}** — increase speed")
     elif "Just" in susp:
-        st.info(f"🟢 **{susp}** — operating near just-suspended conditions")
+        st.info(f"🟢 **{susp}** — near N_js")
     else:
-        st.success(f"🟢 **{susp}** — particles are well suspended")
+        st.success(f"🟢 **{susp}**")
 
 # ── Operating Envelope Charts ────────────────────────────────────────────
 st.divider()
 st.header("5 · Operating Envelopes")
-st.caption("Parameter variation across the reactor's full RPM and volume range.")
+st.caption("Sweep across full RPM and volume range.")
 
 # Read RPM range
 _rpm_min = _safe(reactor.get("N_rpm_min"), 0.0)
@@ -1358,21 +1364,13 @@ if _can_envelope:
 
         with st.expander("Chart legend"):
             st.markdown("""
-**Shaded region:** Operational envelope spanning min-to-max fill volume.
-
-**Boundary lines:**
-- **Solid line** = max fill volume edge
-- **Dotted line** = min fill volume edge
-
-**★ Red star** = Current operating point (selected RPM & volume)
-
-**Colours (when multiple sources selected):**
-- 🔵 Blue = Literature
-- 🟢 Green = ROM
-- 🟠 Orange = Experimental
+- **Shaded region** = volume envelope (min → max fill)
+- **Solid line** = max volume · **Dotted** = min volume
+- **★ Red star** = current operating point
+- 🔵 Literature · 🟢 ROM · 🟠 Experimental
 """)
 else:
-    st.info("Reactor has no RPM range defined — cannot compute operating envelope.")
+    st.info("No RPM range defined — envelope unavailable.")
 
 # Full table
 st.subheader("Full Hydrodynamic Parameter Table")
@@ -1516,7 +1514,7 @@ if st.button("📌 Save this result to Recorded Results"):
     # Also persist to CSV
     results_csv = DATA_DIR / "recorded_results.csv"
     st.session_state.recorded_results.to_csv(results_csv, index=False)
-    st.success("Result saved! View it on the **Recorded Results** page.")
+    st.success("Saved — see **Recorded Results** page.")
 
 # ── Generate PDF Report ──────────────────────────────────────────────────
 st.divider()

@@ -313,6 +313,40 @@ with st.expander("Reactor Import Tool", expanded=False):
             if col not in result.columns:
                 result[col] = np.nan
 
+        # ── Ensure every row has a unique reactor_id (RX-NNN format) ────────
+        if "reactor_id" not in result.columns:
+            result.insert(0, "reactor_id", np.nan)
+
+        def _next_id(used_nums: set) -> tuple[str, int]:
+            n = max(used_nums, default=0) + 1
+            used_nums.add(n)
+            return f"RX-{n:03d}", n
+
+        # Collect numbers already in use (keep existing IDs intact)
+        used = set()
+        for rid in result["reactor_id"].dropna():
+            s = str(rid).strip()
+            if s.upper().startswith("RX-") and s[3:].isdigit():
+                used.add(int(s[3:]))
+
+        newly_assigned: list[tuple[int, str, str]] = []  # (row_idx, reactor_name, new_id)
+        result = result.reset_index(drop=True)
+        for idx, row in result.iterrows():
+            rid = row.get("reactor_id")
+            if pd.isna(rid) or str(rid).strip() == "":
+                new_id, n = _next_id(used)
+                result.at[idx, "reactor_id"] = new_id
+                newly_assigned.append((idx, str(row.get("reactor_name", f"row {idx}")), new_id))
+
+        if newly_assigned:
+            names_list = "\n".join(
+                f"- **{name}** → `{rid}`" for _, name, rid in newly_assigned
+            )
+            st.warning(
+                f"⚠️ {len(newly_assigned)} reactor(s) were missing a `reactor_id` "
+                f"and have been assigned new IDs:\n\n{names_list}"
+            )
+
         # Write
         result.to_csv(REACTOR_CSV, index=False)
         # Update session state if cached
@@ -489,13 +523,15 @@ _MSP_DOT = """
         SUM   [label="6 · Summary & \\nRecommendations" shape=Mrecord
                fillcolor="#2196F3" fontcolor=white fontsize=11]
 
-        /* Step 0 – Bourne pre-screening */
-        BOURNE [label="0 · Bourne Protocol\\nPart 1 suggested pre-screen" shape=diamond
+        /* Step 0 – Bourne pre-screening (3 outcomes) */
+        BOURNE [label="0 · Bourne Protocol\\nPart 1 pre-screen" shape=diamond
                 fillcolor="#E3F2FD" color="#90CAF9"]
-        BOURNE_DO [label="Run Bourne Protocol\\nPart 1 (quick screen)\\n→ vary P/V (i.e stir speed)"
-                   fillcolor="#FFF3E0" color="#FFB74D"]
-        BOURNE_OK [label="✅ Pre-screen\\ncomplete"
-                   fillcolor="#E8F5E9" color="#81C784"]
+        B_SENS [label="🔴 Mixing sensitivity\\nconfirmed experimentally"
+                fillcolor="#FFEBEE" color="#EF9A9A"]
+        B_NONE [label="🟢 No sensitivity\\nobserved at lab scale"
+                fillcolor="#E8F5E9" color="#81C784"]
+        B_SKIP [label="⚪ Skipped\\n→ proceed with theory"
+                fillcolor="#F5F5F5" color="#BDBDBD"]
 
         /* Step 1 – Kinetics */
         K     [label="1 · Kinetics\\navailable?" shape=diamond
@@ -504,7 +540,15 @@ _MSP_DOT = """
                fillcolor="#FFF3E0" color="#FFB74D"]
         KAPPROX [label="Select approximate\\nkinetics from DB\\n(similar reaction)"
                  fillcolor="#FFF8E1" color="#FFD54F"]
-        KSEL  [label="Select reaction\\nfrom database"
+        KSEL  [label="Select reaction\\nfrom database\\n→ compute t_rxn"
+               fillcolor="#E8F5E9" color="#81C784"]
+
+        /* Semi-batch decision (after kinetics, before phases) */
+        SB    [label="Semi-batch\\n(fed-batch)?" shape=diamond
+               fillcolor="#E3F2FD" color="#90CAF9"]
+        SB_Y  [label="☑ Semi-batch\\n→ mesomixing inherently\\nrelevant at feed point"
+               fillcolor="#FFF8E1" color="#FFD54F"]
+        SB_N  [label="Batch process"
                fillcolor="#E8F5E9" color="#81C784"]
 
         /* Step 2 – Phases */
@@ -518,85 +562,119 @@ _MSP_DOT = """
         /* Step 3 – Competing reactions */
         CR      [label="3 · Competing\\nreactions?" shape=diamond
                  fillcolor="#E3F2FD" color="#90CAF9"]
-        MESO    [label="⚠️ Micro/meso-mixing limitation possible\\n→ Bourne Protocol"
-                 fillcolor="#FFF8E1" color="#EF9A9A"]
-        MESO_OK [label="✅ Micro/meso-mixing\\nnot a factor"
+        MESO    [label="⚠️ Micro/meso-mixing\\nlimitation possible\\n→ Bourne Protocol"
+                 fillcolor="#FFEBEE" color="#EF9A9A"]
+        MESO_OK [label="✅ Micro/meso-mixing\\n(selectivity) not a factor\\n→ macromixing may still matter"
                  fillcolor="#E8F5E9" color="#81C784"]
 
-        /* Step 4 – Heat */
+        /* Semi-batch override (after Step 3 when no competing rxns) */
+        SB_OVR [label="⚠️ Semi-batch override:\\nmesomixing controls\\nfeed-plume concentration\\n(even without competing rxns)"
+                fillcolor="#FFF8E1" color="#FFD54F"]
+
+        /* Step 4 – Heat transfer (4-tier classification) */
         HT     [label="4 · ΔH data\\navailable?" shape=diamond
                 fillcolor="#E3F2FD" color="#90CAF9"]
         HT_MEASURE [label="Perform calorimetry\\n→ measure ΔH"
                     fillcolor="#FFF3E0" color="#FFB74D"]
         HT_EST [label="Estimate ΔH from\\nsimilar reaction"
                 fillcolor="#FFF8E1" color="#FFD54F"]
-        HT_CHK [label="|ΔH| ≥ 50\\nkJ/mol?" shape=diamond
+        HT_CHK [label="|ΔH|\\nclassification" shape=diamond
                 fillcolor="#E3F2FD" color="#90CAF9"]
-        HT_HOT [label="🔴 Heat-sensitive\\n→ run heat balance"
+        HT_HI  [label="🔴 |ΔH| ≥ 100 kJ/mol\\nHighly exothermic\\n→ run heat balance"
                 fillcolor="#FFEBEE" color="#EF9A9A"]
-        HT_OK  [label="🟢 Modest\\nexothermicity"
-                fillcolor="#E8F5E9" color="#81C784"]
-
-        /* Step 5 – Mixing time */
-        MIX    [label="5 · Reaction\\ntime t_rxn" shape=diamond
-                fillcolor="#E3F2FD" color="#90CAF9"]
-        MICRO  [label="🔴 Micromixing\\nlikely sensitive"
-                fillcolor="#FFEBEE" color="#EF9A9A"]
-        MACRO  [label="🟡 Macromixing\\nmay matter at scale"
+        HT_MOD [label="🟡 |ΔH| 50–100 kJ/mol\\nModerately exothermic\\n→ run heat balance"
                 fillcolor="#FFF8E1" color="#FFD54F"]
-        MIX_OK [label="🟢 Mixing unlikely\\nto be limiting"
+        HT_MILD [label="🔵 |ΔH| 20–50 kJ/mol\\nMildly exothermic\\n→ unlikely to limit"
+                 fillcolor="#E3F2FD" color="#90CAF9"]
+        HT_LOW [label="🟢 |ΔH| < 20 kJ/mol\\nLow exothermicity"
                 fillcolor="#E8F5E9" color="#81C784"]
 
-        /* Edges — Step 0 */
+        /* Step 5 – Mixing time (4 t_rxn bands) */
+        MIX     [label="5 · Reaction time\\nt_rxn classification" shape=diamond
+                 fillcolor="#E3F2FD" color="#90CAF9"]
+        MIX_VF  [label="🔴 Very fast (< 0.1 s)\\nMicromixing-sensitive\\nin most configurations"
+                 fillcolor="#FFEBEE" color="#EF9A9A"]
+        MIX_F   [label="🟡 Fast (0.1 – 1 s)\\nMicromixing likely\\nin larger vessels"
+                 fillcolor="#FFF8E1" color="#FFD54F"]
+        MIX_MOD [label="🔵 Moderate (1 – 10 s)\\nMacromixing may\\nmatter at scale"
+                 fillcolor="#E3F2FD" color="#90CAF9"]
+        MIX_OK  [label="🟢 Slow (> 10 s)\\nMixing unlikely\\nto be limiting"
+                 fillcolor="#E8F5E9" color="#81C784"]
+
+        /* Semi-batch 3-scale warning in Step 5 */
+        SB_3S  [label="⚠️ Semi-batch:\\n3 scales in series\\n1. Macromixing (θ₉₅)\\n2. Mesomixing (t_meso)\\n3. Micromixing (t_E)\\n→ Bourne Protocol\\n  to distinguish"
+                fillcolor="#FFF8E1" color="#FFD54F"]
+
+        /* ── Edges ── */
+
+        /* Step 0 */
         START -> BOURNE
+        BOURNE -> B_SENS [label="Sensitivity\\nconfirmed"]
+        BOURNE -> B_NONE [label="No sensitivity\\nobserved"]
+        BOURNE -> B_SKIP [label="Skip"]
+        B_SENS -> K
+        B_NONE -> K
+        B_SKIP -> K
 
-        BOURNE -> BOURNE_DO [label="Not done\\nyet"]
-        BOURNE -> BOURNE_OK [label="Done /\\nSkip"]
-        BOURNE_DO -> BOURNE_OK [label="Complete"]
-        BOURNE_OK -> K
-
-        /* Edges — Step 1 */
-        K -> KACT    [label="No kinetics"]
+        /* Step 1 */
+        K -> KACT    [label="No kinetics\\n(STOP)"]
         K -> KAPPROX [label="Approximate"]
         K -> KSEL    [label="Yes"]
-        KACT -> K    [label="Data obtained\\n→ repeat Step 1"]
-        KAPPROX -> PH
-        KSEL -> PH
+        KACT -> K    [label="Data obtained\\n→ repeat Step 1" style=dashed]
+        KAPPROX -> SB
+        KSEL -> SB
 
-        /* Edges — Step 2 */
+        /* Semi-batch decision */
+        SB -> SB_Y [label="Yes"]
+        SB -> SB_N [label="No"]
+        SB_Y -> PH
+        SB_N -> PH
+
+        /* Step 2 */
         PH -> PH_OK [label="Single\\nliquid"]
         PH -> PH_MT [label="Multi-phase\\n(G / L / S)"]
-
         PH_OK -> CR
         PH_MT -> CR
 
-        /* Edges — Step 3 */
+        /* Step 3 */
         CR -> MESO    [label="Yes /\\nNot sure"]
         CR -> MESO_OK [label="No"]
-
         MESO    -> HT
-        MESO_OK -> HT
 
-        /* Edges — Step 4 */
+        /* Semi-batch override: when no competing rxns but semi-batch */
+        MESO_OK -> SB_OVR [label="Semi-batch?\\nYes"]
+        MESO_OK -> HT     [label="Batch\\n(no override)"]
+        SB_OVR  -> HT
+
+        /* Step 4 */
         HT -> HT_MEASURE [label="No ΔH"]
         HT -> HT_EST     [label="Estimate"]
         HT -> HT_CHK     [label="Yes"]
-        HT_MEASURE -> HT [label="Data obtained\\n→ repeat Step 4"]
+        HT_MEASURE -> HT [label="Data obtained\\n→ repeat Step 4" style=dashed]
         HT_EST -> HT_CHK
-        HT_CHK -> HT_HOT [label="Yes"]
-        HT_CHK -> HT_OK  [label="No"]
+        HT_CHK -> HT_HI   [label="≥ 100"]
+        HT_CHK -> HT_MOD  [label="50 – 100"]
+        HT_CHK -> HT_MILD [label="20 – 50"]
+        HT_CHK -> HT_LOW  [label="< 20"]
+        HT_HI   -> MIX
+        HT_MOD  -> MIX
+        HT_MILD -> MIX
+        HT_LOW  -> MIX
 
-        /* Edges — Step 5 */
-        HT_HOT -> MIX
-        HT_OK  -> MIX
+        /* Step 5 */
+        MIX -> MIX_VF  [label="< 0.1 s"]
+        MIX -> MIX_F   [label="0.1 – 1 s"]
+        MIX -> MIX_MOD [label="1 – 10 s"]
+        MIX -> MIX_OK  [label="> 10 s"]
 
-        MIX -> MICRO  [label="< 1 s"]
-        MIX -> MACRO  [label="1 – 10 s"]
-        MIX -> MIX_OK [label="> 10 s"]
+        /* Semi-batch 3-scale warning (applies to all t_rxn bands) */
+        MIX -> SB_3S [label="Semi-batch?\\nYes" style=dashed]
+        SB_3S -> SUM [style=dashed]
 
-        MICRO  -> SUM
-        MACRO  -> SUM
-        MIX_OK -> SUM
+        MIX_VF  -> SUM
+        MIX_F   -> SUM
+        MIX_MOD -> SUM
+        MIX_OK  -> SUM
     }
 """
 

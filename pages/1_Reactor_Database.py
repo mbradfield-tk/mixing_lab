@@ -95,9 +95,54 @@ def _next_reactor_id(df: pd.DataFrame) -> str:
     return f"RX-{max(nums, default=0) + 1:03d}"
 
 
+def _assign_missing_reactor_ids(
+    df: pd.DataFrame,
+) -> tuple[pd.DataFrame, list[tuple[str, str]]]:
+    """Ensure every row has a unique RX-NNN reactor_id.
+
+    Existing IDs are never modified. Rows with a missing or blank reactor_id
+    receive the next available sequential ID.
+
+    Returns
+    -------
+    df : updated copy of the dataframe
+    assigned : list of (reactor_name, new_id) for each row that was assigned
+    """
+    df = df.copy()
+    if "reactor_id" not in df.columns:
+        df.insert(0, "reactor_id", np.nan)
+
+    # Collect numbers already in use
+    used: set[int] = set()
+    for rid in df["reactor_id"].dropna():
+        s = str(rid).strip()
+        if s.upper().startswith("RX-") and s[3:].isdigit():
+            used.add(int(s[3:]))
+
+    def _next(used_set: set[int]) -> str:
+        n = max(used_set, default=0) + 1
+        used_set.add(n)
+        return f"RX-{n:03d}"
+
+    assigned: list[tuple[str, str]] = []
+    df = df.reset_index(drop=True)
+    for idx, row in df.iterrows():
+        rid = row.get("reactor_id")
+        if pd.isna(rid) or str(rid).strip() == "":
+            new_id = _next(used)
+            df.at[idx, "reactor_id"] = new_id
+            assigned.append((str(row.get("reactor_name", f"row {idx}")), new_id))
+    return df, assigned
+
+
 # ── Load into session state ──────────────────────────────────────────────
 if "reactor_db" not in st.session_state:
-    st.session_state.reactor_db = _load_reactors()
+    _loaded = _load_reactors()
+    _loaded, _startup_assigned = _assign_missing_reactor_ids(_loaded)
+    if _startup_assigned:
+        _save_reactors(_loaded)
+        st.session_state["_startup_assigned_ids"] = _startup_assigned
+    st.session_state.reactor_db = _loaded
 else:
     # Ensure any columns added after the initial load are present
     for c in CORE_COLS:
@@ -109,6 +154,17 @@ else:
             st.session_state.reactor_db[c] = st.session_state.reactor_db[c].astype(object)
 
 st.title("⚗️ Reactor Database")
+
+# Warn if any reactor IDs were auto-assigned on this load
+_startup_assigned = st.session_state.pop("_startup_assigned_ids", [])
+if _startup_assigned:
+    _names_list = "\n".join(
+        f"- **{_n}** → `{_id}`" for _n, _id in _startup_assigned
+    )
+    st.warning(
+        f"⚠️ {len(_startup_assigned)} reactor(s) in `reactors.csv` were missing a "
+        f"`reactor_id` and have been assigned new IDs (CSV updated automatically):\n\n{_names_list}"
+    )
 
 _is_admin = st.session_state.get("admin_authenticated", False)
 _ADMIN_HINT = "Log in via Admin Tools to enable editing."
@@ -962,10 +1018,23 @@ with tab_import:
             if st.button("Confirm import", key="reactor_import_confirm",
                          disabled=not _is_admin, help=None if _is_admin else _ADMIN_HINT):
                 if mode.startswith("Replace"):
-                    st.session_state.reactor_db = new_df
+                    result_df = new_df
                 else:
-                    st.session_state.reactor_db = pd.concat(
+                    result_df = pd.concat(
                         [st.session_state.reactor_db, new_df], ignore_index=True)
+
+                # Assign unique IDs to any rows that are missing one
+                result_df, _newly_assigned = _assign_missing_reactor_ids(result_df)
+                if _newly_assigned:
+                    _names_list = "\n".join(
+                        f"- **{name}** → `{rid}`" for name, rid in _newly_assigned
+                    )
+                    st.warning(
+                        f"⚠️ {len(_newly_assigned)} reactor(s) were missing a "
+                        f"`reactor_id` and have been assigned new IDs:\n\n{_names_list}"
+                    )
+
+                st.session_state.reactor_db = result_df
                 _save_reactors(st.session_state.reactor_db)
                 st.success("Reactor database updated.")
         except Exception as e:

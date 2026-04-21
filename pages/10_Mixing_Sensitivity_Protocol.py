@@ -258,6 +258,14 @@ if t_rxn <= 0:
 
 st.success(f"✅ Kinetics available — characteristic reaction time **t_rxn = {t_rxn:.4g} s**.")
 
+# ── Process mode ─────────────────────────────────────────────────────────
+is_semi_batch = st.checkbox(
+    "Semi-batch (fed-batch) process",
+    value=False,
+    key=_key("semi_batch"),
+    help="Reagent or anti-solvent is dosed during the reaction.",
+)
+
 st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -524,6 +532,18 @@ else:
         "Macromixing (blend time) may still matter at scale."
     )
     _meso_sensitive = False
+
+# Semi-batch overrides: mesomixing is inherently relevant for fed-batch
+# processes because the feed plume must be dispersed into the bulk before
+# the reagent reacts (Baldyga & Bourne, 1999; Paul et al., 2004).
+if is_semi_batch and not _meso_sensitive:
+    _meso_sensitive = True
+    st.info(
+        "\u26a0\ufe0f **Semi-batch process** \u2014 even without competing reactions, "
+        "**mesomixing** (feed-plume dispersion) controls local concentration at the "
+        "feed point. Selectivity, local heat release, and supersaturation can all be "
+        "affected by feed rate, feed location, and local turbulence."
+    )
 
 st.divider()
 
@@ -795,6 +815,19 @@ if t_rxn < 30:
         "multiple vessels on the **📈 Reactor Comparison** page."
     )
 
+if is_semi_batch:
+    st.warning(
+        "⚠️ **Semi-batch process** — three mixing scales act in series at the feed point:\n\n"
+        "1. **Macromixing** (θ₉₅) — bulk blending of added reagent into the vessel\n"
+        "2. **Mesomixing** ($t_{meso}$) — turbulent dispersion of the feed plume; "
+        "controls local concentration before molecular homogenisation\n"
+        "3. **Micromixing** ($t_E$) — engulfment at the Kolmogorov scale\n\n"
+        "To distinguish these experimentally, run the full **🅱️ Bourne Protocol**:\n"
+        "- Vary **impeller speed** → probes micromixing (ε changes)\n"
+        "- Vary **feed rate / addition time** → probes mesomixing\n"
+        "- Vary **feed location** → probes meso- and macromixing"
+    )
+
 st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -848,17 +881,25 @@ else:
 
 # Micro- & Mesomixing (selectivity)
 if _meso_sensitive:
-    findings.append((
-        "Micro/mesomixing (selectivity)",
-        "🟡 Potentially sensitive" if competing == "Not sure" else "🔴 Likely sensitive",
-        "Competing reactions present — both micromixing (local ε) and "
-        "mesomixing (feed dispersion) may affect selectivity.",
-    ))
+    if is_semi_batch and competing == "No":
+        findings.append((
+            "Mesomixing (feed-plume)",
+            "🟡 Semi-batch — check experimentally",
+            "No competing reactions, but feed-plume dispersion controls local concentration. "
+            "Vary feed rate and feed location to assess (Bourne Tests 2 & 3).",
+        ))
+    else:
+        findings.append((
+            "Micro/mesomixing (selectivity)",
+            "🟡 Potentially sensitive" if competing == "Not sure" else "🔴 Likely sensitive",
+            "Competing reactions present — both micromixing (local ε) and "
+            "mesomixing (feed dispersion) may affect selectivity.",
+        ))
 else:
     findings.append((
         "Micro/mesomixing (selectivity)",
         "🟢 Not a factor",
-        "No competing reactions identified.",
+        "No competing reactions; batch process (no feed addition).",
     ))
 
 # Macromixing
@@ -912,6 +953,16 @@ else:
         "Heat transfer",
         "⚪ Unknown",
         "No ΔH data available — consider measuring by calorimetry.",
+    ))
+
+# Semi-batch
+if is_semi_batch:
+    findings.append((
+        "Semi-batch (fed-batch)",
+        "🟡 Feed-point sensitive",
+        "Mesomixing (feed-plume dispersion) controls local concentration, "
+        "heat release, and supersaturation at the feed point. "
+        "Sensitive to feed rate, feed location, and local turbulence.",
     ))
 
 # Overall summary verdict
@@ -1002,6 +1053,14 @@ if _has_enthalpy and _heat_sensitive:
                   "📈 Reactor Comparison) to evaluate Q_gen vs Q_cool.",
     })
 
+if is_semi_batch:
+    _steps.append({
+        "Area": "Semi-batch / mesomixing",
+        "Action": "Run the full 🧐 Bourne Protocol: vary impeller speed (micromixing), "
+                  "feed rate / addition time (mesomixing), and feed location "
+                  "(meso/macromixing) to identify the dominant mixing scale.",
+    })
+
 if not _steps:
     _steps.append({
         "Area": "General",
@@ -1051,6 +1110,7 @@ if st.button("📥 Export PDF Report", type="primary", key="p10_export_pdf"):
                 "competing": competing if competing is not None else "Not assessed",
                 "overall_verdict": _verdict,
                 "using_approximate": _using_approximate,
+                "is_semi_batch": is_semi_batch,
             }
             _pdf_bytes = build_protocol_pdf(_p10_snap)
             st.session_state["_p10_pdf_bytes"] = _pdf_bytes

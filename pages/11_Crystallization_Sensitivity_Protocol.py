@@ -102,10 +102,7 @@ def _reset_csp():
 # PAGE HEADER
 # ═══════════════════════════════════════════════════════════════════════
 st.title("💎 Crystallization Sensitivity Protocol")
-st.caption(
-    "An interactive decision tree to assess which mixing mechanisms "
-    "may limit a pharmaceutical crystallization at scale."
-)
+st.caption("Interactive decision tree for crystallization mixing-sensitivity assessment.")
 
 # ── Visual overview of the decision tree ─────────────────────────────────
 _IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "general"
@@ -121,23 +118,15 @@ st.button("🔄 Restart protocol", key=_key("restart"), on_click=_reset_csp)
 
 with st.expander("ℹ️ About this protocol", expanded=False):
     st.markdown(
-        "This protocol adapts the **Mixing Sensitivity Protocol** "
-        "(Page 10) for crystallization processes.  The key difference "
-        "is that the single characteristic reaction time $t_{rxn}$ is "
-        "replaced by **multiple crystallization time scales**:\n\n"
-        "- **Induction time** $t_{ind}$ — the delay between achieving "
-        "supersaturation and detecting the first nuclei.\n"
-        "- **Nucleation time** $t_N$ — the time to generate enough nuclei "
-        "to consume the supersaturation.\n"
-        "- **Growth time** $t_G$ — the time for crystal growth to deplete "
-        "the supersaturation.\n\n"
-        "These are compared against the same mixing time scales "
-        "(micromixing $t_E$, mesomixing $t_{meso}$, macromixing $\\theta_{95}$) "
-        "via Damköhler numbers to determine whether mixing limits the "
-        "process.\n\n"
-        "**References:** Myerson *et al.* (2019) *Handbook of Industrial "
-        "Crystallization*, 3rd ed.; Baldyga & Bourne (1999); "
-        "Green, D.A. (2019) Ch. 10; Black, S.N. (2019) Ch. 13."
+        "Adapts the Mixing Sensitivity Protocol (Page 10) for crystallization. "
+        "The single $t_{rxn}$ is replaced by **multiple crystallization time scales**:\n\n"
+        "- **Induction time** $t_{ind}$ — delay to first nuclei\n"
+        "- **Nucleation time** $t_N$ — time to consume supersaturation via nucleation\n"
+        "- **Growth time** $t_G$ — time for crystal growth to deplete supersaturation\n\n"
+        "These are compared against mixing time scales "
+        "($t_E$, $t_{meso}$, $\\theta_{95}$) via Damköhler numbers.\n\n"
+        "**Refs:** Myerson *et al.* (2019); Baldyga & Bourne (1999); "
+        "Green (2019) Ch. 10; Black (2019) Ch. 13."
     )
 
 st.divider()
@@ -149,18 +138,12 @@ st.header("0 · Bourne Protocol Pre-Screening")
 
 with st.expander("ℹ️ Background — Bourne pre-screening for crystallization", expanded=False):
     st.markdown(
-        "The Bourne Protocol pre-screen applies to crystallization just "
-        "as it does to chemical reactions.  The relevant **response "
-        "metrics** for crystallization are:\n\n"
+        "Relevant **response metrics** for crystallization Bourne screening:\n\n"
         "- Mean particle size / chord length (FBRM)\n"
-        "- Particle count or nucleation count\n"
-        "- Polymorph form (XRPD, Raman)\n"
-        "- Particle size distribution width (span)\n"
-        "- Filterability / cake resistance\n\n"
-        "Run the crystallization at two or more impeller speeds and/or "
-        "feed rates and check whether **any** of these metrics change.  "
-        "Use the **🧐 Bourne Protocol** page for the full experimental "
-        "protocol."
+        "- Particle count · Polymorph form (XRPD, Raman)\n"
+        "- CSD span · Filterability\n\n"
+        "Run at 2+ impeller speeds / feed rates and check for changes. "
+        "See **🅱️  Bourne Protocol** page for the full procedure."
     )
 
 bourne_screen = st.radio(
@@ -175,30 +158,23 @@ bourne_screen = st.radio(
 )
 
 if bourne_screen is None:
-    st.info("👆 Please select an option above to continue.")
+    st.info("Select an option above to continue.")
     st.stop()
 
 if bourne_screen == "Already done – results show mixing sensitivity":
     st.warning(
-        "**Mixing sensitivity confirmed experimentally.**  "
-        "The remaining steps will help identify *which* mechanisms "
-        "(micro-, meso-, macromixing, heat transfer) are responsible."
+        "**Mixing sensitivity confirmed.** Remaining steps identify which mechanisms are responsible."
     )
     _bourne_sensitive = True
 elif bourne_screen == "Already done – no mixing sensitivity observed":
     st.success(
-        "✅ **No mixing sensitivity observed** in the pre-screen.  "
-        "Proceed through the remaining steps to confirm and identify "
-        "any latent risks at larger scale."
+        "✅ **No sensitivity observed.** Proceed to confirm and identify latent risks at larger scale."
     )
     _bourne_sensitive = False
 else:
     st.info(
-        "💡 **Recommendation:** Performing Bourne Part 1 before this "
-        "protocol provides a direct experimental answer.  You can run it "
-        "from the **🧐 Bourne Protocol** page (use mean particle size "
-        "or polymorph purity as the response metric).\n\n"
-        "Proceeding with the theoretical assessment for now."
+        "💡 Consider running **Bourne Part 1** first (🅱️  Bourne Protocol page, "
+        "response = particle size or polymorph). Proceeding with theoretical assessment."
     )
     _bourne_sensitive = None
 
@@ -211,19 +187,12 @@ st.header("1 · Crystallization Parameters")
 
 with st.expander("ℹ️ Background — why these parameters matter", expanded=False):
     st.markdown(
-        "The mixing-sensitivity assessment requires characteristic time "
-        "scales for the crystallization process.  These depend on:\n\n"
-        "- **Supersaturation** ($\\sigma$) — the driving force for both "
-        "nucleation and growth.\n"
-        "- **Induction time** ($t_{ind}$) — the delay before nucleation "
-        "is detected; inversely related to $J$ (nucleation rate).\n"
-        "- **Growth rate constant** ($k_g$) and order ($g$) — govern how "
-        "fast crystals grow once nucleated.\n"
-        "- **Metastable zone width (MSZW)** — the maximum sustainable "
-        "supersaturation before spontaneous nucleation.\n\n"
-        "These can be measured experimentally (e.g., turbidity induction "
-        "time, FBRM/PVM growth studies) or estimated from literature "
-        "for similar compounds."
+        "Key parameters and their roles:\n\n"
+        "- **σ** — supersaturation driving force\n"
+        "- **$t_{ind}$** — induction time (delay to nucleation)\n"
+        "- **$k_g$, $g$** — growth rate constant and order\n"
+        "- **MSZW** — max sustainable σ before spontaneous nucleation\n\n"
+        "Measure experimentally (turbidity, FBRM/PVM) or estimate from literature."
     )
 
 # ── select from database or enter manually ────────────────────────────
@@ -238,14 +207,14 @@ cryst_choice = st.radio(
 )
 
 if cryst_choice is None:
-    st.info("👆 Please select an option above to continue.")
+    st.info("Select an option above to continue.")
     st.stop()
 
 if cryst_choice == "Select from Crystallization Database":
     if crystallizations.empty:
         st.error(
-            "The Crystallization Database is empty.  Add entries to "
-            "`data/crystallizations.csv` or choose **Enter parameters manually**."
+            "Crystallization Database is empty. Add entries to "
+            "`data/crystallizations.csv` or enter manually."
         )
         st.stop()
 
@@ -415,19 +384,15 @@ st.header("2 · Crystallization Type & Supersaturation Profile")
 
 with st.expander("ℹ️ Background — how crystallization type affects mixing sensitivity", expanded=False):
     st.markdown(
-        "The method by which supersaturation is generated determines "
-        "which mixing scales are most critical:\n\n"
-        "| Type | How σ is generated | Dominant mixing concern |\n"
-        "|------|-------------------|------------------------|\n"
-        "| **Cooling** | Temperature reduction | Macromixing — uniformity of T field |\n"
-        "| **Anti-solvent** | Addition of a poor solvent | Meso- & micromixing — feed plume σ spike |\n"
-        "| **Reactive** | Chemical reaction generates insoluble product | Micromixing — instantaneous local σ |\n"
-        "| **Evaporative** | Solvent removal at boiling surface | Macromixing — boiling zone σ gradient |\n"
-        "| **pH-shift** | Acid/base addition changes solubility | Meso- & micromixing — local pH plume |\n\n"
-        "*Anti-solvent and reactive crystallizations are the most "
-        "mixing-sensitive because supersaturation is generated at the "
-        "feed point, creating locally very high σ in the feed plume "
-        "before mixing disperses it.* — Myerson (2019), Ch. 10"
+        "| Type | σ generation | Dominant mixing concern |\n"
+        "|------|-------------|------------------------|\n"
+        "| **Cooling** | ΔT | Macromixing — T-field uniformity |\n"
+        "| **Anti-solvent** | Poor-solvent addition | Meso/micromixing — feed plume σ spike |\n"
+        "| **Reactive** | Reaction → insoluble product | Micromixing — local σ |\n"
+        "| **Evaporative** | Solvent removal | Macromixing — boiling zone σ gradient |\n"
+        "| **pH-shift** | Acid/base addition | Meso/micromixing — local pH plume |\n\n"
+        "*Anti-solvent and reactive are most mixing-sensitive — σ generated locally at the "
+        "feed point before mixing disperses it.* — Myerson (2019), Ch. 10"
     )
 
 _TYPE_RISK = {
@@ -441,23 +406,18 @@ _risk_level, _risk_icon = _TYPE_RISK.get(cryst_type, ("moderate", "🟡"))
 
 if _risk_level == "high":
     st.warning(
-        f"{_risk_icon} **{cryst_type} crystallization** — inherently "
-        f"**high mixing sensitivity**.  Supersaturation is generated "
-        f"locally at the feed point; micro- and mesomixing directly "
-        f"control the supersaturation profile experienced by nucleating "
-        f"and growing crystals."
+        f"{_risk_icon} **{cryst_type} crystallization** — **high mixing sensitivity**. "
+        f"σ generated locally at feed point; micro/mesomixing controls the σ profile."
     )
 elif _risk_level == "moderate":
     st.info(
-        f"{_risk_icon} **{cryst_type} crystallization** — **moderate "
-        f"mixing sensitivity**.  Supersaturation gradients can develop "
-        f"between the generation zone and the bulk."
+        f"{_risk_icon} **{cryst_type} crystallization** — **moderate sensitivity**. "
+        f"σ gradients can develop between generation zone and bulk."
     )
 else:
     st.success(
-        f"{_risk_icon} **{cryst_type} crystallization** — **lower "
-        f"mixing sensitivity** (compared to anti-solvent or reactive).  "
-        f"Macromixing (temperature uniformity) is the primary concern."
+        f"{_risk_icon} **{cryst_type} crystallization** — **lower sensitivity**. "
+        f"Macromixing (T uniformity) is the primary concern."
     )
 
 # ── Supersaturation & MSZW assessment ─────────────────────────────────
@@ -476,23 +436,17 @@ if sigma_target > 0 and MSZW > 0:
 
     if sigma_ratio > 0.7:
         st.warning(
-            "⚠️ Operating close to the metastable limit.  "
-            "Any local σ spike from poor mixing could trigger "
-            "**uncontrolled primary nucleation** or a polymorph change."
+            "⚠️ Near metastable limit — local σ spikes could trigger "
+            "**uncontrolled nucleation** or polymorph change."
         )
         _sigma_risk = True
     elif sigma_ratio > 0.4:
         st.info(
-            "Operating in the mid-range of the metastable zone.  "
-            "Local σ spikes from feed addition could push regions "
-            "above the metastable limit."
+            "Mid-range of metastable zone. Local σ spikes from feed could exceed limit."
         )
         _sigma_risk = True
     else:
-        st.success(
-            "Operating well within the metastable zone.  "
-            "Small local σ fluctuations are unlikely to cause problems."
-        )
+        st.success("Well within metastable zone — σ fluctuations unlikely to cause problems.")
         _sigma_risk = False
 else:
     _sigma_risk = cryst_type in ("Anti-solvent", "Reactive", "pH-shift")
@@ -509,48 +463,26 @@ st.header("3 · Nucleation / Growth Competition — Micro- & Mesomixing")
 
 with st.expander("ℹ️ Background — the crystallization analogy to competing reactions", expanded=False):
     st.markdown(
-        "In a chemical reaction, micro- and mesomixing affect **selectivity** "
-        "when competing reactions exist.  In crystallization, the analogous "
-        "competition is between **nucleation** and **crystal growth**:\n\n"
-        "- Both consume supersaturation.\n"
-        "- **Nucleation rate** $B \\propto \\sigma^n$ ($n$ typically 2–10 for "
-        "primary nucleation).\n"
-        "- **Growth rate** $G \\propto \\sigma^g$ ($g$ typically 1–2).\n\n"
-        "Because $n \\gg g$, nucleation is much more sensitive to local σ "
-        "than growth is.  **Poor mixing creates local σ spikes that "
-        "disproportionately accelerate nucleation** → excess fines, "
-        "broader CSD, and potentially wrong polymorph.\n\n"
-        "This is precisely analogous to a fast side-reaction consuming "
-        "reagent before the desired slow reaction can proceed.\n\n"
+        "Crystallization analogy to competing reactions: **nucleation** ($B \\propto \\sigma^n$, $n$ = 2–10) "
+        "vs **growth** ($G \\propto \\sigma^g$, $g$ = 1–2). Since $n \\gg g$, "
+        "poor mixing → local σ spikes → excess nucleation → fines, broad CSD, wrong polymorph.\n\n"
         "### Micromixing\n"
-        "At the Kolmogorov/Batchelor scale, the engulfment rate "
-        "$E = 0.058 \\sqrt{\\varepsilon/\\nu}$ determines how fast the "
-        "feed solution is homogenised.  The micromixing time:\n\n"
         "$$t_E = 17.3 \\sqrt{\\nu / \\varepsilon}$$\n\n"
-        "When $t_E > t_{ind}$, nucleation occurs in the unmixed feed "
-        "plume at locally high σ → **micromixing-controlled** CSD.\n\n"
+        "When $t_E > t_{ind}$, nucleation occurs in the unmixed feed plume → "
+        "**micromixing-controlled** CSD.\n\n"
         "### Mesomixing\n"
-        "At the feed-plume scale, the turbulent dispersion time "
-        "determines how quickly the fresh feed is diluted into the bulk.  "
-        "For anti-solvent or reactive crystallization, mesomixing directly "
-        "sets the local σ in the feed zone.  Increasing the feed rate "
-        "increases the mesomixing time → higher local σ → more fines."
+        "Feed-plume dispersion time sets local σ. Higher feed rate → "
+        "longer mesomixing → higher local σ → more fines."
     )
 
 # ── Feed-sensitive or not ─────────────────────────────────────────────
 if _feed_sensitive:
     st.warning(
-        f"**{cryst_type} crystallization** involves continuous feed addition.  "
-        "Micro- and mesomixing at the feed point directly control the local "
-        "supersaturation and therefore the nucleation / growth balance."
+        f"**{cryst_type}** — feed addition; micro/mesomixing controls local σ and nucleation/growth balance."
     )
 
     st.markdown(
-        "**Key risk factors for micro/mesomixing sensitivity:**\n"
-        "- Short induction time ($t_{ind}$ < 10 s)\n"
-        "- High target supersaturation ($\\sigma > 0.5$)\n"
-        "- Known polymorphism\n"
-        "- Oiling-out tendency at high σ\n"
+        "**Risk factors:** $t_{ind}$ < 10 s · σ > 0.5 · polymorphism · oiling-out tendency"
     )
 
     _micro_meso_sensitive = True
@@ -558,34 +490,24 @@ else:
     # Cooling or evaporative — still evaluate
     if t_ind < 10:
         st.warning(
-            f"Short induction time ($t_{{ind}}$ = {t_ind:.4g} s).  "
-            "Even in cooling crystallization, rapid nucleation kinetics can "
-            "make the process sensitive to local temperature (and hence σ) "
-            "non-uniformity caused by imperfect macromixing."
+            f"Short $t_{{ind}}$ = {t_ind:.4g} s — even cooling crystallization can be "
+            "sensitive to local T/σ non-uniformity from imperfect macromixing."
         )
         _micro_meso_sensitive = True
     elif sigma_target > 0.5:
-        st.info(
-            "High target supersaturation — nucleation kinetics may be fast "
-            "enough to be influenced by local mixing conditions."
-        )
+        st.info("High σ — nucleation kinetics may be influenced by local mixing conditions.")
         _micro_meso_sensitive = True
     else:
         st.success(
-            "✅ **Low mixing-sensitivity risk** from nucleation/growth "
-            "competition.  Cooling crystallization with moderate σ and "
-            "a reasonable induction time is typically not micromixing-controlled."
+            "✅ **Low risk** — moderate σ and reasonable $t_{ind}$; typically not micromixing-controlled."
         )
         _micro_meso_sensitive = False
 
 # ── Polymorphism ──────────────────────────────────────────────────────
 if has_polymorphs:
     st.warning(
-        f"⚠️ **Polymorphism detected** ({polymorph_info}).  "
-        "Local supersaturation spikes from poor mixing can nucleate a "
-        "**metastable polymorph** (Ostwald's rule of stages).  "
-        "The metastable form nucleates faster at high σ but may convert "
-        "to the stable form over time — or may not, depending on kinetics."
+        f"⚠️ **Polymorphism** ({polymorph_info}) — local σ spikes can nucleate a "
+        "**metastable form** (Ostwald's rule). May or may not convert to stable form."
     )
     _polymorph_risk = True
 else:
@@ -594,19 +516,11 @@ else:
 # ── Seeding ───────────────────────────────────────────────────────────
 if is_seeded:
     st.info(
-        "✅ **Seeded process** — seed crystals provide surface area "
-        "that consumes supersaturation via growth rather than nucleation.  "
-        "This reduces (but does not eliminate) mixing sensitivity, "
-        "especially if the seed loading is adequate.\n\n"
-        "*Rule of thumb:* A well-seeded process is 2–5× less sensitive "
-        "to mixing than an unseeded one at the same σ."
+        "✅ **Seeded** — seed surface area consumes σ via growth, reducing "
+        "(not eliminating) mixing sensitivity. *Rule of thumb:* 2–5× less sensitive than unseeded."
     )
 else:
-    st.info(
-        "⚠️ **Unseeded process** — all nucleation is primary or "
-        "secondary.  The process is **more sensitive** to local σ "
-        "conditions set by mixing."
-    )
+    st.info("⚠️ **Unseeded** — all nucleation is primary/secondary; **more sensitive** to local σ.")
 
 st.divider()
 
@@ -620,20 +534,11 @@ _heat_sensitive = False
 
 with st.expander("ℹ️ Background — heat effects in crystallization", expanded=False):
     st.markdown(
-        "Crystallization is **exothermic** ($\\Delta H_{cryst}$ < 0 for most "
-        "systems).  Additionally:\n\n"
-        "- **Cooling crystallization:** The cooling rate must be controlled "
-        "to maintain supersaturation within the metastable zone.  Poor "
-        "jacket heat transfer at scale can create cold spots → local σ "
-        "spikes → wall encrustation and excessive nucleation.\n"
-        "- **Anti-solvent crystallization:** The anti-solvent is often at a "
-        "different temperature; mixing of streams involves both mass and "
-        "heat transfer.\n"
-        "- **Reactive crystallization:** Reaction enthalpy adds to "
-        "crystallization enthalpy; this can be very significant.\n\n"
-        "At scale, the **surface-area-to-volume ratio** decreases, making "
-        "it harder to remove heat.  This can force slower addition rates "
-        "or lower batch temperatures, altering the σ profile."
+        "Crystallization is typically **exothermic**.\n\n"
+        "- **Cooling:** Poor jacket HT → cold spots → local σ spikes → encrustation\n"
+        "- **Anti-solvent:** Different stream temperatures → coupled mass/heat transfer\n"
+        "- **Reactive:** Reaction + crystallization enthalpy can be very significant\n\n"
+        "At scale, lower SA/V makes heat removal harder → slower addition or lower T."
     )
 
 if _has_enthalpy:
@@ -644,32 +549,22 @@ if _has_enthalpy:
     )
     if abs_dH >= 40:
         st.warning(
-            f"🔴 **High crystallization enthalpy** — |ΔH| = {abs_dH:.1f} kJ/mol.  "
-            "Heat removal may limit cooling rates and feed rates at scale."
+            f"🔴 **High |ΔH|** = {abs_dH:.1f} kJ/mol — heat removal may limit rates at scale."
         )
         _heat_sensitive = True
     elif abs_dH >= 20:
         st.info(
-            f"🟡 **Moderate crystallization enthalpy** — |ΔH| = {abs_dH:.1f} kJ/mol.  "
-            "Unlikely to be limiting in most configurations, but check at scale."
+            f"🟡 **Moderate |ΔH|** = {abs_dH:.1f} kJ/mol — unlikely to limit, but check at scale."
         )
     else:
-        st.success(
-            f"🟢 **Low crystallization enthalpy** — |ΔH| = {abs_dH:.1f} kJ/mol."
-        )
+        st.success(f"🟢 **Low |ΔH|** = {abs_dH:.1f} kJ/mol.")
 
     if cryst_type == "Cooling":
         st.markdown(
-            "For cooling crystallization, also consider:\n"
-            "- Jacket ΔT limitations at scale\n"
-            "- Wall encrustation from local cold spots\n"
-            "- Required cooling rate vs. available UA"
+            "Also consider: jacket ΔT limits · wall encrustation · required cooling rate vs UA."
         )
 else:
-    st.info(
-        "No ΔH_cryst data provided.  Consider measuring by calorimetry "
-        "(e.g., RC1, µRC) or estimating from the van 't Hoff equation."
-    )
+    st.info("No ΔH_cryst data. Measure by calorimetry (RC1, µRC) or estimate via van 't Hoff.")
 
 st.divider()
 
@@ -680,31 +575,24 @@ st.header("5 · Mixing Time vs Crystallization Time (Damköhler Analysis)")
 
 with st.expander("ℹ️ Background — Damköhler numbers for crystallization", expanded=False):
     st.markdown(
-        "Following Baldyga & Bourne (1999), the controlling mechanism is "
-        "identified by comparing characteristic mixing times to "
-        "crystallization times:\n\n"
         "$$Da = \\frac{t_{mix}}{t_{cryst}}$$\n\n"
-        "| Da range | Interpretation |\n"
+        "| Da | Interpretation |\n"
         "|----------|----------------|\n"
-        "| Da < 0.01 | Crystallization much slower than mixing — **not sensitive** |\n"
-        "| 0.01 – 0.1 | **Likely not sensitive**, but monitor at scale |\n"
-        "| 0.1 – 1 | **Potentially sensitive** — on similar timescales |\n"
-        "| 1 – 10 | **Likely sensitive** — mixing limits process |\n"
-        "| Da > 10 | **Highly sensitive** — mixing fully controls outcome |\n\n"
-        "Three comparisons are made:\n"
-        "- $Da_{micro} = t_E / t_{ind}$ — micromixing vs induction time\n"
-        "- $Da_{macro} = \\theta_{95} / t_G$ — macromixing vs growth time\n"
-        "- For feed-sensitive processes: $Da_{meso}$ is evaluated qualitatively"
+        "| < 0.01 | **Not sensitive** |\n"
+        "| 0.01–0.1 | **Likely not sensitive** — monitor at scale |\n"
+        "| 0.1–1 | **Potentially sensitive** |\n"
+        "| 1–10 | **Likely sensitive** — mixing limits process |\n"
+        "| > 10 | **Highly sensitive** — mixing controls outcome |\n\n"
+        "Comparisons: $Da_{micro} = t_E / t_{ind}$ · "
+        "$Da_{macro} = \\theta_{95} / t_G$ · "
+        "$Da_{meso}$ (qualitative, feed-sensitive processes)"
     )
 
 st.subheader("Heuristic Assessment (no reactor selected)")
 
 st.markdown(
-    "Before computing Da for a specific reactor, here is a heuristic "
-    "assessment based on typical mixing times at different scales.\n\n"
-    f"**Your crystallization times:**\n"
-    f"- Induction time: $t_{{ind}}$ = {t_ind:.4g} s\n"
-    f"- Growth time: $t_G$ = {t_G:.4g} s"
+    f"**Your times:** $t_{{ind}}$ = {t_ind:.4g} s · $t_G$ = {t_G:.4g} s\n\n"
+    "Heuristic Da based on typical mixing times at each scale:"
 )
 
 # Typical mixing time ranges by scale
@@ -751,37 +639,31 @@ st.caption(
 _micro_likely = False
 if t_ind > 0 and t_ind < 1.0:
     st.error(
-        f"🔴 **Very fast nucleation** ($t_{{ind}}$ = {t_ind:.4g} s).  "
-        "**Micromixing-sensitive** in most configurations.  "
-        "Local energy dissipation at the feed point dominates the "
-        "supersaturation profile and CSD."
+        f"🔴 **Very fast nucleation** ($t_{{ind}}$ = {t_ind:.4g} s) — "
+        "**micromixing-sensitive**; local ε at feed point dominates CSD."
     )
     _micro_likely = True
 elif t_ind > 0 and t_ind < 10.0:
     st.warning(
-        f"🟡 **Fast nucleation** ($t_{{ind}}$ = {t_ind:.4g} s).  "
-        "Micromixing likely relevant in pilot and production vessels."
+        f"🟡 **Fast nucleation** ($t_{{ind}}$ = {t_ind:.4g} s) — micromixing relevant at pilot/production scale."
     )
     _micro_likely = True
 elif t_ind > 0 and t_ind < 60.0:
     st.info(
-        f"🔵 **Moderate nucleation** ($t_{{ind}}$ = {t_ind:.4g} s).  "
-        "Micromixing less likely to dominate, but macromixing "
-        "(blend time) may matter at production scale."
+        f"🔵 **Moderate nucleation** ($t_{{ind}}$ = {t_ind:.4g} s) — "
+        "micromixing less likely; macromixing may matter at production scale."
     )
 else:
     st.success(
-        f"🟢 **Slow nucleation** ($t_{{ind}}$ = {t_ind:.4g} s).  "
-        "Mixing is unlikely to limit crystallization in well-agitated vessels."
+        f"🟢 **Slow nucleation** ($t_{{ind}}$ = {t_ind:.4g} s) — mixing unlikely to limit in well-agitated vessels."
     )
 
 # Macro assessment
 _macro_likely = False
 if t_G < np.inf and t_G < 120:
     st.info(
-        f"Growth time $t_G$ = {t_G:.4g} s is within the range of blend "
-        f"times in larger vessels.  Macromixing may affect uniformity of "
-        f"supersaturation and therefore growth rate distribution."
+        f"$t_G$ = {t_G:.4g} s — within blend-time range of larger vessels; "
+        f"macromixing may affect σ uniformity and growth rate distribution."
     )
     if t_G < 30:
         _macro_likely = True
@@ -790,7 +672,7 @@ if t_G < np.inf and t_G < 120:
 st.subheader("(Optional) Compute Da for a Specific Reactor")
 
 if reactors.empty:
-    st.info("No reactors in the database. Add reactors on the 🧪 Reactor Database page.")
+    st.info("No reactors in database. Add via 🧪 Reactor Database page.")
 else:
     _reactor_list = reactors["reactor_name"].tolist()
     reactor_name = st.selectbox(
@@ -892,10 +774,8 @@ else:
 
         if _feed_sensitive:
             st.info(
-                "📌 For **feed-sensitive** crystallizations, also consider:\n"
-                "- **Feed location** — feed near the impeller (high ε) vs. surface\n"
-                "- **Feed rate** — slower addition → lower local σ\n"
-                "- **Number of feed points** — multiple points reduce local σ"
+                "📌 **Feed-sensitive:** also consider feed location (near impeller vs surface), "
+                "feed rate, and number of feed points."
             )
 
 st.divider()
@@ -912,19 +792,19 @@ if _bourne_sensitive is True:
     findings.append((
         "Bourne pre-screen",
         "🔴 Mixing sensitivity confirmed",
-        "Experimental pre-screen showed CSD / polymorph changes with mixing conditions.",
+        "CSD / polymorph changes observed with mixing conditions.",
     ))
 elif _bourne_sensitive is False:
     findings.append((
         "Bourne pre-screen",
         "🟢 No sensitivity observed",
-        "Experimental pre-screen showed no mixing sensitivity at lab scale.",
+        "No sensitivity at lab scale.",
     ))
 else:
     findings.append((
         "Bourne pre-screen",
         "⚪ Not performed",
-        "Consider running Bourne Protocol Part 1 (response = mean particle size or polymorph).",
+        "Consider Bourne Part 1 (response = particle size or polymorph).",
     ))
 
 # Crystallization type
@@ -943,13 +823,13 @@ if _sigma_risk:
     findings.append((
         "Supersaturation profile",
         "🟡 Elevated risk",
-        f"σ_target = {sigma_target:.3f}; operating {'close to' if sigma_target / (dc_dT * MSZW / c_sat_ref if c_sat_ref > 0 and MSZW > 0 else 1) > 0.5 else 'in mid-range of'} metastable limit.",
+        f"σ = {sigma_target:.3f}; {'near' if sigma_target / (dc_dT * MSZW / c_sat_ref if c_sat_ref > 0 and MSZW > 0 else 1) > 0.5 else 'mid-range of'} metastable limit.",
     ))
 else:
     findings.append((
         "Supersaturation profile",
         "🟢 Low risk",
-        f"σ_target = {sigma_target:.3f}; well within metastable zone.",
+        f"σ = {sigma_target:.3f}; within metastable zone.",
     ))
 
 # Micromixing
@@ -957,13 +837,13 @@ if _micro_likely:
     findings.append((
         "Micromixing (nucleation control)",
         "🔴 Likely sensitive",
-        f"t_ind = {t_ind:.4g} s — fast nucleation relative to typical micromixing times.",
+        f"t_ind = {t_ind:.4g} s — fast relative to typical micromixing times.",
     ))
 else:
     findings.append((
         "Micromixing (nucleation control)",
         "🟢 Unlikely",
-        f"t_ind = {t_ind:.4g} s — slow enough that micromixing is not rate-limiting.",
+        f"t_ind = {t_ind:.4g} s — slow; micromixing not rate-limiting.",
     ))
 
 # Micro/mesomixing (feed-related)
@@ -971,19 +851,19 @@ if _micro_meso_sensitive and _feed_sensitive:
     findings.append((
         "Micro/mesomixing (feed plume)",
         "🔴 Likely sensitive",
-        "Feed addition generates local σ spike; mixing at the feed point controls CSD.",
+        "Feed generates local σ spike; feed-point mixing controls CSD.",
     ))
 elif _micro_meso_sensitive:
     findings.append((
         "Micro/mesomixing (feed plume)",
         "🟡 Potentially sensitive",
-        "Short induction time or high σ suggests sensitivity, even without direct feed addition.",
+        "Short t_ind or high σ suggests sensitivity even without direct feed.",
     ))
 else:
     findings.append((
         "Micro/mesomixing (feed plume)",
         "🟢 Not a primary factor",
-        "No direct feed addition or slow nucleation kinetics.",
+        "No direct feed or slow nucleation.",
     ))
 
 # Macromixing
@@ -991,7 +871,7 @@ if _macro_likely:
     findings.append((
         "Macromixing (blend time)",
         "🟡 Check at scale",
-        f"t_G = {t_G:.4g} s — within blend time range of larger vessels.",
+        f"t_G = {t_G:.4g} s — within blend-time range at larger scale.",
     ))
 elif t_G < 300 and t_G != np.inf:
     findings.append((
@@ -1011,13 +891,13 @@ if _polymorph_risk:
     findings.append((
         "Polymorphism",
         "⚠️ Risk present",
-        f"Known polymorphs ({polymorph_info}); local σ spikes can nucleate metastable form.",
+        f"Known polymorphs ({polymorph_info}); σ spikes → metastable form risk.",
     ))
 else:
     findings.append((
         "Polymorphism",
         "🟢 Low risk",
-        "No known polymorphs or single confirmed form.",
+        "No known polymorphs.",
     ))
 
 # Heat transfer
@@ -1025,19 +905,19 @@ if _heat_sensitive:
     findings.append((
         "Heat transfer",
         "🔴 Likely limiting",
-        f"|ΔH_cryst| = {abs(delta_H_cryst):.1f} kJ/mol — check cooling capacity at scale.",
+        f"|ΔH| = {abs(delta_H_cryst):.1f} kJ/mol — check cooling capacity at scale.",
     ))
 elif _has_enthalpy:
     findings.append((
         "Heat transfer",
         "🟢 Manageable",
-        f"|ΔH_cryst| = {abs(delta_H_cryst):.1f} kJ/mol — modest enthalpy.",
+        f"|ΔH| = {abs(delta_H_cryst):.1f} kJ/mol — modest.",
     ))
 else:
     findings.append((
         "Heat transfer",
         "⚪ Unknown",
-        "No ΔH_cryst data — consider measuring.",
+        "No ΔH data — consider measuring.",
     ))
 
 # Seeding
@@ -1045,13 +925,13 @@ if is_seeded:
     findings.append((
         "Seeding",
         "🟢 Seeded process",
-        "Seed surface area reduces reliance on primary nucleation → lower mixing sensitivity.",
+        "Seed surface area reduces nucleation reliance → lower mixing sensitivity.",
     ))
 else:
     findings.append((
         "Seeding",
         "🟡 Unseeded",
-        "All nucleation is primary/secondary → higher mixing sensitivity.",
+        "Primary/secondary nucleation only → higher sensitivity.",
     ))
 
 # ── Render findings ───────────────────────────────────────────────────
@@ -1068,54 +948,32 @@ _any_yellow = any("🟡" in s for _, s, _ in findings)
 
 if _micro_likely and _feed_sensitive:
     st.error(
-        "🔬 **Micromixing / Mesomixing** — The combination of fast nucleation "
-        f"($t_{{ind}}$ = {t_ind:.4g} s) and feed-based supersaturation generation "
-        f"({cryst_type}) makes this crystallization **highly mixing-sensitive**.\n\n"
-        "**Scale-up strategy:**\n"
-        "- Maintain or increase **local ε** at the feed point.\n"
-        "- Feed near the impeller tip (high-turbulence zone).\n"
-        "- Reduce feed rate or use multiple feed points.\n"
-        "- Consider in-line or continuous crystallization (e.g., impinging jets, "
-        "static mixers, MSMPR cascade)."
+        f"🔬 **Micro/Mesomixing** — fast nucleation ($t_{{ind}}$ = {t_ind:.4g} s) + "
+        f"feed-based σ ({cryst_type}) → **highly mixing-sensitive**.\n\n"
+        "**Scale-up:** maintain local ε at feed point · feed near impeller · "
+        "reduce feed rate or add feed points · consider continuous crystallization."
     )
 elif _micro_likely:
     st.warning(
-        "🔬 **Micromixing** — Fast nucleation kinetics mean local energy "
-        "dissipation controls the outcome.\n\n"
-        "**Scale-up strategy:**\n"
-        "- Hold **local ε** at the feed/nucleation zone constant.\n"
-        "- Consider seeding to reduce nucleation dependence.\n"
-        "- Ensure adequate impeller speed at scale."
+        "🔬 **Micromixing** — local ε controls outcome.\n\n"
+        "**Scale-up:** hold local ε constant · consider seeding · ensure adequate RPM at scale."
     )
 elif _feed_sensitive and _micro_meso_sensitive:
     st.warning(
-        "🌊 **Mesomixing** — Feed-plume dispersion controls local σ.\n\n"
-        "**Scale-up strategy:**\n"
-        "- Extend feed time or reduce feed rate.\n"
-        "- Use sub-surface feed near the impeller.\n"
-        "- Consider multiple feed points or a distributor ring.\n"
-        "- Maintain impeller pumping rate to ensure rapid plume dilution."
+        "🌊 **Mesomixing** — feed-plume dispersion controls local σ.\n\n"
+        "**Scale-up:** extend feed time · sub-surface feed near impeller · "
+        "multiple feed points · maintain pumping rate."
     )
 elif _macro_likely:
     st.info(
-        "🌀 **Macromixing** — Blend time may become comparable to growth time "
-        "at scale, causing σ non-uniformity.\n\n"
-        "**Scale-up strategy:**\n"
-        "- Use high-efficiency axial impellers (hydrofoils).\n"
-        "- Consider multiple impellers for tall vessels.\n"
-        "- Monitor blend time vs. growth time at scale."
+        "🌀 **Macromixing** — blend time may approach growth time at scale → σ non-uniformity.\n\n"
+        "**Scale-up:** high-efficiency axial impellers · multiple impellers for tall vessels · "
+        "monitor θ₉₅ vs t_G."
     )
 elif not _any_red and not _any_yellow:
-    st.success(
-        "✅ **Low mixing sensitivity overall.**  Standard scale-up practices "
-        "should be sufficient.  Monitor at pilot scale for confirmation."
-    )
+    st.success("✅ **Low mixing sensitivity.** Standard scale-up practices sufficient; confirm at pilot scale.")
 else:
-    st.info(
-        "⚠️ **Moderate risk** — some mixing mechanisms may become relevant "
-        "at scale.  Targeted Damköhler analysis for your specific reactor "
-        "is recommended."
-    )
+    st.info("⚠️ **Moderate risk** — some mechanisms may become relevant at scale. Run Da analysis for your reactor.")
 
 # ── Recommended next steps ────────────────────────────────────────────
 st.subheader("Recommended Next Steps")
@@ -1123,46 +981,34 @@ _steps: list[str] = []
 
 if _bourne_sensitive is None:
     _steps.append(
-        "Run **Bourne Protocol Part 1** (🧐 Bourne Protocol page) using "
-        "**mean particle size** or **polymorph form** as the response metric."
+        "Run **Bourne Part 1** (🅱️  Bourne Protocol page) — response = particle size or polymorph."
     )
 
 if _micro_likely or _micro_meso_sensitive:
     _steps.append(
-        "Compute **Damköhler numbers** for your specific reactor(s) "
-        "(use the reactor selector above, or the 🌀 Mixing Assessment page)."
+        "Compute **Da numbers** for your reactor(s) (selector above or 🌀 Mixing Assessment page)."
     )
 
 if _feed_sensitive:
     _steps.append(
-        "Evaluate **feed location** and **feed rate** experimentally — "
-        "run the reaction at 2–3 feed positions and feed times "
-        "(Bourne Tests 2 & 3)."
+        "Test **feed location** and **feed rate** at 2–3 conditions (Bourne Tests 2 & 3)."
     )
 
 if _polymorph_risk:
     _steps.append(
-        "Confirm **polymorphic form** under mixing conditions representative "
-        "of the target scale (in-situ Raman or XRPD)."
+        "Confirm **polymorph** under scale-representative mixing (in-situ Raman or XRPD)."
     )
 
 if not is_seeded and _micro_meso_sensitive:
-    _steps.append(
-        "Consider **seeding** to reduce reliance on primary nucleation "
-        "and lower mixing sensitivity."
-    )
+    _steps.append("Consider **seeding** to reduce nucleation reliance and mixing sensitivity.")
 
 if _heat_sensitive:
     _steps.append(
-        "Run a **heat balance** on the target vessel to confirm adequate "
-        "cooling capacity (🔥 on 🌀 Mixing Assessment or 📈 Reactor Comparison)."
+        "Run **heat balance** on target vessel (🌀 Mixing Assessment or 📈 Reactor Comparison)."
     )
 
 if not _steps:
-    _steps.append(
-        "The crystallization appears **low risk** for mixing sensitivity.  "
-        "Standard scale-up practices should be sufficient."
-    )
+    _steps.append("**Low risk** — standard scale-up practices sufficient.")
 
 for i, step in enumerate(_steps, 1):
     st.markdown(f"{i}. {step}")
