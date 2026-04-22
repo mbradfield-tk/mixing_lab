@@ -238,7 +238,7 @@ if _iso_imgs:
     cols = st.columns(min(len(_iso_imgs), 5))
     for idx, (rname, img_path) in enumerate(_iso_imgs):
         with cols[idx % len(cols)]:
-            st.image(str(img_path), caption=rname, width=200)
+            st.image(str(img_path), caption=rname, width=300)
 
 st.divider()
 

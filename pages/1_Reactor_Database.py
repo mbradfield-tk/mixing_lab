@@ -628,7 +628,7 @@ with tab_browse:
                     for idx, img_path in enumerate(reactor_imgs):
                         with cols[idx % len(cols)]:
                             label = img_path.stem.removeprefix(prefix).lstrip("_") or img_path.stem
-                            st.image(Image.open(img_path), caption=label, width=250)
+                            st.image(Image.open(img_path), caption=label, width=500)
 
                 if cfd_imgs:
                     st.markdown("#### CFD Results")
