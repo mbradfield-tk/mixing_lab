@@ -235,10 +235,13 @@ def _find_iso(reactor_name: str) -> pathlib.Path | None:
 _iso_imgs = [(rname, _find_iso(rname)) for rname in selected_names]
 _iso_imgs = [(rname, p) for rname, p in _iso_imgs if p is not None]
 if _iso_imgs:
-    cols = st.columns(min(len(_iso_imgs), 5))
-    for idx, (rname, img_path) in enumerate(_iso_imgs):
-        with cols[idx % len(cols)]:
-            st.image(str(img_path), caption=rname, width=300)
+    _MAX_PER_ROW = 3
+    for _row_start in range(0, len(_iso_imgs), _MAX_PER_ROW):
+        _row_slice = _iso_imgs[_row_start : _row_start + _MAX_PER_ROW]
+        cols = st.columns(_MAX_PER_ROW)
+        for idx, (rname, img_path) in enumerate(_row_slice):
+            with cols[idx]:
+                st.image(str(img_path), caption=rname, width=300)
 
 st.divider()
 
