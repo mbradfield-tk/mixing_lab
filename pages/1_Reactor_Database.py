@@ -13,6 +13,7 @@ import plotly.graph_objects as go
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 REACTOR_CSV = DATA_DIR / "reactors.csv"
+MEASUREMENTS_CSV = DATA_DIR / "measured" / "measurements_all.csv"
 CFD_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "CFD"
 REACTOR_IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "reactors"
 IMG_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
@@ -254,7 +255,6 @@ with tab_browse:
 
     # ── Reactor Viewer ────────────────────────────────────────────────────
     st.divider()
-    st.subheader("🔍 Reactor Viewer")
 
     reactor_names = df_display["reactor_name"].dropna().tolist()
     if reactor_names:
@@ -265,6 +265,7 @@ with tab_browse:
         )
 
         if selected_reactor != "(none)":
+            st.subheader(f"🔍 {selected_reactor}")
             # Use reactor_id as file-matching prefix (e.g. "RX-012")
             _sel_row = df_display[df_display["reactor_name"] == selected_reactor].iloc[0]
             prefix = str(_sel_row.get("reactor_id", "")) if pd.notna(_sel_row.get("reactor_id")) else ""
@@ -293,8 +294,8 @@ with tab_browse:
                     key="reactor_render_mode", label_visibility="collapsed",
                 )
             with _btn_col3:
-                if st.button("🖼️ Show Images", key="show_reactor_imgs_btn"):
-                    st.session_state["_show_reactor_images"] = True
+                if st.button("🖼️ CFD", key="show_reactor_cfd_btn"):
+                    st.session_state["_show_reactor_cfd"] = True
 
             # ── Reactor Schematic ─────────────────────────────────────────
             if st.session_state.get("_show_reactor_schematic"):
@@ -613,23 +614,23 @@ with tab_browse:
                         _fig3d = go.Figure(data=_traces, layout=_layout)
                         st.plotly_chart(_fig3d, use_container_width=True)
 
-            # ── Reactor Images ────────────────────────────────────────────
-            if st.session_state.get("_show_reactor_images"):
-                if not reactor_imgs and not cfd_imgs:
-                    st.info(
-                        f"No images found for **{selected_reactor}** (ID: `{prefix}`). "
-                        "Place files in `images/reactors/` or `images/CFD/` "
-                        f"named `{prefix}_*.png`."
-                    )
+            # ── Reactor Images (shown automatically) ─────────────────────
+            if reactor_imgs:
+                st.markdown("#### Reactor Photos")
+                cols = st.columns(min(len(reactor_imgs), 4))
+                for idx, img_path in enumerate(reactor_imgs):
+                    with cols[idx % len(cols)]:
+                        label = img_path.stem.removeprefix(prefix).lstrip("_") or img_path.stem
+                        st.image(Image.open(img_path), caption=label, width=250)
+            elif not cfd_imgs:
+                st.info(
+                    f"No images found for **{selected_reactor}** (ID: `{prefix}`). "
+                    "Place files in `images/reactors/` or `images/CFD/` "
+                    f"named `{prefix}_*.png`."
+                )
 
-                if reactor_imgs:
-                    st.markdown("#### Reactor Photos")
-                    cols = st.columns(min(len(reactor_imgs), 4))
-                    for idx, img_path in enumerate(reactor_imgs):
-                        with cols[idx % len(cols)]:
-                            label = img_path.stem.removeprefix(prefix).lstrip("_") or img_path.stem
-                            st.image(Image.open(img_path), caption=label, width=500)
-
+            # ── CFD Images (shown on button click) ────────────────────────
+            if st.session_state.get("_show_reactor_cfd"):
                 if cfd_imgs:
                     st.markdown("#### CFD Results")
 
@@ -648,8 +649,233 @@ with tab_browse:
                                 st.image(
                                     Image.open(img_path),
                                     caption=img_path.stem.split("_CFD_")[-1],
-                                    width=300,
+                                    width=200,
                                 )
+                else:
+                    st.info(
+                        f"No CFD images found for **{selected_reactor}** (ID: `{prefix}`). "
+                        f"Place files in `images/CFD/` named `{prefix}_CFD_*.png`."
+                    )
+
+            # ── Measured Data ─────────────────────────────────────────────
+            st.divider()
+            st.markdown("#### 📊 Data")
+
+            if MEASUREMENTS_CSV.exists():
+                _meas_all = pd.read_csv(MEASUREMENTS_CSV)
+                _meas_rx = _meas_all[_meas_all["reactor_id"] == prefix].copy()
+
+                if _meas_rx.empty:
+                    st.info(f"No measured data found for **{selected_reactor}** (`{prefix}`) in `measurements_all.csv`.")
+                else:
+                    # Ensure expected columns exist
+                    if "type" not in _meas_rx.columns:
+                        _meas_rx["type"] = "measured"
+                    if "fluid" not in _meas_rx.columns:
+                        _meas_rx["fluid"] = "unknown"
+
+                    _meas_rx["value"] = pd.to_numeric(_meas_rx["value"], errors="coerce")
+                    _meas_rx = _meas_rx.dropna(subset=["variable", "value"])
+
+                    # Variable labels: "variable (units)"
+                    _var_units = (
+                        _meas_rx.groupby("variable")["units"]
+                        .first()
+                        .to_dict()
+                    )
+                    def _vlabel(v: str) -> str:
+                        u = _var_units.get(v, "")
+                        return f"{v} ({u})" if u else v
+
+                    _set_vars = sorted(_meas_rx.loc[_meas_rx["type"] == "set", "variable"].unique().tolist())
+                    _meas_vars = sorted(_meas_rx.loc[_meas_rx["type"] == "measured", "variable"].unique().tolist())
+
+                    if not _meas_vars or not _set_vars:
+                        st.warning(
+                            "Need at least one `set` variable and one `measured` variable to plot. "
+                            "Check the `type` column in `measurements_all.csv`."
+                        )
+                    else:
+                        _dc1, _dc2, _dc3, _dc4 = st.columns(4)
+                        with _dc1:
+                            _y_var = st.selectbox(
+                                "Y-axis (measured)",
+                                options=_meas_vars,
+                                format_func=_vlabel,
+                                key="data_y_var",
+                            )
+                        with _dc2:
+                            _x_default = _set_vars.index("stir speed") if "stir speed" in _set_vars else 0
+                            _x_var = st.selectbox(
+                                "X-axis (set)",
+                                options=_set_vars,
+                                index=_x_default,
+                                format_func=_vlabel,
+                                key="data_x_var",
+                            )
+                        with _dc3:
+                            _series_options = [v for v in _set_vars if v != _x_var]
+                            _series_default_label = "fill volume"
+                            if _series_default_label in _series_options:
+                                _series_default = _series_options.index(_series_default_label) + 1  # +1 for "(none)"
+                            else:
+                                _series_default = 0
+                            _series_var = st.selectbox(
+                                "Series (set)",
+                                options=["(none)"] + _series_options,
+                                index=_series_default,
+                                key="data_series_var",
+                            )
+                        with _dc4:
+                            _fluids = sorted(_meas_rx["fluid"].dropna().unique().tolist())
+                            _tile_fluid = st.checkbox(
+                                "Tile by fluid",
+                                value=False,
+                                key="data_tile_fluid",
+                                disabled=len(_fluids) < 2,
+                            )
+
+                        # Pivot long → wide per (exp_id, meas_id, fluid)
+                        _pivot_cols = ["exp_id", "meas_id", "fluid"]
+                        _wide = _meas_rx.pivot_table(
+                            index=_pivot_cols,
+                            columns="variable",
+                            values="value",
+                            aggfunc="first",
+                        ).reset_index()
+
+                        # Check selected variables exist in pivoted data
+                        _needed = [_x_var, _y_var]
+                        if _series_var != "(none)":
+                            _needed.append(_series_var)
+                        _missing_vars = [v for v in _needed if v not in _wide.columns]
+                        if _missing_vars:
+                            st.warning(f"Variables not found in data: {', '.join(_missing_vars)}")
+                        else:
+                            _plot_df = _wide.dropna(subset=[_x_var, _y_var]).copy()
+
+                            if _plot_df.empty:
+                                st.info("No data points available for the selected variable combination.")
+                            else:
+                                _x_label = _vlabel(_x_var)
+                                _y_label = _vlabel(_y_var)
+
+                                if _series_var != "(none)":
+                                    _plot_df[_series_var] = _plot_df[_series_var].astype(str)
+
+                                # Aggregate duplicate x-y pairs: mean ± std
+                                def _agg_series(df_in: pd.DataFrame) -> pd.DataFrame:
+                                    agg = df_in.groupby(_x_var, as_index=False)[_y_var].agg(
+                                        _y_mean="mean", _y_std="std", _y_count="count"
+                                    )
+                                    agg["_y_std"] = agg["_y_std"].fillna(0)
+                                    return agg.sort_values(_x_var)
+
+                                import plotly.colors as _pc
+                                _color_seq = _pc.qualitative.Plotly
+                                _color_state = [0]  # mutable counter
+
+                                def _next_color() -> str:
+                                    c = _color_seq[_color_state[0] % len(_color_seq)]
+                                    _color_state[0] += 1
+                                    return c
+
+                                if _tile_fluid and len(_fluids) >= 2:
+                                    from plotly.subplots import make_subplots
+                                    _plot_fluids = sorted(_plot_df["fluid"].dropna().unique().tolist())
+                                    _n_fluids = len(_plot_fluids)
+                                    _fig_data = make_subplots(
+                                        rows=1, cols=_n_fluids,
+                                        subplot_titles=_plot_fluids,
+                                        shared_yaxes=True,
+                                    )
+                                    _legend_shown: set[str] = set()
+                                    _series_colors: dict[str, str] = {}
+                                    for _fi, _fl in enumerate(_plot_fluids, 1):
+                                        _sub = _plot_df[_plot_df["fluid"] == _fl]
+                                        if _series_var != "(none)":
+                                            for _sv in sorted(_sub[_series_var].unique()):
+                                                _ss = _sub[_sub[_series_var] == _sv]
+                                                _sname = f"{_series_var}={_sv}"
+                                                if _sname not in _series_colors:
+                                                    _series_colors[_sname] = _next_color()
+                                                _sc = _series_colors[_sname]
+                                                _agg = _agg_series(_ss)
+                                                _fig_data.add_trace(
+                                                    go.Scatter(
+                                                        x=_agg[_x_var], y=_agg["_y_mean"],
+                                                        error_y=dict(type="data", array=_agg["_y_std"].tolist(), visible=True),
+                                                        mode="markers+lines",
+                                                        marker=dict(color=_sc),
+                                                        line=dict(color=_sc),
+                                                        name=_sname,
+                                                        legendgroup=_sname,
+                                                        showlegend=_sname not in _legend_shown,
+                                                    ),
+                                                    row=1, col=_fi,
+                                                )
+                                                _legend_shown.add(_sname)
+                                        else:
+                                            _sc = _next_color()
+                                            _agg = _agg_series(_sub)
+                                            _fig_data.add_trace(
+                                                go.Scatter(
+                                                    x=_agg[_x_var], y=_agg["_y_mean"],
+                                                    error_y=dict(type="data", array=_agg["_y_std"].tolist(), visible=True),
+                                                    mode="markers+lines",
+                                                    marker=dict(color=_sc),
+                                                    line=dict(color=_sc),
+                                                    name=_fl,
+                                                    showlegend=True,
+                                                ),
+                                                row=1, col=_fi,
+                                            )
+                                    _fig_data.update_xaxes(title_text=_x_label)
+                                    _fig_data.update_yaxes(title_text=_y_label, col=1)
+                                    _fig_data.update_layout(height=450, title=f"{_y_label} vs {_x_label}")
+                                    st.plotly_chart(_fig_data, use_container_width=True)
+                                else:
+                                    _fig_data = go.Figure()
+                                    if _series_var != "(none)":
+                                        for _sv in sorted(_plot_df[_series_var].unique()):
+                                            _ss = _plot_df[_plot_df[_series_var] == _sv]
+                                            _sc = _next_color()
+                                            _agg = _agg_series(_ss)
+                                            _fig_data.add_trace(go.Scatter(
+                                                x=_agg[_x_var], y=_agg["_y_mean"],
+                                                error_y=dict(type="data", array=_agg["_y_std"].tolist(), visible=True),
+                                                mode="markers+lines",
+                                                marker=dict(color=_sc),
+                                                line=dict(color=_sc),
+                                                name=f"{_series_var}={_sv}",
+                                            ))
+                                    else:
+                                        _sc = _next_color()
+                                        _agg = _agg_series(_plot_df)
+                                        _fig_data.add_trace(go.Scatter(
+                                            x=_agg[_x_var], y=_agg["_y_mean"],
+                                            error_y=dict(type="data", array=_agg["_y_std"].tolist(), visible=True),
+                                            mode="markers+lines",
+                                            marker=dict(color=_sc),
+                                            line=dict(color=_sc),
+                                            name=_y_var,
+                                        ))
+                                    _fig_data.update_layout(
+                                        xaxis_title=_x_label,
+                                        yaxis_title=_y_label,
+                                        title=f"{_y_label} vs {_x_label}",
+                                        height=450,
+                                    )
+                                    st.plotly_chart(_fig_data, use_container_width=True)
+
+                                # Data table
+                                _table_cols = ["exp_id", "meas_id", "fluid"]
+                                _table_cols += [c for c in _needed if c not in _table_cols]
+                                _table_cols = [c for c in _table_cols if c in _plot_df.columns]
+                                st.markdown("##### Plotted data")
+                                st.dataframe(_plot_df[_table_cols], use_container_width=True, hide_index=True)
+            else:
+                st.info("`measurements_all.csv` not found in `data/measured/`.")
 
     else:
         st.info("No reactors in the filtered view.")
