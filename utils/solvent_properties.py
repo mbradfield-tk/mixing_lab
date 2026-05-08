@@ -467,6 +467,67 @@ _add(SolventData(
     notes="Reacts violently with water. Soluble in benzene, DCM, ether, DMF, THF, MeCN.",
 ))
 
+# ─── 6 M NaOH (aq) ──────────────────────────────────────────────────────
+# ~19.3 wt% NaOH in water.
+# Refs: CRC Handbook 97th Ed; International Critical Tables;
+#       Perry's 9th Ed §2 (aqueous-solution properties).
+_add(SolventData(
+    name="6 M NaOH (aq)", cas="1310-73-2", mw=40.00,
+    mp_C=-10.0, bp_C=106.0,
+    rho_25=1219.0, drho_dT=-0.44,
+    mu_25=2.50e-3, Ea_mu=20000.0,
+    sig_25=0.0830, dsig_dT=-1.40e-4,
+    D_ref_25=1.3e-9,
+    Cp_25=3600.0, dCp_dT=0.3,
+    k_25=0.620, dk_dT=0.0010,
+    hsp_d=15.5, hsp_p=16.0, hsp_h=42.3,
+    aliases=("6M NaOH", "NaOH 6M", "Sodium Hydroxide 6M",
+             "Caustic Soda 6M"),
+    notes="6 mol/L NaOH in water (~19.3 wt%). "
+          "Properties from CRC / ICT solution tables.",
+))
+
+# ─── 36% HCl (aq) ───────────────────────────────────────────────────────
+# Concentrated (fuming) hydrochloric acid, ~11.6 M.
+# Refs: CRC Handbook 97th Ed; Perry's 9th Ed;
+#       Zaytsev & Aseyev, Properties of Aqueous Solutions of Electrolytes.
+_add(SolventData(
+    name="36% HCl (aq)", cas="7647-01-0", mw=36.46,
+    mp_C=-52.0, bp_C=50.0,
+    rho_25=1175.0, drho_dT=-0.55,
+    mu_25=1.70e-3, Ea_mu=16000.0,
+    sig_25=0.0700, dsig_dT=-1.30e-4,
+    D_ref_25=1.5e-9,
+    Cp_25=2700.0, dCp_dT=0.3,
+    k_25=0.480, dk_dT=0.0008,
+    hsp_d=15.5, hsp_p=16.0, hsp_h=42.3,
+    aliases=("Conc HCl", "Concentrated HCl", "HCl 36%",
+             "Hydrochloric Acid 36%", "Fuming HCl"),
+    notes="36 wt% HCl in water (~11.6 M). Fuming acid — "
+          "bp reflects onset of significant HCl loss. "
+          "Properties from CRC / Zaytsev & Aseyev.",
+))
+
+# ─── 47% K₂CO₃ (aq) ─────────────────────────────────────────────────────
+# Concentrated aqueous potassium carbonate.
+# Refs: CRC Handbook 97th Ed; Perry's 9th Ed;
+#       Zaytsev & Aseyev, Properties of Aqueous Solutions of Electrolytes.
+_add(SolventData(
+    name="47% K2CO3 (aq)", cas="584-08-7", mw=138.21,
+    mp_C=-36.0, bp_C=109.0,
+    rho_25=1485.0, drho_dT=-0.50,
+    mu_25=5.00e-3, Ea_mu=22000.0,
+    sig_25=0.0950, dsig_dT=-1.30e-4,
+    D_ref_25=0.7e-9,
+    Cp_25=2600.0, dCp_dT=0.2,
+    k_25=0.520, dk_dT=0.0008,
+    hsp_d=15.5, hsp_p=16.0, hsp_h=42.3,
+    aliases=("K2CO3 47%", "Potassium Carbonate 47%",
+             "47% Potassium Carbonate"),
+    notes="47 wt% K₂CO₃ in water. Dense, viscous alkaline solution. "
+          "Properties from CRC / Zaytsev & Aseyev.",
+))
+
 
 # ---------------------------------------------------------------------------
 # Property computation
@@ -645,6 +706,25 @@ _IMMISCIBLE: set[frozenset[str]] = {
         ("Water", "Hexane"),
         ("Water", "Heptane"),
         ("Water", "Diethyl Ether"),
+        # Aqueous solutions – same immiscibility as water
+        ("6 M NaOH (aq)", "Toluene"),
+        ("6 M NaOH (aq)", "DCM"),
+        ("6 M NaOH (aq)", "Chloroform"),
+        ("6 M NaOH (aq)", "Hexane"),
+        ("6 M NaOH (aq)", "Heptane"),
+        ("6 M NaOH (aq)", "Diethyl Ether"),
+        ("36% HCl (aq)", "Toluene"),
+        ("36% HCl (aq)", "DCM"),
+        ("36% HCl (aq)", "Chloroform"),
+        ("36% HCl (aq)", "Hexane"),
+        ("36% HCl (aq)", "Heptane"),
+        ("36% HCl (aq)", "Diethyl Ether"),
+        ("47% K2CO3 (aq)", "Toluene"),
+        ("47% K2CO3 (aq)", "DCM"),
+        ("47% K2CO3 (aq)", "Chloroform"),
+        ("47% K2CO3 (aq)", "Hexane"),
+        ("47% K2CO3 (aq)", "Heptane"),
+        ("47% K2CO3 (aq)", "Diethyl Ether"),
         # Hydrocarbon–polar aprotic
         ("Hexane", "DMSO"),
         ("Hexane", "DMF"),
@@ -663,6 +743,19 @@ _PARTIALLY_MISCIBLE: set[frozenset[str]] = {
         ("Water", "MTBE"),              # ~4% solubility
         ("Water", "2-MeTHF"),           # limited miscibility
         ("Water", "MEK"),               # ~24% in water at 20 °C
+        # Aqueous solutions – same partial miscibility as water
+        ("6 M NaOH (aq)", "Ethyl Acetate"),
+        ("6 M NaOH (aq)", "MTBE"),
+        ("6 M NaOH (aq)", "2-MeTHF"),
+        ("6 M NaOH (aq)", "MEK"),
+        ("36% HCl (aq)", "Ethyl Acetate"),
+        ("36% HCl (aq)", "MTBE"),
+        ("36% HCl (aq)", "2-MeTHF"),
+        ("36% HCl (aq)", "MEK"),
+        ("47% K2CO3 (aq)", "Ethyl Acetate"),
+        ("47% K2CO3 (aq)", "MTBE"),
+        ("47% K2CO3 (aq)", "2-MeTHF"),
+        ("47% K2CO3 (aq)", "MEK"),
         ("Hexane", "Methanol"),         # UCST ~34 °C
         ("Heptane", "Methanol"),        # partial at RT
         ("Toluene", "DMSO"),            # limited mutual solubility
