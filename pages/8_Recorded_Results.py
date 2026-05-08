@@ -97,9 +97,23 @@ st.download_button(
 # ── Delete ────────────────────────────────────────────────────────────────
 st.header("Manage Records")
 
-if st.button("🗑️ Clear all recorded results", type="secondary"):
-    st.session_state.recorded_results = pd.DataFrame()
-    if RESULTS_CSV.exists():
-        RESULTS_CSV.unlink()
-    st.success("All recorded results cleared.")
-    st.rerun()
+if "confirm_clear_results" not in st.session_state:
+    st.session_state.confirm_clear_results = False
+
+if st.session_state.confirm_clear_results:
+    st.warning("Are you sure? This will permanently delete all recorded results.")
+    col_yes, col_no = st.columns(2)
+    if col_yes.button("Yes, delete all", type="primary"):
+        st.session_state.recorded_results = pd.DataFrame()
+        if RESULTS_CSV.exists():
+            RESULTS_CSV.unlink()
+        st.session_state.confirm_clear_results = False
+        st.success("All recorded results cleared.")
+        st.rerun()
+    if col_no.button("Cancel"):
+        st.session_state.confirm_clear_results = False
+        st.rerun()
+else:
+    if st.button("🗑️ Clear all recorded results", type="secondary"):
+        st.session_state.confirm_clear_results = True
+        st.rerun()

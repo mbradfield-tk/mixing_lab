@@ -35,6 +35,7 @@ from utils.rom_registry import (
     PARAM_DISPLAY,
 )
 from utils.corr_widgets import render_correlation_matrix
+from utils.data_helpers import safe_iloc, load_db, safe_float, find_reactor_image
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
@@ -154,7 +155,7 @@ with col1:
             st.warning(f"⚠️ {fluid_T_C:.1f} °C is outside the liquid range "
                        f"({_fprops['mp_C']:.0f} – {_fprops['bp_at_P_C']:.0f} °C) for {fluid_name}.")
     else:
-        _cust = custom_fluids[custom_fluids["fluid_name"] == fluid_name].iloc[0]
+        _cust = safe_iloc(custom_fluids, "fluid_name", fluid_name, "Custom fluid")
         rho = float(_cust["rho_kg_m3"])
         mu = float(_cust["mu_Pa_s"])
         D_mol = float(_cust["D_mol_m2_s"])
@@ -166,7 +167,7 @@ with col2:
         _rxn_list = reactions["reaction_name"].tolist()
         rxn_name = st.selectbox("Reaction (for Da numbers)", _rxn_list, index=_sel_idx(_rxn_list, "_sel_cmp_rxn"), key="cmp_rxn", on_change=_reset_p7)
         st.session_state["_sel_cmp_rxn"] = rxn_name
-        rxn = reactions[reactions["reaction_name"] == rxn_name].iloc[0]
+        rxn = safe_iloc(reactions, "reaction_name", rxn_name, "Reaction")
         t_rxn = float(rxn["t_rxn_s"])
         rxn_k = float(rxn["k_value"])
         rxn_C0 = float(rxn["C0_mol_L"])
@@ -218,21 +219,8 @@ if st.session_state["_p7_step"] < 1:
     st.stop()
 
 # ── Show iso images of selected reactors ─────────────────────────────────
-_IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "reactors"
-_IMG_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
-def _find_iso(reactor_name: str) -> pathlib.Path | None:
-    _row = reactors[reactors["reactor_name"] == reactor_name]
-    prefix = str(_row.iloc[0]["reactor_id"]) if not _row.empty and pd.notna(_row.iloc[0].get("reactor_id")) else ""
-    if not prefix or not _IMG_DIR.exists():
-        return None
-    for p in _IMG_DIR.iterdir():
-        if p.is_file() and p.suffix.lower() in _IMG_SUFFIXES:
-            if p.stem == prefix + "_iso" or p.stem == prefix:
-                return p
-    return None
-
-_iso_imgs = [(rname, _find_iso(rname)) for rname in selected_names]
+_iso_imgs = [(rname, find_reactor_image(reactors, rname, "iso")) for rname in selected_names]
 _iso_imgs = [(rname, p) for rname, p in _iso_imgs if p is not None]
 if _iso_imgs:
     _MAX_PER_ROW = 3
@@ -296,7 +284,7 @@ if include_particles and not particles_db.empty:
     pcol1, pcol2, pcol3 = st.columns(3)
     with pcol1:
         cmp_particle_name = st.selectbox("Particle (defaults)", particles_db["particle_name"].tolist(), key="cmp_particle")
-        cmp_part = particles_db[particles_db["particle_name"] == cmp_particle_name].iloc[0]
+        cmp_part = safe_iloc(particles_db, "particle_name", cmp_particle_name, "Particle")
         cmp_rho_p = float(cmp_part["rho_p_kg_m3"])
         cmp_d50_um = float(cmp_part["d50_um"])
         cmp_phi_p = float(cmp_part["shape_factor"])
@@ -399,8 +387,11 @@ envelope_rows: list[dict] = []  # one row per (reactor, corner)
 skipped: list[str] = []
 reactor_info: dict = {}         # stash geometry for curve precomputation
 
+_spinner_placeholder = st.empty()
+_spinner_placeholder.info("⏳ Computing reactor envelopes…")
+
 for rname in selected_names:
-    r = reactors[reactors["reactor_name"] == rname].iloc[0]
+    r = safe_iloc(reactors, "reactor_name", rname, "Reactor")
     D_imp_v  = _safe_float(r.get("D_imp_m"))
     D_tank_v = _safe_float(r.get("D_tank_m"))
     H_max    = _safe_float(r.get("H_m"))
@@ -562,6 +553,8 @@ for rname in selected_names:
 
 if skipped:
     st.warning(f"Skipped reactors with missing geometry/agitation data: {', '.join(skipped)}")
+
+_spinner_placeholder.empty()
 
 # Show U estimation warnings (once per reactor, at max RPM)
 if include_heat and rxn_delta_H != 0:

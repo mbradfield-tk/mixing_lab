@@ -47,22 +47,12 @@ from utils.calculations import (
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
+from utils.data_helpers import load_db, safe_float, all_fluid_names, safe_iloc
 
-# ── Helper: load DB ──────────────────────────────────────────────────────
-def _load(key, fn):
-    if key not in st.session_state:
-        p = DATA_DIR / fn
-        st.session_state[key] = pd.read_csv(p) if p.exists() else pd.DataFrame()
-    return st.session_state[key]
+reactors = load_db("reactor_db", "reactors.csv")
+custom_fluids = load_db("fluid_db", "fluids.csv")
 
-
-reactors = _load("reactor_db", "reactors.csv")
-custom_fluids = _load("fluid_db", "fluids.csv")
-
-# Build combined fluid list: built-in solvents + custom fluids
-_solvent_names = sorted(SOLVENT_DB.keys())
-_custom_names = custom_fluids["fluid_name"].tolist() if not custom_fluids.empty else []
-_all_fluid_names = _solvent_names + _custom_names
+_all_fluid_names = all_fluid_names(custom_fluids)
 
 # ══════════════════════════════════════════════════════════════════════════
 st.title("🅱️ Bourne Protocol – Mixing Sensitivity Screening")
@@ -123,23 +113,23 @@ with col_r:
     if not reactors.empty:
         reactor_name = st.selectbox("Reactor", _reactor_list, index=_sel_idx(_reactor_list, "_sel_bp_reactor"), key=_bk("reactor"))
         st.session_state["_sel_bp_reactor"] = reactor_name
-        r = reactors[reactors["reactor_name"] == reactor_name].iloc[0]
-        D_tank = float(r["D_tank_m"])
-        H = float(r["H_m"])
-        D_imp = float(r["D_imp_m"])
-        Np_val = float(r["Np"])
-        Nq_val = float(r["Nq"])
-        V_L_min = float(r["V_L_min"]) if pd.notna(r.get("V_L_min")) else float(r["V_L"])
-        V_L_max = float(r["V_L_max"]) if pd.notna(r.get("V_L_max")) else float(r["V_L"])
+        r = safe_iloc(reactors, "reactor_name", reactor_name, "Reactor")
+        D_tank = safe_float(r["D_tank_m"], 0.10)
+        H = safe_float(r["H_m"], 0.13)
+        D_imp = safe_float(r["D_imp_m"], 0.05)
+        Np_val = safe_float(r["Np"], 1.27)
+        Nq_val = safe_float(r["Nq"], 0.79)
+        V_L_min = safe_float(r.get("V_L_min"), 0.0) or safe_float(r["V_L"], 0.0)
+        V_L_max = safe_float(r.get("V_L_max"), 0.0) or safe_float(r["V_L"], 0.0)
         V_L_avg = (V_L_min + V_L_max) / 2.0
         # RPM bounds from reactor database
-        N_rpm_min = float(r["N_rpm_min"]) if pd.notna(r.get("N_rpm_min")) else None
-        N_rpm_max = float(r["N_rpm_max"]) if pd.notna(r.get("N_rpm_max")) else None
+        N_rpm_min = safe_float(r.get("N_rpm_min"), 0.0) or None
+        N_rpm_max = safe_float(r.get("N_rpm_max"), 0.0) or None
         # Use average of min/max RPM as the centerpoint speed
         if N_rpm_min is not None and N_rpm_max is not None:
             N_center = (N_rpm_min + N_rpm_max) / 2.0 / 60.0  # rev/s
         else:
-            N_center = float(r["N_rps"])
+            N_center = safe_float(r["N_rps"], 5.0)
         N_rps_min = N_rpm_min / 60.0 if N_rpm_min is not None else None
         N_rps_max = N_rpm_max / 60.0 if N_rpm_max is not None else None
     else:
@@ -179,7 +169,7 @@ with col_f:
                        f"({_fprops['mp_C']:.0f} – {_fprops['bp_at_P_C']:.0f} °C) "
                        f"for {fluid_name}. Values are extrapolated.")
     else:
-        _cust = custom_fluids[custom_fluids["fluid_name"] == fluid_name].iloc[0]
+        _cust = safe_iloc(custom_fluids, "fluid_name", fluid_name, "Custom fluid")
         rho = float(_cust["rho_kg_m3"])
         mu = float(_cust["mu_Pa_s"])
 

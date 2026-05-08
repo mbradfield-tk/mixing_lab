@@ -22,25 +22,10 @@ import pathlib
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
+from utils.data_helpers import load_db, safe_float as _safe
 
-# ── helpers ──────────────────────────────────────────────────────────────
-def _load(key: str, fn: str) -> pd.DataFrame:
-    if key not in st.session_state:
-        p = DATA_DIR / fn
-        st.session_state[key] = pd.read_csv(p) if p.exists() else pd.DataFrame()
-    return st.session_state[key]
-
-
-def _safe(val, default=0.0):
-    try:
-        v = float(val)
-        return v if not np.isnan(v) else default
-    except (ValueError, TypeError):
-        return default
-
-
-reactions = _load("reaction_db", "reactions.csv")
-fluids = _load("fluid_db", "fluids.csv")
+reactions = load_db("reaction_db", "reactions.csv")
+fluids = load_db("fluid_db", "fluids.csv")
 
 # Session-state key prefix for this page
 _PFX = "_msp_"

@@ -72,30 +72,16 @@ from utils.corr_widgets import (
     build_mode_dict_for,
     MODE_COLORS,
 )
+from utils.data_helpers import load_db, safe_float as _safe, all_fluid_names, safe_iloc, find_reactor_image
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
-# ── helpers to load databases (reuse session state if available) ─────────
+reactors = load_db("reactor_db", "reactors.csv", ["reactor_name"])
+reactions = load_db("reaction_db", "reactions.csv", ["reaction_name"])
+custom_fluids = load_db("fluid_db", "fluids.csv", ["fluid_name"])
+particles = load_db("particle_db", "particles.csv", ["particle_name"])
 
-def _load_csv(key, filename, columns):
-    if key not in st.session_state:
-        p = DATA_DIR / filename
-        if p.exists():
-            st.session_state[key] = pd.read_csv(p)
-        else:
-            st.session_state[key] = pd.DataFrame(columns=columns)
-    return st.session_state[key]
-
-
-reactors = _load_csv("reactor_db", "reactors.csv", ["reactor_name"])
-reactions = _load_csv("reaction_db", "reactions.csv", ["reaction_name"])
-custom_fluids = _load_csv("fluid_db", "fluids.csv", ["fluid_name"])
-particles = _load_csv("particle_db", "particles.csv", ["particle_name"])
-
-# Build combined fluid list: built-in solvents + custom fluids
-_solvent_names = sorted(SOLVENT_DB.keys())
-_custom_names = custom_fluids["fluid_name"].tolist() if not custom_fluids.empty else []
-_all_fluid_names = _solvent_names + _custom_names
+_all_fluid_names = all_fluid_names(custom_fluids)
 
 st.title("🌀 Mixing Assessment")
 
@@ -168,23 +154,14 @@ if _is_solvent:
                    f"({_fprops['mp_C']:.0f} – {_fprops['bp_at_P_C']:.0f} °C) for {fluid_name}. "
                    f"Values are extrapolated.")
 else:
-    _cust = custom_fluids[custom_fluids["fluid_name"] == fluid_name].iloc[0]
+    _cust = safe_iloc(custom_fluids, "fluid_name", fluid_name, "Custom fluid")
     _rho_default = float(_cust["rho_kg_m3"])
     _mu_default = float(_cust["mu_Pa_s"])
     _D_mol_default = float(_cust["D_mol_m2_s"])
     _sigma_default = float(_cust.get("surface_tension_N_m", 0.072))
 
-reactor = reactors[reactors["reactor_name"] == reactor_name].iloc[0]
-reaction = reactions[reactions["reaction_name"] == reaction_name].iloc[0]
-
-# ── Helper: safely read a numeric field with a fallback ──────────────────
-def _safe(series_val, default):
-    """Return float(series_val) if non-NaN, else default."""
-    try:
-        v = float(series_val)
-        return v if not np.isnan(v) else default
-    except (ValueError, TypeError):
-        return default
+reactor = safe_iloc(reactors, "reactor_name", reactor_name, "Reactor")
+reaction = safe_iloc(reactions, "reaction_name", reaction_name, "Reaction")
 
 # Use selection names in widget keys so they reset automatically on change
 _rk = reactor_name   # reactor key fragment
@@ -461,22 +438,9 @@ if st.session_state["_p5_step"] < 1:
     st.stop()
 
 # ── Show iso image of selected reactor ───────────────────────────────────
-_IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "reactors"
-_IMG_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
-def _find_image(name: str, suffix: str) -> pathlib.Path | None:
-    _row = reactors[reactors["reactor_name"] == name]
-    prefix = str(_row.iloc[0]["reactor_id"]) if not _row.empty and pd.notna(_row.iloc[0].get("reactor_id")) else ""
-    if not prefix or not _IMG_DIR.exists():
-        return None
-    for p in _IMG_DIR.iterdir():
-        if p.is_file() and p.suffix.lower() in _IMG_SUFFIXES:
-            if p.stem == prefix + "_" + suffix:
-                return p
-    return None
-
-_iso_path = _find_image(reactor_name, "iso")
-_side_path = _find_image(reactor_name, "side")
+_iso_path = find_reactor_image(reactors, reactor_name, "iso")
+_side_path = find_reactor_image(reactors, reactor_name, "side")
 if _iso_path or _side_path:
     _imgs = [(p, lbl) for p, lbl in [(_iso_path, "Iso view"), (_side_path, "Side view")] if p]
     _cols = st.columns([1] * len(_imgs) + [4 - len(_imgs)])
@@ -1072,7 +1036,8 @@ if _can_envelope:
     # curve_data: mode_label → vol_key → {param: np.array}
     _unique_curve_data: dict[str, dict[str, dict[str, np.ndarray]]] = {}
 
-    for _mode_label, _mode_dict in _mode_dicts.items():
+    with st.spinner("Computing operating envelopes…"):
+      for _mode_label, _mode_dict in _mode_dicts.items():
         mode_curves: dict[str, dict[str, np.ndarray]] = {}
         for vol_key, _vl in [("maxV", _env_V_max), ("minV", _env_V_min)]:
             H_v = liquid_height_from_volume(_vl, D_tank, H_max, _bottom_dish)

@@ -28,9 +28,6 @@ REACTOR_CSV = DATA_DIR / "reactors.csv"
 st.title("🛠️ Admin Tools")
 
 # ── Authentication gate ──────────────────────────────────────────────────
-_ADMIN_USER = "admin"
-_ADMIN_PASS = "admin_tak_2026"
-
 
 def _check_password() -> bool:
     """Return True if the user has entered valid credentials."""
@@ -44,8 +41,8 @@ def _check_password() -> bool:
         submitted = st.form_submit_button("Log in", type="primary")
 
     if submitted:
-        if (hmac.compare_digest(user, _ADMIN_USER)
-                and hmac.compare_digest(pwd, _ADMIN_PASS)):
+        if (hmac.compare_digest(user, st.secrets["admin"]["username"])
+                and hmac.compare_digest(pwd, st.secrets["admin"]["password"])):
             st.session_state["admin_authenticated"] = True
             st.rerun()
         else:

@@ -531,8 +531,16 @@ register(_DEMO_REACTOR, Correlation(
 # Auto-load saved fitted correlations from JSON
 # ═══════════════════════════════════════════════════════════════════════════
 
+_saved_correlations_loaded = False
+
+
 def _load_saved_correlations() -> None:
     """Load fitted correlations persisted by the ROM Fitting page."""
+    global _saved_correlations_loaded
+    if _saved_correlations_loaded:
+        return
+    _saved_correlations_loaded = True
+
     import json
     import pathlib
 

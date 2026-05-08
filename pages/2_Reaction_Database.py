@@ -4,6 +4,7 @@ import streamlit as st
 
 import pandas as pd
 import pathlib
+from html import escape as _html_escape
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 REACTION_CSV = DATA_DIR / "reactions.csv"
@@ -48,7 +49,7 @@ with tab_browse:
                 st.markdown(
                     f'<div style="background:#f0f2f6; border-left:4px solid #4e8cff; '
                     f'padding:12px 16px; border-radius:6px; font-size:1.15em; '
-                    f'font-family:monospace; margin-bottom:12px;">{scheme}</div>',
+                    f'font-family:monospace; margin-bottom:12px;">{_html_escape(str(scheme))}</div>',
                     unsafe_allow_html=True,
                 )
             else:

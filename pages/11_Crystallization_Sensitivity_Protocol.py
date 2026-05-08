@@ -47,32 +47,13 @@ from utils.solvent_properties import SOLVENT_DB, get_properties, is_known_solven
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
+from utils.data_helpers import load_db, safe_float as _safe, all_fluid_names, safe_iloc
 
-# ── helpers ──────────────────────────────────────────────────────────────
-def _load(key: str, fn: str) -> pd.DataFrame:
-    if key not in st.session_state:
-        p = DATA_DIR / fn
-        st.session_state[key] = pd.read_csv(p) if p.exists() else pd.DataFrame()
-    return st.session_state[key]
+crystallizations = load_db("crystallization_db", "crystallizations.csv")
+reactors = load_db("reactor_db", "reactors.csv")
+custom_fluids = load_db("fluid_db", "fluids.csv")
 
-
-def _safe(val, default=0.0):
-    try:
-        v = float(val)
-        return v if not np.isnan(v) else default
-    except (ValueError, TypeError):
-        return default
-
-
-crystallizations = _load("crystallization_db", "crystallizations.csv")
-reactors = _load("reactor_db", "reactors.csv")
-custom_fluids = _load("fluid_db", "fluids.csv")
-
-_solvent_names = sorted(SOLVENT_DB.keys())
-_custom_names = (
-    custom_fluids["fluid_name"].tolist() if not custom_fluids.empty else []
-)
-_all_fluid_names = _solvent_names + _custom_names
+_all_fluid_names = all_fluid_names(custom_fluids)
 
 # ── session-state key helpers ────────────────────────────────────────────
 _PFX = "_csp_"
@@ -231,7 +212,7 @@ if cryst_choice == "Select from Crystallization Database":
         key=_key("cx_sel"),
     )
     st.session_state["_sel_csp_cx"] = cx_name
-    cx = crystallizations[crystallizations["crystallization_name"] == cx_name].iloc[0]
+    cx = safe_iloc(crystallizations, "crystallization_name", cx_name, "Crystallization")
 
     cryst_type = str(cx.get("type", "Cooling"))
     solute_name = str(cx.get("solute", ""))
@@ -682,16 +663,16 @@ else:
     )
 
     if reactor_name != "— Skip —":
-        r = reactors[reactors["reactor_name"] == reactor_name].iloc[0]
-        D_tank = float(r["D_tank_m"])
-        D_imp = float(r["D_imp_m"])
-        Np_val = float(r["Np"]) if pd.notna(r.get("Np")) else 1.0
-        Nq_val = float(r["Nq"]) if pd.notna(r.get("Nq")) else 0.79
-        N_rpm_min = float(r["N_rpm_min"]) if pd.notna(r.get("N_rpm_min")) else None
-        N_rpm_max = float(r["N_rpm_max"]) if pd.notna(r.get("N_rpm_max")) else None
+        r = safe_iloc(reactors, "reactor_name", reactor_name, "Reactor")
+        D_tank = _safe(r["D_tank_m"], 0.10)
+        D_imp = _safe(r["D_imp_m"], 0.05)
+        Np_val = _safe(r.get("Np"), 1.0)
+        Nq_val = _safe(r.get("Nq"), 0.79)
+        N_rpm_min = _safe(r.get("N_rpm_min"), 0.0) or None
+        N_rpm_max = _safe(r.get("N_rpm_max"), 0.0) or None
 
-        V_L_min = float(r["V_L_min"]) if pd.notna(r.get("V_L_min")) else float(r["V_L"])
-        V_L_max = float(r["V_L_max"]) if pd.notna(r.get("V_L_max")) else float(r["V_L"])
+        V_L_min = _safe(r.get("V_L_min"), 0.0) or _safe(r["V_L"], 0.0)
+        V_L_max = _safe(r.get("V_L_max"), 0.0) or _safe(r["V_L"], 0.0)
         V_L_avg = (V_L_min + V_L_max) / 2.0
 
         col_rv, col_rn = st.columns(2)
@@ -726,7 +707,7 @@ else:
             rho = _fp["rho_kg_m3"]
             mu = _fp["mu_Pa_s"]
         else:
-            _cf = custom_fluids[custom_fluids["fluid_name"] == fluid_sel].iloc[0]
+            _cf = safe_iloc(custom_fluids, "fluid_name", fluid_sel, "Custom fluid")
             rho = float(_cf["rho_kg_m3"])
             mu = float(_cf["mu_Pa_s"])
 

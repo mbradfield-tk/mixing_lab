@@ -46,31 +46,12 @@ from utils.calculations import (
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
 # ── Load databases ───────────────────────────────────────────────────────
+from utils.data_helpers import load_db, safe_float as _safe, all_fluid_names, safe_iloc
 
-def _load_csv(key, filename, columns):
-    if key not in st.session_state:
-        p = DATA_DIR / filename
-        if p.exists():
-            st.session_state[key] = pd.read_csv(p)
-        else:
-            st.session_state[key] = pd.DataFrame(columns=columns)
-    return st.session_state[key]
+reactors = load_db("reactor_db", "reactors.csv", ["reactor_name"])
+custom_fluids = load_db("fluid_db", "fluids.csv", ["fluid_name"])
 
-
-reactors = _load_csv("reactor_db", "reactors.csv", ["reactor_name"])
-custom_fluids = _load_csv("fluid_db", "fluids.csv", ["fluid_name"])
-
-_solvent_names = sorted(SOLVENT_DB.keys())
-_custom_names = custom_fluids["fluid_name"].tolist() if not custom_fluids.empty else []
-_all_fluid_names = _solvent_names + _custom_names
-
-
-def _safe(series_val, default):
-    try:
-        v = float(series_val)
-        return v if not np.isnan(v) else default
-    except (ValueError, TypeError):
-        return default
+_all_fluid_names = all_fluid_names(custom_fluids)
 
 
 st.title("🔥 Heat Transfer Modeling")
@@ -118,7 +99,7 @@ with col_f:
     fluid_name = st.selectbox("Process fluid", _all_fluid_names, key="ht_fluid",
                                on_change=_on_fluid_change)
 
-reactor = reactors[reactors["reactor_name"] == reactor_name].iloc[0]
+reactor = safe_iloc(reactors, "reactor_name", reactor_name, "Reactor")
 _is_solvent = is_known_solvent(fluid_name)
 
 col_T, col_P = st.columns(2)
@@ -149,7 +130,7 @@ if _is_solvent:
         st.warning(f"⚠️ {fluid_T_C:.1f} °C outside liquid range for {fluid_name}. "
                    "Values are extrapolated.")
 else:
-    _cust = custom_fluids[custom_fluids["fluid_name"] == fluid_name].iloc[0]
+    _cust = safe_iloc(custom_fluids, "fluid_name", fluid_name, "Custom fluid")
     _rho = float(_cust["rho_kg_m3"])
     _mu = float(_cust["mu_Pa_s"])
     _Cp = float(_cust.get("Cp_J_per_kgK", 4182.0))
