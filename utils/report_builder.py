@@ -662,6 +662,70 @@ def build_reactor_comparison_pdf(snap: dict) -> bytes:
                     pdf.data_table(["Parameter", ref['Reactor'], row['Reactor'], "Ratio"],
                                    _ratio_rows, col_widths=[50, 35, 35, 25])
 
+    # ── Scale-Up Matching Results ────────────────────────────────────────
+    scaling_results = snap.get("scaling_results", [])
+    scaling_all_params = snap.get("scaling_all_params", [])
+    scale_param = snap.get("scale_param", "")
+    scale_basis_reactor = snap.get("scale_basis_reactor", "")
+
+    if scaling_results and scale_param:
+        pdf.add_page()
+        pdf.section_title("Scale-Up Matching Results")
+        pdf.body_text(
+            f"Operating conditions were determined for each target reactor "
+            f"to match the basis reactor's value of '{scale_param}'."
+        )
+        pdf.kv("Basis reactor", scale_basis_reactor, bold_val=True)
+        # Find basis value from results
+        _basis_entry = [r for r in scaling_results if r.get("Role") == "Basis"]
+        if _basis_entry:
+            _bv = _basis_entry[0].get(scale_param, 0)
+            if np.isfinite(_bv):
+                pdf.kv("Target value", f"{_bv:.4g}")
+            _brpm = _basis_entry[0].get("RPM", 0)
+            _bvol = _basis_entry[0].get("Volume (L)", 0)
+            pdf.kv("Basis conditions", f"{_brpm:.0f} RPM, {_bvol:.1f} L")
+        pdf.ln(4)
+
+        # Matched conditions table
+        _scale_headers = ["Reactor", "Role", "RPM", "Volume (L)", scale_param, "Status"]
+        _scale_rows = []
+        for sr in scaling_results:
+            _r_rpm = sr.get("RPM", 0)
+            _r_vol = sr.get("Volume (L)", 0)
+            _r_val = sr.get(scale_param, 0)
+            _scale_rows.append([
+                str(sr.get("Reactor", "")),
+                str(sr.get("Role", "")),
+                f"{_r_rpm:.1f}" if np.isfinite(_r_rpm) else "N/A",
+                f"{_r_vol:.2f}" if np.isfinite(_r_vol) else "N/A",
+                f"{_r_val:.4g}" if np.isfinite(_r_val) else "N/A",
+                str(sr.get("Status", "")),
+            ])
+        pdf.data_table(_scale_headers, _scale_rows,
+                       col_widths=[30, 18, 20, 22, 30, 50])
+        pdf.ln(4)
+
+        # Full comparison table at matched conditions
+        if scaling_all_params:
+            pdf.sub_title("Full Parameter Comparison at Matched Conditions")
+            _compare_params = [
+                "Re", "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)",
+                "Micromix time t_E (s)", "Avg shear rate (1/s)",
+                "kLa (1/s)", "Torque/V (N.m/m3)",
+            ]
+            _cp_headers = ["Parameter"] + [sp.get("Reactor", "") for sp in scaling_all_params]
+            _cp_rows = []
+            for p in _compare_params:
+                row = [p]
+                for sp in scaling_all_params:
+                    val = sp.get(p, 0)
+                    row.append(f"{val:.4g}" if isinstance(val, (int, float)) and np.isfinite(val) else "N/A")
+                _cp_rows.append(row)
+            _n_cols = len(_cp_headers)
+            _col_w = [40] + [int(130 / max(_n_cols - 1, 1))] * (_n_cols - 1)
+            pdf.data_table(_cp_headers, _cp_rows, col_widths=_col_w)
+
     # ── Recommendations ──────────────────────────────────────────────────
     pdf.add_page()
     pdf.section_title("Recommendations")

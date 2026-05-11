@@ -255,6 +255,8 @@ if _any_has_alt:
 else:
     for rname in selected_names:
         corr_modes[rname] = "Literature"
+    st.info("All selected reactors use **Literature** correlations only. "
+            "No ROM or Experimental correlations are registered for these reactors.")
 
 # ── Gate 2: confirm correlations ────────────────────────────────────────
 if st.session_state["_p7_step"] < 2:
@@ -358,6 +360,116 @@ elif include_particles and particles_db.empty:
 # ── Heat balance: auto-compute when ΔH is available ─────────────────────────
 cmp_T_process = fluid_T_C
 include_heat = rxn_delta_H != 0
+
+# ── Scale-up matching options ────────────────────────────────────────────
+st.header("4 · Scale-Up Matching")
+include_scaling = st.checkbox(
+    "Perform scale-up matching", value=False, key="cmp_include_scaling",
+    help="Find equivalent operating conditions across reactors to match a chosen parameter.",
+)
+
+# Scaling parameter choices (params that are computable from hydro)
+SCALABLE_PARAMS = [
+    "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)",
+    "Micromix time t_E (s)", "Micromix time t_E_local (s)",
+    "Re", "kLa (1/s)", "kLa_surface (1/s)",
+    "Avg shear rate (1/s)", "Max shear rate (1/s)",
+    "Kolmogorov η (µm)", "EDCF (W/kg/s)", "Torque/V (N·m/m³)",
+    "Froude number",
+]
+
+scale_basis_reactor = ""
+scale_param = ""
+scale_basis_rpm = 0.0
+scale_basis_vol = 0.0
+scale_solve_for = "RPM (specify volume)"
+scale_target_known: dict[str, float] = {}  # reactor_name → known value (V or RPM)
+
+if include_scaling:
+    if len(selected_names) < 2:
+        st.warning("Select at least 2 reactors for scale-up matching.")
+    else:
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            scale_basis_reactor = st.selectbox(
+                "Basis reactor", selected_names, key="cmp_basis_reactor",
+            )
+        with sc2:
+            scale_param = st.selectbox(
+                "Parameter to hold constant", SCALABLE_PARAMS, key="cmp_scale_param",
+            )
+
+        # Basis reactor conditions
+        _basis_r = safe_iloc(reactors, "reactor_name", scale_basis_reactor, "Reactor")
+        _basis_rpm_max = _safe_float(_basis_r.get("N_rpm_max"))
+        _basis_rpm_min = _safe_float(_basis_r.get("N_rpm_min"))
+        _basis_V_max = _safe_float(_basis_r.get("V_L_max"))
+        _basis_V_min = _safe_float(_basis_r.get("V_L_min"))
+        if _basis_rpm_max == 0:
+            _basis_rpm_max = _safe_float(_basis_r.get("N_rps")) * 60
+        if _basis_rpm_min == 0:
+            _basis_rpm_min = _basis_rpm_max
+        if _basis_V_max == 0:
+            _basis_V_max = _safe_float(_basis_r.get("V_L"))
+        if _basis_V_min == 0:
+            _basis_V_min = _basis_V_max
+
+        _basis_rpm_mid = (_basis_rpm_min + _basis_rpm_max) / 2.0
+        _basis_V_mid = (_basis_V_min + _basis_V_max) / 2.0
+
+        st.markdown(f"**Basis reactor conditions** ({scale_basis_reactor})")
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            scale_basis_rpm = st.number_input(
+                "Basis RPM", value=_basis_rpm_mid,
+                min_value=0.1, format="%.1f", key="cmp_scale_basis_rpm",
+            )
+        with bc2:
+            scale_basis_vol = st.number_input(
+                "Basis volume (L)", value=_basis_V_mid,
+                min_value=0.001, format="%.2f", key="cmp_scale_basis_vol",
+            )
+
+        scale_solve_for = st.radio(
+            "For target reactors, solve for",
+            ["RPM (specify volume)", "Volume (specify RPM)"],
+            horizontal=True, key="cmp_scale_solve_for",
+        )
+
+        st.markdown("**Target reactor conditions**")
+        _target_names = [n for n in selected_names if n != scale_basis_reactor]
+        for _tname in _target_names:
+            _t_r = safe_iloc(reactors, "reactor_name", _tname, "Reactor")
+            if scale_solve_for.startswith("RPM"):
+                _t_V_max = _safe_float(_t_r.get("V_L_max"))
+                _t_V_min = _safe_float(_t_r.get("V_L_min"))
+                if _t_V_max == 0:
+                    _t_V_max = _safe_float(_t_r.get("V_L"))
+                if _t_V_max == 0:
+                    _D_t = _safe_float(_t_r.get("D_tank_m"))
+                    _H_t = _safe_float(_t_r.get("H_m"))
+                    _t_V_max = np.pi / 4 * _D_t**2 * _H_t * 1000
+                if _t_V_min == 0:
+                    _t_V_min = _t_V_max
+                _t_V_mid = (_t_V_min + _t_V_max) / 2.0
+                scale_target_known[_tname] = st.number_input(
+                    f"{_tname} — fill volume (L)",
+                    value=_t_V_mid, min_value=0.001, format="%.2f",
+                    key=f"cmp_scale_tv_{_tname}",
+                )
+            else:
+                _t_rpm_max = _safe_float(_t_r.get("N_rpm_max"))
+                _t_rpm_min = _safe_float(_t_r.get("N_rpm_min"))
+                if _t_rpm_max == 0:
+                    _t_rpm_max = _safe_float(_t_r.get("N_rps")) * 60
+                if _t_rpm_min == 0:
+                    _t_rpm_min = _t_rpm_max
+                _t_rpm_mid = (_t_rpm_min + _t_rpm_max) / 2.0
+                scale_target_known[_tname] = st.number_input(
+                    f"{_tname} — stir speed (RPM)",
+                    value=_t_rpm_mid, min_value=0.1, format="%.1f",
+                    key=f"cmp_scale_trpm_{_tname}",
+                )
 
 # ── Gate 3: confirm options & compute ───────────────────────────────────
 if st.session_state["_p7_step"] < 3:
@@ -556,27 +668,6 @@ if skipped:
 
 _spinner_placeholder.empty()
 
-# Show U estimation warnings (once per reactor, at max RPM)
-if include_heat and rxn_delta_H != 0:
-    _u_warnings_all: list[str] = []
-    for rname, info in reactor_info.items():
-        if info["U_override"] > 0:
-            continue
-        _, _u_warns = estimate_U_detailed(
-            N_rps=info["N_hi"], D_imp=info["D_imp"], D_tank=info["D_tank"],
-            rho=rho, mu=mu,
-            material=info["shell_material"],
-            lining_material=info["lining_material"],
-            wall_thickness_mm=info["wall_thickness_mm"],
-            fluid_name=fluid_name,
-        )
-        if _u_warns:
-            _u_warnings_all.append(f"**{rname}**: " + "; ".join(_u_warns))
-    if _u_warnings_all:
-        with st.expander("ℹ️ U estimation notes", expanded=False):
-            for _w in _u_warnings_all:
-                st.markdown(f"- {_w}")
-
 if not envelope_rows:
     st.info("No computable reactors in the selection.")
     st.stop()
@@ -720,7 +811,7 @@ for rname, info in reactor_info.items():
 st.divider()
 
 # ── Summary Table ─────────────────────────────────────────────────────────
-st.header("4 · Operating Envelope Summary")
+st.header("5 · Operating Envelope Summary")
 st.caption("Each row shows the range across the 4 corner conditions (min/max RPM × min/max volume).")
 
 table_rows = []
@@ -758,7 +849,7 @@ with st.expander("Full 4-corner detail table", expanded=False):
 st.divider()
 
 # ── Charts: operating envelopes ──────────────────────────────────────────
-st.header("5 · Operating Envelope Charts")
+st.header("6 · Operating Envelope Charts")
 
 with st.expander("Show / hide envelope charts", expanded=True):
 
@@ -997,7 +1088,7 @@ Overlapping shaded regions indicate where two reactors can achieve similar param
 # ── Heat Balance Summary ─────────────────────────────────────────────────
 if include_heat and rxn_delta_H != 0:
     st.divider()
-    st.header("6 · Heat Balance Summary")
+    st.header("6b · Heat Balance Summary")
     st.caption(
         f"Reaction: **{rxn_name if not reactions.empty else 'N/A'}** | "
         f"ΔH = {rxn_delta_H:.0f} kJ/mol | "
@@ -1030,6 +1121,26 @@ if include_heat and rxn_delta_H != 0:
 
     if heat_summary_rows:
         st.dataframe(pd.DataFrame(heat_summary_rows), width='content', hide_index=True)
+
+    # Show U estimation warnings (once per reactor, at max RPM)
+    _u_warnings_all: list[str] = []
+    for rname, info in reactor_info.items():
+        if info["U_override"] > 0:
+            continue
+        _, _u_warns = estimate_U_detailed(
+            N_rps=info["N_hi"], D_imp=info["D_imp"], D_tank=info["D_tank"],
+            rho=rho, mu=mu,
+            material=info["shell_material"],
+            lining_material=info["lining_material"],
+            wall_thickness_mm=info["wall_thickness_mm"],
+            fluid_name=fluid_name,
+        )
+        if _u_warns:
+            _u_warnings_all.append(f"**{rname}**: " + "; ".join(_u_warns))
+    if _u_warnings_all:
+        with st.expander("ℹ️ U estimation notes", expanded=False):
+            for _w in _u_warnings_all:
+                st.markdown(f"- {_w}")
 
     # Operating envelope chart for Q_gen/Q_cool (%)
     if heat_summary_rows:
@@ -1099,10 +1210,327 @@ if include_heat and rxn_delta_H != 0:
         )
         st.plotly_chart(fig_heat, width='content')
 
+# ── Scale-up matching computation ────────────────────────────────────────
+scaling_results: list[dict] = []
+scaling_all_params: list[dict] = []  # full hydro at matched condition
+
+if include_scaling and scale_basis_reactor and scale_param and len(selected_names) >= 2:
+    from scipy.optimize import brentq
+
+    st.divider()
+    st.header("7 · Scale-Up Matching Results")
+
+    # 1. Compute target value from basis reactor
+    _basis_info_r = safe_iloc(reactors, "reactor_name", scale_basis_reactor, "Reactor")
+    _b_D_imp = _safe_float(_basis_info_r.get("D_imp_m"))
+    _b_D_tank = _safe_float(_basis_info_r.get("D_tank_m"))
+    _b_H_max = _safe_float(_basis_info_r.get("H_m"))
+    _b_Np = _safe_float(_basis_info_r.get("Np"), None)
+    _b_Nq = _safe_float(_basis_info_r.get("Nq"), None)
+    _b_bottom_dish = str(_basis_info_r.get("bottom_dish", "")) if pd.notna(_basis_info_r.get("bottom_dish")) else ""
+    _b_N = scale_basis_rpm / 60.0
+    _b_H = _liquid_height(scale_basis_vol, _b_D_tank, _b_H_max, _b_bottom_dish)
+
+    _basis_hydro, _ = compute_reactor_hydro_with_mode(
+        corr_modes.get(scale_basis_reactor, "Literature"), scale_basis_reactor,
+        N=_b_N, D_imp=_b_D_imp, D_tank=_b_D_tank, H=_b_H,
+        rho=rho, mu=mu, Np=_b_Np, Nq=_b_Nq,
+        v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
+    )
+    target_value = _basis_hydro[scale_param]
+    st.caption(
+        f"**Basis:** {scale_basis_reactor} at {scale_basis_rpm:.0f} RPM, "
+        f"{scale_basis_vol:.1f} L  →  **{scale_param} = {target_value:.4g}**"
+    )
+
+    # Build basis row
+    _basis_row = {
+        "Reactor": scale_basis_reactor,
+        "Role": "Basis",
+        "RPM": scale_basis_rpm,
+        "Volume (L)": scale_basis_vol,
+        scale_param: target_value,
+        "Status": "—",
+    }
+    scaling_results.append(_basis_row)
+    scaling_all_params.append({"Reactor": scale_basis_reactor, "Role": "Basis",
+                                "RPM": scale_basis_rpm, "Volume (L)": scale_basis_vol,
+                                **_basis_hydro})
+
+    # 2. Solve for each target reactor
+    _target_names = [n for n in selected_names if n != scale_basis_reactor]
+    for _tname in _target_names:
+        _t_r = safe_iloc(reactors, "reactor_name", _tname, "Reactor")
+        _t_D_imp = _safe_float(_t_r.get("D_imp_m"))
+        _t_D_tank = _safe_float(_t_r.get("D_tank_m"))
+        _t_H_max = _safe_float(_t_r.get("H_m"))
+        _t_Np = _safe_float(_t_r.get("Np"), None)
+        _t_Nq = _safe_float(_t_r.get("Nq"), None)
+        _t_bottom_dish = str(_t_r.get("bottom_dish", "")) if pd.notna(_t_r.get("bottom_dish")) else ""
+
+        # RPM operating limits
+        _t_rpm_max = _safe_float(_t_r.get("N_rpm_max"))
+        _t_rpm_min = _safe_float(_t_r.get("N_rpm_min"))
+        if _t_rpm_max == 0:
+            _t_rpm_max = _safe_float(_t_r.get("N_rps")) * 60
+        if _t_rpm_min == 0:
+            _t_rpm_min = 1.0  # absolute floor for solver
+
+        # Volume limits
+        _t_V_max = _safe_float(_t_r.get("V_L_max"))
+        _t_V_min = _safe_float(_t_r.get("V_L_min"))
+        if _t_V_max == 0:
+            _t_V_max = _safe_float(_t_r.get("V_L"))
+        if _t_V_max == 0:
+            _t_V_max = np.pi / 4 * _t_D_tank**2 * _t_H_max * 1000
+        if _t_V_min == 0:
+            _t_V_min = _t_V_max * 0.1  # 10% fill as floor for solver
+
+        _known = scale_target_known.get(_tname, 0.0)
+
+        if _t_D_imp == 0 or _t_D_tank == 0 or _t_H_max == 0:
+            scaling_results.append({
+                "Reactor": _tname, "Role": "Target",
+                "RPM": np.nan, "Volume (L)": np.nan,
+                scale_param: np.nan,
+                "Status": "Missing geometry",
+            })
+            continue
+
+        if scale_solve_for.startswith("RPM"):
+            # Known: volume → solve for RPM
+            _t_V_L = _known
+            _t_H_v = _liquid_height(_t_V_L, _t_D_tank, _t_H_max, _t_bottom_dish)
+
+            def _obj_rpm(rpm, _V=_t_V_L, _H=_t_H_v, _Di=_t_D_imp,
+                         _Dt=_t_D_tank, _Np=_t_Np, _Nq=_t_Nq,
+                         _name=_tname):
+                _N = rpm / 60.0
+                h, _ = compute_reactor_hydro_with_mode(
+                    corr_modes.get(_name, "Literature"), _name,
+                    N=_N, D_imp=_Di, D_tank=_Dt, H=_H,
+                    rho=rho, mu=mu, Np=_Np, Nq=_Nq,
+                    v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
+                )
+                return h[scale_param] - target_value
+
+            # Try root-finding
+            try:
+                _lo = max(_t_rpm_min, 0.5)
+                _hi = _t_rpm_max * 1.5  # allow slight overshoot to find root
+                _f_lo = _obj_rpm(_lo)
+                _f_hi = _obj_rpm(_hi)
+                if _f_lo * _f_hi > 0:
+                    # No sign change → target may not be achievable
+                    # Report closest boundary
+                    _v_lo_h, _ = compute_reactor_hydro_with_mode(
+                        corr_modes.get(_tname, "Literature"), _tname,
+                        N=_lo / 60, D_imp=_t_D_imp, D_tank=_t_D_tank, H=_t_H_v,
+                        rho=rho, mu=mu, Np=_t_Np, Nq=_t_Nq,
+                        v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
+                    )
+                    _v_hi_h, _ = compute_reactor_hydro_with_mode(
+                        corr_modes.get(_tname, "Literature"), _tname,
+                        N=_hi / 60, D_imp=_t_D_imp, D_tank=_t_D_tank, H=_t_H_v,
+                        rho=rho, mu=mu, Np=_t_Np, Nq=_t_Nq,
+                        v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
+                    )
+                    # Pick the boundary closer to the target
+                    _err_lo = abs(_v_lo_h[scale_param] - target_value)
+                    _err_hi = abs(_v_hi_h[scale_param] - target_value)
+                    if _err_lo < _err_hi:
+                        _best_rpm, _best_val = _lo, _v_lo_h[scale_param]
+                        _best_h = _v_lo_h
+                    else:
+                        _best_rpm, _best_val = _hi, _v_hi_h[scale_param]
+                        _best_h = _v_hi_h
+                    _in_range = _t_rpm_min <= _best_rpm <= _t_rpm_max
+                    scaling_results.append({
+                        "Reactor": _tname, "Role": "Target",
+                        "RPM": _best_rpm, "Volume (L)": _t_V_L,
+                        scale_param: _best_val,
+                        "Status": f"Not achievable (closest: {_best_val:.4g})"
+                                  + ("" if _in_range else " [outside RPM range]"),
+                    })
+                    scaling_all_params.append({
+                        "Reactor": _tname, "Role": "Target",
+                        "RPM": _best_rpm, "Volume (L)": _t_V_L,
+                        **_best_h,
+                    })
+                else:
+                    _solved_rpm = brentq(_obj_rpm, _lo, _hi, xtol=0.01, maxiter=200)
+                    _in_range = _t_rpm_min <= _solved_rpm <= _t_rpm_max
+                    _solved_h, _ = compute_reactor_hydro_with_mode(
+                        corr_modes.get(_tname, "Literature"), _tname,
+                        N=_solved_rpm / 60, D_imp=_t_D_imp, D_tank=_t_D_tank, H=_t_H_v,
+                        rho=rho, mu=mu, Np=_t_Np, Nq=_t_Nq,
+                        v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
+                    )
+                    _status = "Matched"
+                    if not _in_range:
+                        _status = f"Matched (outside operating range {_t_rpm_min:.0f}–{_t_rpm_max:.0f} RPM)"
+                    scaling_results.append({
+                        "Reactor": _tname, "Role": "Target",
+                        "RPM": _solved_rpm, "Volume (L)": _t_V_L,
+                        scale_param: _solved_h[scale_param],
+                        "Status": _status,
+                    })
+                    scaling_all_params.append({
+                        "Reactor": _tname, "Role": "Target",
+                        "RPM": _solved_rpm, "Volume (L)": _t_V_L,
+                        **_solved_h,
+                    })
+            except Exception as _exc:
+                scaling_results.append({
+                    "Reactor": _tname, "Role": "Target",
+                    "RPM": np.nan, "Volume (L)": _t_V_L,
+                    scale_param: np.nan,
+                    "Status": f"Solver error: {_exc}",
+                })
+
+        else:
+            # Known: RPM → solve for volume
+            _t_rpm = _known
+            _t_N = _t_rpm / 60.0
+
+            def _obj_vol(vol_L, _N=_t_N, _Di=_t_D_imp,
+                         _Dt=_t_D_tank, _Hmax=_t_H_max, _Np=_t_Np, _Nq=_t_Nq,
+                         _name=_tname, _dish=_t_bottom_dish):
+                _H = _liquid_height(vol_L, _Dt, _Hmax, _dish)
+                h, _ = compute_reactor_hydro_with_mode(
+                    corr_modes.get(_name, "Literature"), _name,
+                    N=_N, D_imp=_Di, D_tank=_Dt, H=_H,
+                    rho=rho, mu=mu, Np=_Np, Nq=_Nq,
+                    v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
+                )
+                return h[scale_param] - target_value
+
+            try:
+                _lo_v = max(_t_V_min * 0.5, 0.001)
+                _hi_v = _t_V_max * 1.2
+                _f_lo = _obj_vol(_lo_v)
+                _f_hi = _obj_vol(_hi_v)
+                if _f_lo * _f_hi > 0:
+                    _v_lo_h, _ = compute_reactor_hydro_with_mode(
+                        corr_modes.get(_tname, "Literature"), _tname,
+                        N=_t_N, D_imp=_t_D_imp, D_tank=_t_D_tank,
+                        H=_liquid_height(_lo_v, _t_D_tank, _t_H_max, _t_bottom_dish),
+                        rho=rho, mu=mu, Np=_t_Np, Nq=_t_Nq,
+                        v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
+                    )
+                    _v_hi_h, _ = compute_reactor_hydro_with_mode(
+                        corr_modes.get(_tname, "Literature"), _tname,
+                        N=_t_N, D_imp=_t_D_imp, D_tank=_t_D_tank,
+                        H=_liquid_height(_hi_v, _t_D_tank, _t_H_max, _t_bottom_dish),
+                        rho=rho, mu=mu, Np=_t_Np, Nq=_t_Nq,
+                        v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
+                    )
+                    _err_lo = abs(_v_lo_h[scale_param] - target_value)
+                    _err_hi = abs(_v_hi_h[scale_param] - target_value)
+                    if _err_lo < _err_hi:
+                        _best_vol, _best_val = _lo_v, _v_lo_h[scale_param]
+                        _best_h = _v_lo_h
+                    else:
+                        _best_vol, _best_val = _hi_v, _v_hi_h[scale_param]
+                        _best_h = _v_hi_h
+                    _in_range = _t_V_min <= _best_vol <= _t_V_max
+                    scaling_results.append({
+                        "Reactor": _tname, "Role": "Target",
+                        "RPM": _t_rpm, "Volume (L)": _best_vol,
+                        scale_param: _best_val,
+                        "Status": f"Not achievable (closest: {_best_val:.4g})"
+                                  + ("" if _in_range else " [outside volume range]"),
+                    })
+                    scaling_all_params.append({
+                        "Reactor": _tname, "Role": "Target",
+                        "RPM": _t_rpm, "Volume (L)": _best_vol,
+                        **_best_h,
+                    })
+                else:
+                    _solved_vol = brentq(_obj_vol, _lo_v, _hi_v, xtol=0.001, maxiter=200)
+                    _in_range = _t_V_min <= _solved_vol <= _t_V_max
+                    _solved_h, _ = compute_reactor_hydro_with_mode(
+                        corr_modes.get(_tname, "Literature"), _tname,
+                        N=_t_N, D_imp=_t_D_imp, D_tank=_t_D_tank,
+                        H=_liquid_height(_solved_vol, _t_D_tank, _t_H_max, _t_bottom_dish),
+                        rho=rho, mu=mu, Np=_t_Np, Nq=_t_Nq,
+                        v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
+                    )
+                    _status = "Matched"
+                    if not _in_range:
+                        _status = f"Matched (outside operating range {_t_V_min:.1f}–{_t_V_max:.1f} L)"
+                    scaling_results.append({
+                        "Reactor": _tname, "Role": "Target",
+                        "RPM": _t_rpm, "Volume (L)": _solved_vol,
+                        scale_param: _solved_h[scale_param],
+                        "Status": _status,
+                    })
+                    scaling_all_params.append({
+                        "Reactor": _tname, "Role": "Target",
+                        "RPM": _t_rpm, "Volume (L)": _solved_vol,
+                        **_solved_h,
+                    })
+            except Exception as _exc:
+                scaling_results.append({
+                    "Reactor": _tname, "Role": "Target",
+                    "RPM": _t_rpm, "Volume (L)": np.nan,
+                    scale_param: np.nan,
+                    "Status": f"Solver error: {_exc}",
+                })
+
+    # Display scaling results table
+    if scaling_results:
+        _scale_df = pd.DataFrame(scaling_results)
+        st.subheader("Matched Operating Conditions")
+        _fmt_cols = {c: "{:.4g}" for c in _scale_df.columns
+                     if c not in ("Reactor", "Role", "Status")}
+        st.dataframe(_scale_df.style.format(_fmt_cols), width='content', hide_index=True)
+
+    # Full parameter comparison at matched conditions
+    if scaling_all_params:
+        with st.expander("Full parameter comparison at matched conditions", expanded=False):
+            _sp_df = pd.DataFrame(scaling_all_params)
+            _show_cols = ["Reactor", "Role", "RPM", "Volume (L)", "Re",
+                          "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)",
+                          "Micromix time t_E (s)", "Micromix time t_E_local (s)",
+                          "Kolmogorov η (µm)", "Avg shear rate (1/s)",
+                          "Max shear rate (1/s)", "Avg shear stress (Pa)",
+                          "kLa (1/s)", "kLa_surface (1/s)",
+                          "Torque (N·m)", "Torque/V (N·m/m³)",
+                          "EDCF (W/kg/s)", "Froude number"]
+            _show_cols = [c for c in _show_cols if c in _sp_df.columns]
+            _fmt2 = {c: "{:.4g}" for c in _show_cols
+                     if c not in ("Reactor", "Role")}
+            st.dataframe(_sp_df[_show_cols].style.format(_fmt2),
+                         width='content', hide_index=True)
+
+        # Percentage difference relative to basis reactor
+        with st.expander("Percentage difference vs. basis reactor", expanded=False):
+            _sp_df2 = pd.DataFrame(scaling_all_params)
+            _num_cols = [c for c in _show_cols if c not in ("Reactor", "Role")]
+            _basis_row = _sp_df2[_sp_df2["Role"] == "Basis"].iloc[0]
+            _pct_rows = []
+            for _, _row in _sp_df2.iterrows():
+                _pct_entry: dict = {"Reactor": _row["Reactor"], "Role": _row["Role"]}
+                for c in _num_cols:
+                    _b_val = _basis_row.get(c, 0)
+                    _t_val = _row.get(c, 0)
+                    if _b_val and np.isfinite(_b_val) and _b_val != 0 and np.isfinite(_t_val):
+                        _pct_entry[c] = (_t_val - _b_val) / abs(_b_val) * 100
+                    else:
+                        _pct_entry[c] = np.nan
+                _pct_rows.append(_pct_entry)
+            _pct_df = pd.DataFrame(_pct_rows)
+            _pct_cols = [c for c in _show_cols if c in _pct_df.columns]
+            _fmt_pct = {c: "{:+.1f}%" for c in _pct_cols
+                        if c not in ("Reactor", "Role")}
+            st.dataframe(_pct_df[_pct_cols].style.format(_fmt_pct),
+                         width='content', hide_index=True)
+
 st.divider()
 
 # ── Scale-up summary ─────────────────────────────────────────────────────
-st.header("7 · Scale-Up Impact Summary")
+st.header("8 · Scale-Up Impact Summary")
 st.caption("Ratios use midpoint (average of 4 corners) for each parameter, relative to the first selected reactor.")
 
 if len(agg_df) >= 2:
@@ -1148,7 +1576,7 @@ else:
 st.divider()
 
 # ── Save results per reactor ─────────────────────────────────────────────
-st.header("8 · Save Results")
+st.header("9 · Save Results")
 st.caption(
     "Save the max-RPM / max-V corner result for each selected reactor to "
     "Recorded Results (same format as the Mixing Sensitivity page)."
@@ -1218,7 +1646,7 @@ if st.button("📌 Save results for all selected reactors", key="cmp_save_all"):
 
 # ── Generate PDF Report ──────────────────────────────────────────────────
 st.divider()
-st.header("9 · Export Report")
+st.header("10 · Export Report")
 
 if st.button("📥 Export PDF Report", type="primary", key="p7_export_pdf"):
     with st.spinner("Generating PDF…"):
@@ -1236,6 +1664,10 @@ if st.button("📥 Export PDF Report", type="primary", key="p7_export_pdf"):
                 "reactor_info": reactor_info,
                 "include_heat": include_heat and rxn_delta_H != 0,
                 "include_particles": include_particles and cmp_d50_um > 0,
+                "scaling_results": scaling_results if include_scaling else [],
+                "scaling_all_params": scaling_all_params if include_scaling else [],
+                "scale_param": scale_param if include_scaling else "",
+                "scale_basis_reactor": scale_basis_reactor if include_scaling else "",
             }
             _pdf_bytes = build_reactor_comparison_pdf(_p7_snap)
             st.session_state["_p7_pdf_bytes"] = _pdf_bytes
