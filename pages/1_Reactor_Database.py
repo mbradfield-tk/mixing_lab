@@ -5,7 +5,6 @@ import streamlit as st
 import pandas as pd
 import pathlib
 import numpy as np
-from PIL import Image
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.patches import Arc
@@ -621,7 +620,7 @@ with tab_browse:
                 for idx, img_path in enumerate(reactor_imgs):
                     with cols[idx % len(cols)]:
                         label = img_path.stem.removeprefix(prefix).lstrip("_") or img_path.stem
-                        st.image(Image.open(img_path), caption=label, width=250)
+                        st.image(str(img_path), caption=label, width=250)
             elif not cfd_imgs:
                 st.info(
                     f"No images found for **{selected_reactor}** (ID: `{prefix}`). "
@@ -647,7 +646,7 @@ with tab_browse:
                         for idx, img_path in enumerate(imgs):
                             with cols[idx % len(cols)]:
                                 st.image(
-                                    Image.open(img_path),
+                                    str(img_path),
                                     caption=img_path.stem.split("_CFD_")[-1],
                                     width=200,
                                 )

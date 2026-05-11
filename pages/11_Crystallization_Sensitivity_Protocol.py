@@ -85,6 +85,13 @@ def _reset_csp():
 st.title("💎 Crystallization Sensitivity Protocol")
 st.caption("Interactive decision tree for crystallization mixing-sensitivity assessment.")
 
+# ── Work-in-progress gate ────────────────────────────────────────────
+st.warning(
+    "🚧 **Work in Progress** — This page is under active development "
+    "and not yet ready for use. Check back soon!"
+)
+st.stop()
+
 # ── Visual overview of the decision tree ─────────────────────────────────
 _IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "general"
 _CSP_IMG = _IMG_DIR / "crystallization_sensitivity_protocol.png"
