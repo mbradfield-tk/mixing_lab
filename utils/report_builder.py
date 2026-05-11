@@ -575,6 +575,121 @@ def build_mixing_assessment_pdf(snap: dict) -> bytes:
     return report_bytes(pdf)
 
 
+def build_comparison_envelope_fig(param: str, curve_data: dict,
+                                  env_df, reactor_info: dict) -> "go.Figure | None":
+    """Build a multi-reactor operating-envelope Plotly figure for *param*."""
+    import plotly.graph_objects as go
+
+    _PALETTE = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+        "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+        "#bcbd22", "#17becf",
+    ]
+
+    reactor_names = list(curve_data.keys())
+    if not reactor_names:
+        return None
+
+    # Check param exists in curve data
+    first = reactor_names[0]
+    if param not in curve_data[first].get("maxV", {}):
+        return None
+
+    fig = go.Figure()
+
+    for i, rname in enumerate(reactor_names):
+        color = _PALETTE[i % len(_PALETTE)]
+        curves = curve_data[rname]
+        pct_arr = np.array(curves["pct_arr"])
+        y_maxV = np.array(curves["maxV"][param])
+        y_minV = np.array(curves["minV"][param])
+
+        # Filled polygon
+        poly_x = np.concatenate([pct_arr, pct_arr[::-1], [pct_arr[0]]])
+        poly_y = np.concatenate([y_maxV, y_minV[::-1], [y_maxV[0]]])
+        fig.add_trace(go.Scatter(
+            x=poly_x, y=poly_y,
+            fill="toself", fillcolor=color, opacity=0.20,
+            line=dict(color=color, width=1), mode="lines",
+            name=rname, showlegend=True, legendgroup=rname,
+            hoverinfo="skip",
+        ))
+        # Max-volume boundary (solid)
+        fig.add_trace(go.Scatter(
+            x=pct_arr, y=y_maxV,
+            mode="lines", line=dict(color=color, width=2),
+            showlegend=False, legendgroup=rname,
+        ))
+        # Min-volume boundary (dotted)
+        fig.add_trace(go.Scatter(
+            x=pct_arr, y=y_minV,
+            mode="lines", line=dict(color=color, width=2, dash="dot"),
+            showlegend=False, legendgroup=rname,
+        ))
+
+    # Reference lines
+    if param in ("Da_macro", "Da_micro", "Da_GL", "Da_SL"):
+        import math
+        for da_val, da_color, label in [
+            (0.1, "orange", "Da=0.1"), (1.0, "red", "Da=1"),
+        ]:
+            fig.add_shape(
+                type="line", x0=0, x1=1, y0=da_val, y1=da_val,
+                xref="paper", yref="y",
+                line=dict(color=da_color, width=1.5, dash="dash"),
+            )
+        fig.update_yaxes(type="log")
+
+    if param == "Q_gen/Q_cool (%)":
+        fig.add_shape(
+            type="line", x0=0, x1=1, y0=100.0, y1=100.0,
+            xref="paper", yref="y",
+            line=dict(color="red", width=1.5, dash="dash"),
+        )
+
+    display = DISPLAY_NAMES.get(param, param)
+    fig.update_layout(
+        title=display,
+        xaxis_title="Stir speed (% of vessel max RPM)",
+        yaxis_title=display,
+        xaxis=dict(range=[0, 105], dtick=10),
+        height=400, width=700,
+        margin=dict(t=50, b=50),
+        legend=dict(title="Reactor"),
+    )
+    return fig
+
+
+def add_comparison_charts(pdf: MixingReport, curve_data: dict,
+                          env_df, reactor_info: dict,
+                          report_params: list[str]):
+    """Add multi-reactor operating envelope chart pages to the PDF."""
+    pdf.add_page()
+    pdf.section_title("Operating Envelope Charts")
+    pdf.body_text(
+        "Each reactor's operational region is shown as a filled polygon. "
+        "Solid lines = max fill volume; dotted lines = min fill volume."
+    )
+
+    _chart_count_on_page = 0
+    for param in report_params:
+        fig = build_comparison_envelope_fig(param, curve_data, env_df, reactor_info)
+        if fig is None:
+            continue
+        try:
+            png = fig_to_png_bytes(fig)
+        except Exception:
+            continue
+        if not png or png[:4] != b"\x89PNG":
+            continue
+        if _chart_count_on_page >= 2:
+            pdf.add_page()
+            _chart_count_on_page = 0
+        pdf.image(io.BytesIO(png), x=15, w=180)
+        pdf.ln(5)
+        _chart_count_on_page += 1
+
+
 def build_reactor_comparison_pdf(snap: dict) -> bytes:
     """Build PDF report for Page 7 – Reactor Comparison."""
     selected_names = snap["selected_names"]
@@ -681,7 +796,7 @@ def build_reactor_comparison_pdf(snap: dict) -> bytes:
         if _basis_entry:
             _bv = _basis_entry[0].get(scale_param, 0)
             if np.isfinite(_bv):
-                pdf.kv("Target value", f"{_bv:.4g}")
+                pdf.kv("Target value", f"{_bv:.6g}")
             _brpm = _basis_entry[0].get("RPM", 0)
             _bvol = _basis_entry[0].get("Volume (L)", 0)
             pdf.kv("Basis conditions", f"{_brpm:.0f} RPM, {_bvol:.1f} L")
@@ -699,7 +814,7 @@ def build_reactor_comparison_pdf(snap: dict) -> bytes:
                 str(sr.get("Role", "")),
                 f"{_r_rpm:.1f}" if np.isfinite(_r_rpm) else "N/A",
                 f"{_r_vol:.2f}" if np.isfinite(_r_vol) else "N/A",
-                f"{_r_val:.4g}" if np.isfinite(_r_val) else "N/A",
+                f"{_r_val:.6g}" if np.isfinite(_r_val) else "N/A",
                 str(sr.get("Status", "")),
             ])
         pdf.data_table(_scale_headers, _scale_rows,
@@ -725,6 +840,33 @@ def build_reactor_comparison_pdf(snap: dict) -> bytes:
             _n_cols = len(_cp_headers)
             _col_w = [40] + [int(130 / max(_n_cols - 1, 1))] * (_n_cols - 1)
             pdf.data_table(_cp_headers, _cp_rows, col_widths=_col_w)
+
+            # Percentage difference table
+            if len(scaling_all_params) >= 2:
+                pdf.sub_title("Percentage Difference vs. Basis Reactor")
+                _basis_sp = scaling_all_params[0]
+                _pct_rows = []
+                for p in _compare_params:
+                    row = [p]
+                    for sp in scaling_all_params:
+                        b_val = _basis_sp.get(p, 0)
+                        t_val = sp.get(p, 0)
+                        if (isinstance(b_val, (int, float)) and np.isfinite(b_val)
+                                and b_val != 0 and isinstance(t_val, (int, float))
+                                and np.isfinite(t_val)):
+                            pct = (t_val - b_val) / abs(b_val) * 100
+                            row.append(f"{pct:+.1f}%")
+                        else:
+                            row.append("N/A")
+                    _pct_rows.append(row)
+                pdf.data_table(_cp_headers, _pct_rows, col_widths=_col_w)
+
+    # ── Operating Envelope Charts ────────────────────────────────────────
+    _curve_data = snap.get("curve_data")
+    _report_chart_params = snap.get("report_chart_params", [])
+    if _curve_data and _report_chart_params:
+        add_comparison_charts(pdf, _curve_data, env_df, reactor_info,
+                              _report_chart_params)
 
     # ── Recommendations ──────────────────────────────────────────────────
     pdf.add_page()

@@ -1653,6 +1653,15 @@ if st.button("📥 Export PDF Report", type="primary", key="p7_export_pdf"):
         try:
             from utils.report_builder import build_reactor_comparison_pdf, report_filename
             import pandas as _pd_report
+            # Select key params for report charts
+            _report_chart_params = [
+                "Da_micro", "Da_macro", "Da_GL", "P/V (W/L)",
+                "Blend time 95% (s)", "Tip speed (m/s)",
+            ]
+            if include_heat and rxn_delta_H != 0:
+                _report_chart_params.append("Q_gen/Q_cool (%)")
+            _report_chart_params = [p for p in _report_chart_params if p in PLOT_PARAMS]
+
             _p7_snap = {
                 "selected_names": selected_names,
                 "fluid": fluid_name,
@@ -1668,6 +1677,8 @@ if st.button("📥 Export PDF Report", type="primary", key="p7_export_pdf"):
                 "scaling_all_params": scaling_all_params if include_scaling else [],
                 "scale_param": scale_param if include_scaling else "",
                 "scale_basis_reactor": scale_basis_reactor if include_scaling else "",
+                "curve_data": curve_data,
+                "report_chart_params": _report_chart_params,
             }
             _pdf_bytes = build_reactor_comparison_pdf(_p7_snap)
             st.session_state["_p7_pdf_bytes"] = _pdf_bytes
