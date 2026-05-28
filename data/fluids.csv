@@ -7,4 +7,7 @@ TAK-360 Step 6 Crystallization GMP4-2 Final (50 °C),974.79,0.00064409,3.3129356
 TAK-279 Step 4 RM (25 °C),876.34,0.00106291,1.518788074354256e-09,0.03986,"Blend at 25 °C: Water 29vol%, Ethanol 64vol%, 36% HCl (aq) 7vol%",3039.1,0.3165,,,
 TAK-279 Step 4 RM (20 °C),879.63,0.00117602,1.349089542964731e-09,0.04039,"Blend at 20 °C: Water 29vol%, Ethanol 64vol%, 36% HCl (aq) 7vol%",3023.9,0.315,,,
 TAK-279 Step 4 RM (20 °C) wt,864.5,0.00117209,1.3091955874172011e-09,0.03753,"Blend at 20 °C: 36% HCl (aq) 7wt%, Water 29wt%, Ethanol 64wt%",2948.3,0.2924,,,
-TAK-279 Step 4 RM (45 °C) wt,846.35,0.00073262,2.2731434317923416e-09,0.03478,"Blend at 45 °C: 36% HCl (aq) 7wt%, Water 29wt%, Ethanol 64wt%",3023.7,0.2963,,,
+TAK-279 Step 4 RM (45 °C) wt,846.35,0.00073262,2.273143431792341e-09,0.03478,"Blend at 45 °C: 36% HCl (aq) 7wt%, Water 29wt%, Ethanol 64wt%",3023.7,0.2963,,,
+generic_solid_starting_material,1200.0,0.001,2.3e-09,0.072,as placeholder for soluble solids like reagents,4182.0,0.607,0.0,0.0,0.0
+TAK360 Step 6 Final Reaction Mixture (pre-rinse; 25 °C),1066.25,0.00138744,1.6167369167497947e-09,0.06314,"Blend at 25 °C: generic_solid_starting_material 11wt%, Acetonitrile 26wt%, 6 M NaOH (aq) 64wt%",3309.3,0.4682,,,
+TAK360 Step 6 Final Reaction Mixture (with rinse water; 25 °C),1057.73,0.00131779,1.6842153411781055e-09,0.06423,"Blend at 25 °C: TAK360 Step 4 Final Reaction Mixture (pre-rinse) 88wt%, Water 12wt%",3410.5,0.4853,,,
