@@ -96,7 +96,7 @@ st.divider()
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 0 – Reactor & Fluid Selection
 # ══════════════════════════════════════════════════════════════════════════
-st.header("0 · Define Your System")
+st.header("Define Your System")
 
 # Persist selections across page navigations
 _reactor_list = reactors["reactor_name"].tolist() if not reactors.empty else []
@@ -178,11 +178,14 @@ nu = mu / rho
 # ── Volume selection ──────────────────────────────────────────────────────
 st.subheader("Working Volume")
 if V_L_min != V_L_max:
-    st.caption(f"Reactor volume range: {V_L_min:.1f} – {V_L_max:.1f} L  •  Average: {V_L_avg:.1f} L")
+    st.caption(f"Reactor volume range: {V_L_min:.2f} – {V_L_max:.2f} L  •  Average: {V_L_avg:.2f} L")
+
+_vol_min = V_L_min if V_L_min > 0 else 0.1
+_reactor_tag = reactor_name.replace(" ", "_") if not reactors.empty else "manual"
 V_L = st.number_input(
-    "Working volume (L)", min_value=0.1, value=V_L_avg,
-    step=1.0, format="%.1f", key=_bk("vol_L"),
-    help="Defaults to the average of V_L_min and V_L_max from the reactor database.",
+    "Working volume (L)", min_value=_vol_min, value=_vol_min,
+    step=1.0, format="%.2f", key=_bk(f"vol_L_{_reactor_tag}"),
+    help="Defaults to the minimum volume from the reactor database.",
 )
 V_m3 = V_L / 1000.0  # m³
 
@@ -191,23 +194,45 @@ st.divider()
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 1 – TEST 1: Impeller Speed  (Does mixing matter?)
 # ══════════════════════════════════════════════════════════════════════════
-st.header("1 · Test 1 — Impeller Speed (Does Mixing Matter?)")
+st.header("Test 1 - Impeller Speed")
 st.markdown("""
 Vary **impeller speed only** (hold feed rate & location constant).\n
-Target ≈**100× P/V range** across three speeds.\n
+Target ≈**100× P/m range** across three speeds.\n
 If the response changes → mixing matters; proceed to Test 2.
 
-**Speed selection:** Default centerpoint P/V ≈ **0.2 W/kg**. Set high/low at
+**Speed selection:** Default centerpoint P/m ≈ **0.2 W/kg**. Set high/low at
 **10×** and **0.1×** (speed ratios ≈ 2.15× and 0.46×, since P ∝ N³).
 Use plant condition as centerpoint if targeting existing equipment.
 """)
 
 st.subheader("Suggested Experimental Conditions")
 
-use_custom_center = st.checkbox("Set a custom centerpoint P/V", value=False, key=_bk("custom_pv"))
+# default based on Sarafinas recommendation, but allow user to customize or use plant RPM centerpoint
+centerpoint_mode = st.radio(
+    "Centerpoint selection method",
+    ["Default (0.2 W/kg)", "Custom P/m", "Custom RPM"],
+    horizontal=True, key=_bk("ctr_mode"),
+)
 
-if use_custom_center:
-    PV_center_wkg = st.number_input("Centerpoint P/V (W/kg)", value=0.2, format="%.4g", key=_bk("pv_ctr"))
+if centerpoint_mode == "Custom P/m":
+    PV_center_wkg = st.number_input("Centerpoint P/m (W/kg)", value=0.2, format="%.4g", key=_bk("pv_ctr"))
+    _N_from_pv = (PV_center_wkg * rho * V_m3 / (Np_val * rho * D_imp**5))**(1/3)
+    st.write(f"Custom centerpoint: **P/m = {PV_center_wkg:.4g} W/kg** "
+             f"at N = {_N_from_pv:.2f} rev/s ({_N_from_pv*60:.0f} RPM)")
+elif centerpoint_mode == "Custom RPM":
+    _rpm_default = float(N_center * 60) if N_center else 300.0
+    _custom_rpm = st.number_input("Centerpoint RPM", value=_rpm_default, min_value=1.0,
+                                  format="%.1f", key=_bk("rpm_ctr"))
+    _N_custom = _custom_rpm / 60.0
+    _P_custom = impeller_power(Np_val, rho, _N_custom, D_imp)
+    PV_center_wkg = power_per_volume(_P_custom, V_m3) / rho
+    st.write(f"Custom centerpoint: **N = {_custom_rpm:.1f} RPM** → "
+             f"**P/m = {PV_center_wkg:.4g} W/kg** "
+             f"({power_per_volume(_P_custom, V_m3)/1000:.4g} W/L)")
+    if N_rpm_min is not None and N_rpm_max is not None:
+        if _custom_rpm < N_rpm_min or _custom_rpm > N_rpm_max:
+            st.warning(f"⚠️ {_custom_rpm:.1f} RPM is outside the reactor range "
+                       f"({N_rpm_min:.1f} – {N_rpm_max:.1f} RPM).")
 else:
     # Sarafinas recommends 0.2 W/kg as the default centerpoint.
     # Check whether the reactor can achieve it within its RPM range.
@@ -223,7 +248,7 @@ else:
 
     if _can_reach_default:
         PV_center_wkg = _SARAFINAS_DEFAULT_PV
-        st.write(f"Centerpoint from Sarafinas default: **P/V = {PV_center_wkg:.4g} W/kg** "
+        st.write(f"Centerpoint from Sarafinas default: **P/m = {PV_center_wkg:.4g} W/kg** "
                  f"at N = {_N_for_default:.2f} rev/s ({_N_for_default_rpm:.0f} RPM)")
         if N_rpm_min is not None and N_rpm_max is not None:
             st.caption(f"Sarafinas default 0.2 W/kg is within reactor RPM range "
@@ -233,7 +258,7 @@ else:
         _P_ctr = impeller_power(Np_val, rho, N_center, D_imp)
         PV_center_wkg = power_per_volume(_P_ctr, V_m3) / rho
         _ctr_rpm = N_center * 60
-        st.write(f"Centerpoint from reactor average speed: **P/V = {PV_center_wkg:.4g} W/kg** "
+        st.write(f"Centerpoint from reactor average speed: **P/m = {PV_center_wkg:.4g} W/kg** "
                  f"at N = {N_center:.2f} rev/s ({_ctr_rpm:.0f} RPM)")
         st.caption(f"Sarafinas default 0.2 W/kg requires {_N_for_default_rpm:.0f} RPM, "
                    f"which is outside the reactor range "
@@ -241,7 +266,7 @@ else:
                    f"Using average speed instead.")
 
 # Compute the three test speeds
-# P/V ∝ N³  →  N ∝ (P/V)^(1/3)
+# P/m ∝ N³  →  N ∝ (P/m)^(1/3)
 N_center_calc = (PV_center_wkg * rho * V_m3 / (Np_val * rho * D_imp**5))**(1/3)
 N_high_ideal = N_center_calc * 10**(1/3)   # ≈ 2.154×
 N_low_ideal = N_center_calc * 0.1**(1/3)   # ≈ 0.464×
@@ -274,11 +299,11 @@ def _hydro_row(label, N):
     pv_rel = pv_wkg / PV_center_wkg if PV_center_wkg > 0 else 0
     return {
         "Condition": label,
-        "Volume (L)": round(V_L, 1),
-        "N (rev/s)": round(N, 3),
+        "Volume (L)": round(V_L, 3),
+        # "N (rev/s)": round(N, 3),
         "N (RPM)": round(N * 60, 1),
-        "P/V (W/kg)": round(pv_wkg, 4),
-        "P/V rel. to center": f"{pv_rel:.2f}×",
+        "P/m (W/kg)": round(pv_wkg, 4),
+        "P/m rel. to center": f"{pv_rel:.2f}×",
         "P/V (W/L)": round(eps / 1000, 4),
         "Re": round(Re, 0),
         "Tip speed (m/s)": round(u, 3),
@@ -287,31 +312,36 @@ def _hydro_row(label, N):
         "η Kolmogorov (µm)": round(eta * 1e6, 1),
     }
 
-_low_label = "Low  (min RPM)" if _low_clamped else "Low  (0.1× P/V)"
-_high_label = "High (max RPM)" if _high_clamped else "High (10× P/V)"
+_low_label = "Low  (min RPM)" if _low_clamped else "Low  (0.1× P/m)"
+_high_label = "High (max RPM)" if _high_clamped else "High (10× P/m)"
 
 t1_rows = [
     _hydro_row(_low_label, N_low),
-    _hydro_row("Center (1× P/V)", N_center_calc),
+    _hydro_row("Center (1× P/m)", N_center_calc),
     _hydro_row(_high_label, N_high),
 ]
 t1_df = pd.DataFrame(t1_rows)
-st.dataframe(t1_df, use_container_width=True, hide_index=True)
+_t1_basic_cols = ["Condition", "Volume (L)", "N (RPM)", "P/m (W/kg)", "P/m rel. to center", "P/V (W/L)", "Tip speed (m/s)"]
+st.dataframe(t1_df[_t1_basic_cols], use_container_width=True, hide_index=True)
 
-pv_ratio = t1_rows[2]["P/V (W/kg)"] / t1_rows[0]["P/V (W/kg)"] if t1_rows[0]["P/V (W/kg)"] > 0 else 0
-st.caption(f"P/V ratio (high/low) = **{pv_ratio:.1f}×**  •  Speed ratio (high/low) = **{N_high/N_low:.2f}×**")
+with st.expander("Additional hydrodynamic parameters"):
+    _t1_detail_cols = ["Condition", "Re", "Blend time (s)", "t_E micro (s)", "η Kolmogorov (µm)"]
+    st.dataframe(t1_df[_t1_detail_cols], use_container_width=True, hide_index=True)
+
+pv_ratio = t1_rows[2]["P/m (W/kg)"] / t1_rows[0]["P/m (W/kg)"] if t1_rows[0]["P/m (W/kg)"] > 0 else 0
+st.caption(f"P/m ratio (high/low) = **{pv_ratio:.1f}×**  •  Speed ratio (high/low) = **{N_high/N_low:.2f}×**")
 
 if _low_clamped or _high_clamped:
     _msgs = []
     if _low_clamped:
-        _actual_low_rel = t1_rows[0]["P/V (W/kg)"] / PV_center_wkg if PV_center_wkg > 0 else 0
+        _actual_low_rel = t1_rows[0]["P/m (W/kg)"] / PV_center_wkg if PV_center_wkg > 0 else 0
         _msgs.append(f"Low speed clamped to reactor minimum ({N_rpm_min:.1f} RPM) → "
-                     f"actual P/V = **{_actual_low_rel:.3f}×** centerpoint "
+                     f"actual P/m = **{_actual_low_rel:.3f}×** centerpoint "
                      f"(target was 0.1×)")
     if _high_clamped:
-        _actual_high_rel = t1_rows[2]["P/V (W/kg)"] / PV_center_wkg if PV_center_wkg > 0 else 0
+        _actual_high_rel = t1_rows[2]["P/m (W/kg)"] / PV_center_wkg if PV_center_wkg > 0 else 0
         _msgs.append(f"High speed clamped to reactor maximum ({N_rpm_max:.1f} RPM) → "
-                     f"actual P/V = **{_actual_high_rel:.3f}×** centerpoint "
+                     f"actual P/m = **{_actual_high_rel:.3f}×** centerpoint "
                      f"(target was 10×)")
     st.warning("⚠️ **Speed limits applied:**\n\n" + "\n\n".join(_msgs) +
               "\n\nThe achievable P/V range is narrower than the ideal 100× span. "
@@ -334,7 +364,7 @@ with col_t1a:
     t1_resp_low = st.number_input(f"{_low_label}", value=0.0, format="%.4g",
                                   key=_bk("t1_resp_low"))
 with col_t1b:
-    t1_resp_ctr = st.number_input("Center (1× P/V)", value=0.0, format="%.4g",
+    t1_resp_ctr = st.number_input("Center (1× P/m)", value=0.0, format="%.4g",
                                   key=_bk("t1_resp_ctr"))
 with col_t1c:
     t1_resp_high = st.number_input(f"{_high_label}", value=0.0, format="%.4g",
@@ -367,7 +397,7 @@ if st.button("📊 Assess Test 1 Responses", key=_bk("t1_assess")):
             "pct_detail": t1_pct_detail,
             "resp": [t1_resp_low, t1_resp_ctr, t1_resp_high],
             "resp_name": _t1_resp_name,
-            "labels": [_low_label, "Center (1× P/V)", _high_label],
+            "labels": [_low_label, "Center (1× P/m)", _high_label],
         }
 
 # Display results if assessed
@@ -425,7 +455,7 @@ st.divider()
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 2 – TEST 2: Feed Rate / Time  (Meso vs Micro)
 # ══════════════════════════════════════════════════════════════════════════
-st.header("2 · Test 2 — Feed Rate / Feed Time")
+st.header("Test 2 - Feed Rate / Feed Time")
 st.markdown("""
 Vary **feed time only** (hold speed & location at centerpoint). Test a **9× flow-rate
 range** (1/3× and 3× the centerpoint feed time).
@@ -578,7 +608,7 @@ eps_avg = power_per_volume(impeller_power(Np_val, rho, N_center_calc, D_imp), V_
 eps_avg_kg = eps_avg / rho  # W/kg for micromixing calculations
 
 if t2_sensitive:
-    st.header("3 · Test 3 — Feed Location")
+    st.header("Test 3 - Feed Location")
     st.markdown("""
     Vary **feed location only** (hold speed & feed time at centerpoint). Move
     from surface → impeller zone. This changes **local ε** without affecting
@@ -908,7 +938,7 @@ if st.button("📥 Export PDF Report", type="primary", key=_bk("export_pdf")):
                 "t3_responses": st.session_state.get(_bk("t3_assessed")),
                 "centerpoint_metrics": {
                     "N (RPM)": round(N_center_calc * 60, 1),
-                    "P/V (W/kg)": round(PV_center_wkg, 4),
+                    "P/m (W/kg)": round(PV_center_wkg, 4),
                     "Re": round(reynolds_number(N_center_calc, D_imp, rho, mu), 0),
                     "Tip speed (m/s)": round(tip_speed(N_center_calc, D_imp), 3),
                     "Blend time (s)": round(blend_time_turbulent(Nq_val, V_m3, D_imp, N_center_calc), 2),
