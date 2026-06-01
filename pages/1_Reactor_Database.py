@@ -45,6 +45,7 @@ CORE_COLS = [
     "gas_addition", "gas_feed_control",
     "no_ports", "motor_power_kW", "aux_units",
     "cip", "heating_cooling", "heat_transfer_medium", "heat_exchanger",
+    "probes",
 ]
 
 
@@ -62,6 +63,7 @@ _STR_COLS = {
     "instrumentation", "discharge_location", "insulated",
     "gas_addition", "gas_feed_control", "aux_units",
     "cip", "heating_cooling", "heat_transfer_medium", "heat_exchanger",
+    "probes",
 }
 
 
@@ -990,6 +992,7 @@ with tab_add:
         st.session_state["add_heating_cooling"] = _tsel("heating_cooling", _YES_NO_OPTIONS)
         st.session_state["add_heat_transfer_medium"] = _tsel("heat_transfer_medium", _HTM_OPTIONS)
         st.session_state["add_heat_exchanger"] = _tsel("heat_exchanger", _HEAT_EXCHANGER_OPTIONS)
+        st.session_state["add_probes"] = _ts("probes")
         st.rerun()
     elif template_reactor == "(none)":
         st.session_state.pop("_applied_template", None)
@@ -1138,6 +1141,8 @@ with tab_add:
             heating_cooling = st.selectbox("Heating/Cooling?", _YES_NO_OPTIONS, key="add_heating_cooling")
             heat_transfer_medium = st.selectbox("Heat transfer medium", _HTM_OPTIONS, key="add_heat_transfer_medium")
             
+        probes = st.text_input("Probes (comma-separated)", key="add_probes",
+                               help="e.g. Tr, EasyViewer, FBRM")
         notes = st.text_area("Notes", key="add_notes")
         submitted = st.form_submit_button("Add reactor")
 
@@ -1216,6 +1221,7 @@ with tab_add:
                 "heating_cooling": heating_cooling,
                 "heat_transfer_medium": heat_transfer_medium,
                 "heat_exchanger": heat_exchanger,
+                "probes": probes,
             }])
             st.session_state.reactor_db = pd.concat(
                 [st.session_state.reactor_db, new_row], ignore_index=True)
