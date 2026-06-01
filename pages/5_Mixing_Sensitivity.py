@@ -72,7 +72,7 @@ from utils.corr_widgets import (
     build_mode_dict_for,
     MODE_COLORS,
 )
-from utils.data_helpers import load_db, safe_float as _safe, all_fluid_names, safe_iloc, find_reactor_image
+from utils.data_helpers import load_db, safe_float as _safe, all_fluid_names, safe_iloc, find_reactor_image, reactor_search_name
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
@@ -113,7 +113,8 @@ def _idx(lst, key, default=0):
 col_r, col_rx, col_f = st.columns(3)
 
 with col_r:
-    reactor_name = st.selectbox("Reactor", _reactor_list, index=_idx(_reactor_list, "_sel_reactor"), key="ms_reactor", on_change=_reset_p5)
+    reactor_name = st.selectbox("Reactor", _reactor_list, index=_idx(_reactor_list, "_sel_reactor"), key="ms_reactor", on_change=_reset_p5,
+                                format_func=lambda n: reactor_search_name(reactors, n))
     st.session_state["_sel_reactor"] = reactor_name
 with col_rx:
     reaction_name = st.selectbox("Reaction", _reaction_list, index=_idx(_reaction_list, "_sel_reaction"), key="ms_reaction", on_change=_reset_p5)

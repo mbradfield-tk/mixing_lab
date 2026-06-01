@@ -46,7 +46,7 @@ from utils.calculations import (
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
 # ── Load databases ───────────────────────────────────────────────────────
-from utils.data_helpers import load_db, safe_float as _safe, all_fluid_names, safe_iloc
+from utils.data_helpers import load_db, safe_float as _safe, all_fluid_names, safe_iloc, reactor_search_name
 
 reactors = load_db("reactor_db", "reactors.csv", ["reactor_name"])
 custom_fluids = load_db("fluid_db", "fluids.csv", ["fluid_name"])
@@ -94,7 +94,8 @@ col_r, col_f = st.columns(2)
 with col_r:
     _reactor_list = reactors["reactor_name"].tolist()
     reactor_name = st.selectbox("Reactor", _reactor_list, key="ht_reactor",
-                                 on_change=_on_reactor_change)
+                                 on_change=_on_reactor_change,
+                                 format_func=lambda n: reactor_search_name(reactors, n))
 with col_f:
     fluid_name = st.selectbox("Process fluid", _all_fluid_names, key="ht_fluid",
                                on_change=_on_fluid_change)

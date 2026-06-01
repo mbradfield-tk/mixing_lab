@@ -12,14 +12,51 @@ _IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "reactors
 _IMG_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
 
+def build_search_names(df: pd.DataFrame) -> pd.DataFrame:
+    """Add a 'search_name' column combining reactor_name, probes, and impeller_type.
+
+    Format: "Reactor Name (probes; impeller_type)"
+    If probes is empty, only impeller_type is shown; if both empty, no parenthetical.
+    """
+    if "reactor_name" not in df.columns:
+        return df
+
+    def _make_search_name(row):
+        name = str(row.get("reactor_name", "")) if pd.notna(row.get("reactor_name")) else ""
+        probes = str(row.get("probes", "")).strip() if pd.notna(row.get("probes")) else ""
+        imp_type = str(row.get("impeller_type", "")).strip() if pd.notna(row.get("impeller_type")) else ""
+        parts = [p for p in [probes, imp_type] if p]
+        if parts:
+            return f"{name} ({'; '.join(parts)})"
+        return name
+
+    df = df.copy()
+    df["search_name"] = df.apply(_make_search_name, axis=1)
+    return df
+
+
+def reactor_search_name(reactors_df: pd.DataFrame, reactor_name: str) -> str:
+    """Look up the search_name for a given reactor_name."""
+    if "search_name" not in reactors_df.columns:
+        return reactor_name
+    row = reactors_df[reactors_df["reactor_name"] == reactor_name]
+    if row.empty:
+        return reactor_name
+    return str(row.iloc[0]["search_name"])
+
+
 def load_db(key: str, filename: str, columns: list[str] | None = None) -> pd.DataFrame:
     """Load a CSV from data/ into session state (once), returning the DataFrame."""
     if key not in st.session_state:
         p = DATA_DIR / filename
         if p.exists():
-            st.session_state[key] = pd.read_csv(p)
+            df = pd.read_csv(p)
         else:
-            st.session_state[key] = pd.DataFrame(columns=columns or [])
+            df = pd.DataFrame(columns=columns or [])
+        # Add search_name for reactor databases
+        if "reactor_name" in df.columns:
+            df = build_search_names(df)
+        st.session_state[key] = df
     return st.session_state[key]
 
 

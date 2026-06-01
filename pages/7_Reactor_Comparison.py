@@ -35,7 +35,7 @@ from utils.rom_registry import (
     PARAM_DISPLAY,
 )
 from utils.corr_widgets import render_correlation_matrix
-from utils.data_helpers import safe_iloc, load_db, safe_float, find_reactor_image
+from utils.data_helpers import safe_iloc, load_db, safe_float, find_reactor_image, reactor_search_name, build_search_names
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
@@ -46,7 +46,10 @@ SCALE_COLORS = {"Lab": "#1f77b4", "Pilot": "#ff7f0e", "Manufacturing": "#2ca02c"
 def _load(key, fn):
     if key not in st.session_state:
         p = DATA_DIR / fn
-        st.session_state[key] = pd.read_csv(p) if p.exists() else pd.DataFrame()
+        df = pd.read_csv(p) if p.exists() else pd.DataFrame()
+        if "reactor_name" in df.columns:
+            df = build_search_names(df)
+        st.session_state[key] = df
     return st.session_state[key]
 
 
@@ -101,6 +104,7 @@ selected_names = st.multiselect(
     default=_initial,
     key="cmp_reactors",
     on_change=_reset_p7,
+    format_func=lambda n: reactor_search_name(reactors, n),
 )
 st.session_state["_sel_cmp_reactors"] = selected_names
 

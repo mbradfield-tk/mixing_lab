@@ -10,6 +10,8 @@ import matplotlib.patches as patches
 from matplotlib.patches import Arc
 import plotly.graph_objects as go
 
+from utils.data_helpers import build_search_names
+
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 REACTOR_CSV = DATA_DIR / "reactors.csv"
 MEASUREMENTS_CSV = DATA_DIR / "measured" / "measurements_all.csv"
@@ -144,7 +146,7 @@ if "reactor_db" not in st.session_state:
     if _startup_assigned:
         _save_reactors(_loaded)
         st.session_state["_startup_assigned_ids"] = _startup_assigned
-    st.session_state.reactor_db = _loaded
+    st.session_state.reactor_db = build_search_names(_loaded)
 else:
     # Ensure any columns added after the initial load are present
     for c in CORE_COLS:
@@ -154,6 +156,8 @@ else:
     for c in _STR_COLS:
         if c in st.session_state.reactor_db.columns:
             st.session_state.reactor_db[c] = st.session_state.reactor_db[c].astype(object)
+    # Rebuild search_name in case probes or impeller_type changed
+    st.session_state.reactor_db = build_search_names(st.session_state.reactor_db)
 
 st.title("⚗️ Reactor Database")
 
@@ -1011,8 +1015,8 @@ with tab_add:
         st.text_input("Reactor ID (auto-generated)", value=_auto_id, disabled=True, key="_display_reactor_id")
         id1, id2, id3, id4 = st.columns(4)
         with id1:
-            owner = st.text_input("Owner / site", key="add_owner")
-            tag = st.text_input("Tag *", key="add_tag")
+            owner = st.text_input("Owner / site *", key="add_owner")
+            tag = st.text_input("Tag", key="add_tag")
         with id2:
             location = st.text_input("Location", key="add_location")
             rtype = st.selectbox("Type", _TYPE_OPTIONS, key="add_type")
@@ -1020,7 +1024,8 @@ with tab_add:
             manufacturer = st.text_input("Manufacturer", key="add_manufacturer")
             scale = st.selectbox("Scale", _SCALE_OPTIONS, key="add_scale")
         with id4:
-            manufacturer_model = st.text_input("Manufacturer model", key="add_manufacturer_model")
+            manufacturer_model = st.text_input("Manufacturer model *", key="add_manufacturer_model")
+
 
         # ── Geometry ──────────────────────────────────────────────────────
         st.markdown("##### Geometry")
@@ -1153,7 +1158,7 @@ with tab_add:
         # Auto-generate reactor_name from owner + tag
         name = f"{owner} \u2013 {tag}".strip(" \u2013 ") if (owner or tag) else ""
 
-        if submitted and tag:
+        if submitted and owner and manufacturer_model:
             new_row = pd.DataFrame([{
                 "reactor_id": _auto_id,
                 "reactor_name": name,
@@ -1228,7 +1233,7 @@ with tab_add:
             _save_reactors(st.session_state.reactor_db)
             st.success(f"Added **{name}** to the reactor database.")
         elif submitted:
-            st.warning("Please enter a tag.")
+            st.warning("Please enter an owner and a manufacturer model.")
 
 # ── Import / Export ───────────────────────────────────────────────────────
 with tab_import:

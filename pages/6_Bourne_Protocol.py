@@ -47,7 +47,7 @@ from utils.calculations import (
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
-from utils.data_helpers import load_db, safe_float, all_fluid_names, safe_iloc
+from utils.data_helpers import load_db, safe_float, all_fluid_names, safe_iloc, reactor_search_name
 
 reactors = load_db("reactor_db", "reactors.csv")
 custom_fluids = load_db("fluid_db", "fluids.csv")
@@ -111,7 +111,8 @@ col_r, col_f = st.columns(2)
 
 with col_r:
     if not reactors.empty:
-        reactor_name = st.selectbox("Reactor", _reactor_list, index=_sel_idx(_reactor_list, "_sel_bp_reactor"), key=_bk("reactor"))
+        reactor_name = st.selectbox("Reactor", _reactor_list, index=_sel_idx(_reactor_list, "_sel_bp_reactor"), key=_bk("reactor"),
+                                    format_func=lambda n: reactor_search_name(reactors, n))
         st.session_state["_sel_bp_reactor"] = reactor_name
         r = safe_iloc(reactors, "reactor_name", reactor_name, "Reactor")
         D_tank = safe_float(r["D_tank_m"], 0.10)
