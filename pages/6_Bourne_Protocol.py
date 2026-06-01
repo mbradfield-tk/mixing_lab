@@ -1,9 +1,8 @@
 """
-Page 8 – Bourne Protocol (Sarafinas Modification)
+Page 8 – Bourne Protocol
 ====================================================
 Guides the user step-by-step through the Bourne mixing-sensitivity screening
-protocol as described by Bourne (2003) and modified/extended by
-Aaron Sarafinas (2018).
+protocol as described by Bourne (2003).
 
 The protocol systematically varies:
   Test 1 – Impeller speed  (does mixing matter at all?)
@@ -65,7 +64,7 @@ competitive rate processes.
 _BP_IMG = pathlib.Path(__file__).resolve().parent.parent / "images" / "general" / "bourne_protocol_decision_tree.png"
 with st.expander("📋 Protocol overview – Decision Tree", expanded=False):
     if _BP_IMG.exists():
-        st.image(str(_BP_IMG), caption="Bourne Protocol – Decision Tree (Bourne 2003 / Sarafinas 2018)")
+        st.image(str(_BP_IMG), caption="Bourne Protocol – Decision Tree")
     else:
         st.info("Decision tree image not found. Generate it from the ⚙️ Admin page.")
 
@@ -198,7 +197,7 @@ st.divider()
 st.header("Test 1 - Impeller Speed")
 st.markdown("""
 Vary **impeller speed only** (hold feed rate & location constant).\n
-Target ≈**100× P/m range** across three speeds.\n
+Target ≈**100× P/m range** across three agitation speeds.\n
 If the response changes → mixing matters; proceed to Test 2.
 
 **Speed selection:** Default centerpoint P/m ≈ **0.2 W/kg**. Set high/low at
@@ -208,7 +207,7 @@ Use plant condition as centerpoint if targeting existing equipment.
 
 st.subheader("Suggested Experimental Conditions")
 
-# default based on Sarafinas recommendation, but allow user to customize or use plant RPM centerpoint
+# Default centerpoint P/m from Sarafinas (2018); allow user to customize or use plant RPM
 centerpoint_mode = st.radio(
     "Centerpoint selection method",
     ["Default (0.2 W/kg)", "Custom P/m", "Custom RPM"],
@@ -235,10 +234,10 @@ elif centerpoint_mode == "Custom RPM":
             st.warning(f"⚠️ {_custom_rpm:.1f} RPM is outside the reactor range "
                        f"({N_rpm_min:.1f} – {N_rpm_max:.1f} RPM).")
 else:
-    # Sarafinas recommends 0.2 W/kg as the default centerpoint.
+    # Default centerpoint P/m = 0.2 W/kg (Sarafinas, 2018).
     # Check whether the reactor can achieve it within its RPM range.
-    _SARAFINAS_DEFAULT_PV = 0.2  # W/kg
-    _N_for_default = (_SARAFINAS_DEFAULT_PV * rho * V_m3 / (Np_val * rho * D_imp**5))**(1/3)
+    _DEFAULT_PV = 0.2  # W/kg
+    _N_for_default = (_DEFAULT_PV * rho * V_m3 / (Np_val * rho * D_imp**5))**(1/3)
     _N_for_default_rpm = _N_for_default * 60
 
     _can_reach_default = True
@@ -248,11 +247,11 @@ else:
         _can_reach_default = False
 
     if _can_reach_default:
-        PV_center_wkg = _SARAFINAS_DEFAULT_PV
-        st.write(f"Centerpoint from Sarafinas default: **P/m = {PV_center_wkg:.4g} W/kg** "
-                 f"at N = {_N_for_default:.2f} rev/s ({_N_for_default_rpm:.0f} RPM)")
+        PV_center_wkg = _DEFAULT_PV
+        st.write(f"Centerpoint default: **P/m = {PV_center_wkg:.4g} W/kg** "
+                 f"at N = {_N_for_default_rpm:.0f} RPM)")
         if N_rpm_min is not None and N_rpm_max is not None:
-            st.caption(f"Sarafinas default 0.2 W/kg is within reactor RPM range "
+            st.caption(f"Default of 0.2 W/kg is within reactor RPM range "
                        f"({N_rpm_min:.1f} – {N_rpm_max:.1f} RPM).")
     else:
         # Fall back to average reactor speed
@@ -261,7 +260,7 @@ else:
         _ctr_rpm = N_center * 60
         st.write(f"Centerpoint from reactor average speed: **P/m = {PV_center_wkg:.4g} W/kg** "
                  f"at N = {N_center:.2f} rev/s ({_ctr_rpm:.0f} RPM)")
-        st.caption(f"Sarafinas default 0.2 W/kg requires {_N_for_default_rpm:.0f} RPM, "
+        st.caption(f"Default of 0.2 W/kg requires {_N_for_default_rpm:.0f} RPM, "
                    f"which is outside the reactor range "
                    f"({N_rpm_min:.1f} – {N_rpm_max:.1f} RPM). "
                    f"Using average speed instead.")
@@ -356,7 +355,8 @@ with st.expander("Practical limits to consider"):
 
 # ── Quantitative response entry for Test 1 ──────────────────────────────
 st.subheader("Record Test 1 Responses")
-st.caption("Sensitivity criterion: ≥ 5% relative change from center = sensitive (Sarafinas).")
+#  Sensitivity criterion default to 5%
+st.caption("Sensitivity criterion: ≥ 5% relative change from center = sensitive.")
 
 _t1_resp_name = st.text_input("Response metric name", value="Yield (%)",
                               key=_bk("t1_resp_name"))
@@ -372,9 +372,9 @@ with col_t1c:
                                    key=_bk("t1_resp_high"))
 
 # Sensitivity assessment
-_SARAFINAS_THRESHOLD = 5.0  # % relative change
+_SENSITIVITY_THRESHOLD = 5.0  # % relative change (Sarafinas, 2018)
 
-def _assess_sensitivity(resp_values, ref_value, threshold_pct=_SARAFINAS_THRESHOLD):
+def _assess_sensitivity(resp_values, ref_value, threshold_pct=_SENSITIVITY_THRESHOLD):
     """Return (max_pct_change, is_sensitive, detail_text)."""
     if ref_value == 0:
         # Fall back to absolute range if center is zero
@@ -424,17 +424,17 @@ else:
     })
 st.dataframe(_t1_res_df, use_container_width=True, hide_index=True)
 st.caption(f"Maximum relative change from center = **{t1_max_pct:.1f}%**  •  "
-           f"Sarafinas threshold = **{_SARAFINAS_THRESHOLD:.0f}%**")
+           f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**")
 
 if not t1_sensitive:
     st.success(
         f"✅ **Mixing not critical.** Max variation {t1_max_pct:.1f}% "
-        f"< {_SARAFINAS_THRESHOLD:.0f}% threshold. Protocol complete."
+        f"< {_SENSITIVITY_THRESHOLD:.0f}% threshold. Protocol complete."
     )
 else:
     st.warning(
         f"⚠️ **Mixing matters!** {t1_max_pct:.1f}% change "
-        f"(≥ {_SARAFINAS_THRESHOLD:.0f}%). Proceed to **Test 2**."
+        f"(≥ {_SENSITIVITY_THRESHOLD:.0f}%). Proceed to **Test 2**."
     )
 
 # Allow user to override the automatic assessment
@@ -565,18 +565,18 @@ else:
     })
 st.dataframe(_t2_res_df, use_container_width=True, hide_index=True)
 st.caption(f"Maximum relative change from center = **{t2_max_pct:.1f}%**  •  "
-           f"Sarafinas threshold = **{_SARAFINAS_THRESHOLD:.0f}%**")
+           f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**")
 
 if not t2_sensitive:
     st.info(
         f"🔬 **Micromixing controls.** {t2_max_pct:.1f}% change "
-        f"(< {_SARAFINAS_THRESHOLD:.0f}%). Scale-up: hold **local ε** constant."
+        f"(< {_SENSITIVITY_THRESHOLD:.0f}%). Scale-up: hold **local ε** constant."
     )
     _micro_conclusion = True
 else:
     st.warning(
         f"⚠️ **Mesomixing matters!** {t2_max_pct:.1f}% change "
-        f"(≥ {_SARAFINAS_THRESHOLD:.0f}%). Proceed to **Test 3**."
+        f"(≥ {_SENSITIVITY_THRESHOLD:.0f}%). Proceed to **Test 3**."
     )
     _micro_conclusion = False
 
@@ -708,12 +708,12 @@ if t2_sensitive:
         })
     st.dataframe(_t3_res_df, use_container_width=True, hide_index=True)
     st.caption(f"Maximum relative change from mid-tank = **{t3_max_pct:.1f}%**  •  "
-               f"Sarafinas threshold = **{_SARAFINAS_THRESHOLD:.0f}%**")
+               f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**")
 
     if not t3_sensitive:
         st.info(
             f"🌀 **Macromixing controls.** {t3_max_pct:.1f}% change "
-            f"(< {_SARAFINAS_THRESHOLD:.0f}%). Bulk blending is rate-limiting."
+            f"(< {_SENSITIVITY_THRESHOLD:.0f}%). Bulk blending is rate-limiting."
         )
         st.caption("Scale-up: maintain short blend times (hydrofoils, static mixers, multiple impellers).")
         _macro_conclusion = True
@@ -721,7 +721,7 @@ if t2_sensitive:
     else:
         st.success(
             f"📐 **Mesomixing controls.** {t3_max_pct:.1f}% change "
-            f"(≥ {_SARAFINAS_THRESHOLD:.0f}%). Feed-plume dispersion is rate-limiting."
+            f"(≥ {_SENSITIVITY_THRESHOLD:.0f}%). Feed-plume dispersion is rate-limiting."
         )
         st.caption("Scale-up: constant impeller speed, extended feed time, or multiple feed points.")
         _macro_conclusion = False
@@ -935,7 +935,27 @@ if st.button("📥 Export PDF Report", type="primary", key=_bk("export_pdf")):
                 "scaleup_notes": scaleup_notes,
                 "t1_conditions": t1_rows,
                 "t1_responses": st.session_state.get(_bk("t1_assessed")),
+                "t2_conditions": {
+                    "N_RPM": round(N_center_calc * 60, 1),
+                    "feed_vol_mL": feed_vol,
+                    "feed_location": "Held constant (centerpoint)",
+                    "rows": [
+                        {"Condition": "Fast (1/3x feed time)", "Feed time (min)": round(t_feed_fast, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_fast, 2)},
+                        {"Condition": "Center (1x feed time)", "Feed time (min)": round(t_feed_center, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_center, 2)},
+                        {"Condition": "Slow (3x feed time)", "Feed time (min)": round(t_feed_slow, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_slow, 2)},
+                    ],
+                },
                 "t2_responses": st.session_state.get(_bk("t2_assessed")),
+                "t3_conditions": {
+                    "N_RPM": round(N_center_calc * 60, 1),
+                    "feed_time_min": round(t_feed_center, 2),
+                    "eps_avg_W_m3": round(eps_avg, 2),
+                    "rows": [
+                        {"Feed Location": "Surface", "eps_loc/eps_avg": 0.1, "eps_loc (W/m3)": round(0.1 * eps_avg, 2)},
+                        {"Feed Location": "Sub-surface (mid-tank)", "eps_loc/eps_avg": 1.0, "eps_loc (W/m3)": round(1.0 * eps_avg, 2)},
+                        {"Feed Location": "Impeller zone", "eps_loc/eps_avg": 3.0, "eps_loc (W/m3)": round(3.0 * eps_avg, 2)},
+                    ],
+                },
                 "t3_responses": st.session_state.get(_bk("t3_assessed")),
                 "centerpoint_metrics": {
                     "N (RPM)": round(N_center_calc * 60, 1),
@@ -973,15 +993,11 @@ st.header("References")
 st.markdown("""
 1. Bourne, J.R. (2003). *Mixing and the Selectivity of Chemical Reactions.*
    Org. Process Res. Dev., 7(4), 471–508.
-2. Sarafinas, A. (2018). *Test Process Mixing Sensitivities Using the Bourne
-   Protocol.* Scientific Update Webinar, 13 November 2018.
-3. Sarafinas, A. & Teich, C.I. (2016). Chapter 13 in *Advances in Industrial
-   Mixing* (Kresta et al., Wiley).
-4. Paul, E.L., Atiemo-Obeng, V.A. & Kresta, S.M. (2004). *Handbook of
+2. Paul, E.L., Atiemo-Obeng, V.A. & Kresta, S.M. (2004). *Handbook of
    Industrial Mixing.* Wiley-Interscience.
-5. Baldyga, J. & Bourne, J.R. (1999). *Turbulent Mixing and Chemical
+3. Baldyga, J. & Bourne, J.R. (1999). *Turbulent Mixing and Chemical
    Reactions.* Wiley.
-6. Jo, M.C., Penney, W.R. & Fasano, J.B. (1994). Back-mixing into reactor
+4. Jo, M.C., Penney, W.R. & Fasano, J.B. (1994). Back-mixing into reactor
    feed pipes caused by turbulence in an agitated vessel. AIChE Symp. Ser.,
    90(299).
 """)

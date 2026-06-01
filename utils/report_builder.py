@@ -1006,16 +1006,22 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
 
     # ── Test 1 ───────────────────────────────────────────────────────────
     pdf.section_title("Test 1 -- Impeller Speed")
+    pdf.sub_title("Conditions")
     if t1_conditions:
+        _t1_cond_headers = ["Condition", "Volume (L)", "N (RPM)", "P/m (W/kg)", "P/V (W/L)", "Tip speed (m/s)"]
         _t1_cond_rows = []
-        _t1_cond_headers = ["Condition", "N (RPM)", "P/V (W/kg)"]
         for cond in t1_conditions:
             _t1_cond_rows.append([
                 cond.get("Condition", ""),
+                f"{cond.get('Volume (L)', 0):.2f}",
                 f"{cond.get('N (RPM)', 0):.0f}",
-                f"{cond.get('P/V (W/kg)', 0):.4g}",
+                f"{cond.get('P/m (W/kg)', 0):.4g}",
+                f"{cond.get('P/V (W/L)', 0):.4g}",
+                f"{cond.get('Tip speed (m/s)', 0):.3f}",
             ])
-        pdf.data_table(_t1_cond_headers, _t1_cond_rows, col_widths=[65, 40, 40])
+        pdf.data_table(_t1_cond_headers, _t1_cond_rows, col_widths=[50, 25, 25, 30, 25, 30])
+        pdf.ln(1)
+        pdf.body_text("Feed rate and feed location held constant.")
     if t1_responses:
         pdf.ln(2)
         pdf.sub_title(f"Responses ({t1_responses.get('resp_name', '')})")
@@ -1035,6 +1041,28 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     # ── Test 2 ───────────────────────────────────────────────────────────
     if t2_responses:
         pdf.section_title("Test 2 -- Feed Rate / Feed Time")
+        pdf.sub_title("Conditions")
+        t2_conds = snap.get("t2_conditions", {})
+        if t2_conds:
+            pdf.body_text(
+                f"Impeller speed held at N = {t2_conds.get('N_RPM', 0):.0f} RPM.  "
+                f"Volume = {V_L:.1f} L.  "
+                f"Feed location: {t2_conds.get('feed_location', 'constant')}."
+            )
+            pdf.ln(1)
+            _t2_cond_headers = ["Condition", "Feed time (min)", "Flow rate (mL/min)"]
+            _t2_cond_rows = []
+            for row in t2_conds.get("rows", []):
+                _t2_cond_rows.append([
+                    row.get("Condition", ""),
+                    f"{row.get('Feed time (min)', 0):.2f}",
+                    f"{row.get('Flow rate (mL/min)', 0):.2f}",
+                ])
+            if _t2_cond_rows:
+                pdf.data_table(_t2_cond_headers, _t2_cond_rows, col_widths=[65, 45, 45])
+            pdf.ln(1)
+            pdf.body_text(f"Total feed volume: {t2_conds.get('feed_vol_mL', 0):.1f} mL.")
+        pdf.ln(2)
         pdf.sub_title(f"Responses ({t2_responses.get('resp_name', '')})")
         t2_labels = ["Fast (1/3x)", "Center (1x)", "Slow (3x)"]
         t2_resp = t2_responses.get("resp", [])
@@ -1052,6 +1080,26 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     # ── Test 3 ───────────────────────────────────────────────────────────
     if t3_responses:
         pdf.section_title("Test 3 -- Feed Location")
+        pdf.sub_title("Conditions")
+        t3_conds = snap.get("t3_conditions", {})
+        if t3_conds:
+            pdf.body_text(
+                f"Impeller speed held at N = {t3_conds.get('N_RPM', 0):.0f} RPM.  "
+                f"Volume = {V_L:.1f} L.  "
+                f"Feed time = {t3_conds.get('feed_time_min', 0):.1f} min (centerpoint)."
+            )
+            pdf.ln(1)
+            _t3_cond_headers = ["Feed Location", "eps_loc/eps_avg", "eps_loc (W/m3)"]
+            _t3_cond_rows = []
+            for row in t3_conds.get("rows", []):
+                _t3_cond_rows.append([
+                    row.get("Feed Location", ""),
+                    f"{row.get('eps_loc/eps_avg', 0):.1f}",
+                    f"{row.get('eps_loc (W/m3)', 0):.1f}",
+                ])
+            if _t3_cond_rows:
+                pdf.data_table(_t3_cond_headers, _t3_cond_rows, col_widths=[65, 40, 40])
+        pdf.ln(2)
         pdf.sub_title(f"Responses ({t3_responses.get('resp_name', '')})")
         t3_labels = ["Surface", "Sub-surface (mid)", "Impeller zone"]
         t3_resp = t3_responses.get("resp", [])
