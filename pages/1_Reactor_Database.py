@@ -10,7 +10,7 @@ import matplotlib.patches as patches
 from matplotlib.patches import Arc
 import plotly.graph_objects as go
 
-from utils.data_helpers import build_search_names
+from utils.data_helpers import build_search_names, reactor_search_name
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 REACTOR_CSV = DATA_DIR / "reactors.csv"
@@ -266,6 +266,7 @@ with tab_browse:
         selected_reactor = st.selectbox(
             "Select a reactor",
             options=["(none)"] + reactor_names,
+            format_func=lambda n: reactor_search_name(df_display, n),
             key="img_reactor_select",
         )
 
