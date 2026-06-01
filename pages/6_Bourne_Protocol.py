@@ -249,7 +249,7 @@ else:
     if _can_reach_default:
         PV_center_wkg = _DEFAULT_PV
         st.write(f"Centerpoint default: **P/m = {PV_center_wkg:.4g} W/kg** "
-                 f"at N = {_N_for_default_rpm:.0f} RPM)")
+                 f"at N = {_N_for_default_rpm:.0f} RPM")
         if N_rpm_min is not None and N_rpm_max is not None:
             st.caption(f"Default of 0.2 W/kg is within reactor RPM range "
                        f"({N_rpm_min:.1f} – {N_rpm_max:.1f} RPM).")
