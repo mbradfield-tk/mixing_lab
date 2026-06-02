@@ -353,6 +353,70 @@ with st.expander("Practical limits to consider"):
     **Max speed:** vortex / surface aeration, mechanical limits, splashing
     """)
 
+# ── P/V iso-lines plot: Speed vs Fill Volume ─────────────────────────────
+if V_L_min != V_L_max:
+    import plotly.graph_objects as go
+
+    st.subheader("Speed vs Fill Volume at Constant P/m")
+
+    _vol_points = np.linspace(V_L_min, V_L_max, 50)
+    _vol_m3_points = _vol_points / 1000.0
+
+    _pv_targets = [
+        ("0.1× P/m", PV_center_wkg * 0.1, "blue"),
+        ("1× P/m (center)", PV_center_wkg, "green"),
+        ("10× P/m", PV_center_wkg * 10, "red"),
+    ]
+
+    fig_t1 = go.Figure()
+
+    for _label, _pv_wkg, _color in _pv_targets:
+        # P/m (W/kg) = Np * N³ * D⁵ / V  →  N = (P/m * V / (Np * D⁵))^(1/3)
+        _N_vals = (_pv_wkg * _vol_m3_points / (Np_val * D_imp**5))**(1/3)
+        _rpm_vals = _N_vals * 60
+        fig_t1.add_trace(go.Scatter(
+            x=_vol_points, y=_rpm_vals, mode='lines',
+            name=_label, line=dict(color=_color, width=2),
+        ))
+
+    # Mark the user-selected centerpoint volume
+    _N_ctr_mark = (PV_center_wkg * V_m3 / (Np_val * D_imp**5))**(1/3) * 60
+    fig_t1.add_trace(go.Scatter(
+        x=[V_L], y=[_N_ctr_mark], mode='markers',
+        name=f'Centerpoint ({V_L:.2f} L)',
+        marker=dict(color='black', size=12, symbol='circle'),
+    ))
+
+    # Mark min and max volume at each P/m level
+    for _label, _pv_wkg, _color in _pv_targets:
+        _N_min_v = (_pv_wkg * (V_L_min / 1000) / (Np_val * D_imp**5))**(1/3) * 60
+        _N_max_v = (_pv_wkg * (V_L_max / 1000) / (Np_val * D_imp**5))**(1/3) * 60
+        fig_t1.add_trace(go.Scatter(
+            x=[V_L_min, V_L_max], y=[_N_min_v, _N_max_v], mode='markers',
+            name=f'{_label} (min/max vol)',
+            marker=dict(color=_color, size=9, symbol='square'),
+            showlegend=False,
+        ))
+
+    # RPM bounds
+    if N_rpm_min is not None:
+        fig_t1.add_hline(y=N_rpm_min, line_dash="dash", line_color="gray",
+                         annotation_text=f"Min RPM ({N_rpm_min:.0f})",
+                         annotation_position="top left")
+    if N_rpm_max is not None:
+        fig_t1.add_hline(y=N_rpm_max, line_dash="dash", line_color="gray",
+                         annotation_text=f"Max RPM ({N_rpm_max:.0f})",
+                         annotation_position="bottom left")
+
+    fig_t1.update_layout(
+        title="Impeller Speed vs Fill Volume at Constant P/m",
+        xaxis_title="Fill Volume (L)",
+        yaxis_title="Impeller Speed (RPM)",
+        legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.8)"),
+        height=500,
+    )
+    st.plotly_chart(fig_t1, use_container_width=True)
+
 # ── Quantitative response entry for Test 1 ──────────────────────────────
 st.subheader("Record Test 1 Responses")
 #  Sensitivity criterion default to 5%
