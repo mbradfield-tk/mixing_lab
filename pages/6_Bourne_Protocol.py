@@ -178,13 +178,13 @@ nu = mu / rho
 # ── Volume selection ──────────────────────────────────────────────────────
 st.subheader("Working Volume")
 if V_L_min != V_L_max:
-    st.caption(f"Reactor volume range: {V_L_min:.2f} – {V_L_max:.2f} L  •  Average: {V_L_avg:.2f} L")
+    st.caption(f"Reactor volume range: {V_L_min:.3f} – {V_L_max:.3f} L  •  Average: {V_L_avg:.3f} L")
 
-_vol_min = V_L_min if V_L_min > 0 else 0.1
+_vol_min = V_L_min if V_L_min > 0 else 0.001
 _reactor_tag = reactor_name.replace(" ", "_") if not reactors.empty else "manual"
 V_L = st.number_input(
     "Working volume (L)", min_value=_vol_min, value=_vol_min,
-    step=1.0, format="%.2f", key=_bk(f"vol_L_{_reactor_tag}"),
+    step=0.001, format="%.3f", key=_bk(f"vol_L_{_reactor_tag}"),
     help="Defaults to the minimum volume from the reactor database.",
 )
 V_m3 = V_L / 1000.0  # m³
@@ -194,7 +194,7 @@ st.divider()
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 1 – TEST 1: Impeller Speed  (Does mixing matter?)
 # ══════════════════════════════════════════════════════════════════════════
-st.header("Test 1 - Impeller Speed")
+st.header("Test 1 - Vary Impeller Speed")
 st.markdown("""
 Vary **impeller speed only** (hold feed rate & location constant).\n
 Target ≈**100× P/m range** across three agitation speeds.\n
@@ -205,7 +205,7 @@ If the response changes → mixing matters; proceed to Test 2.
 Use plant condition as centerpoint if targeting existing equipment.
 """)
 
-st.subheader("Suggested Experimental Conditions")
+st.subheader("Experimental Conditions")
 
 # Default centerpoint P/m from Sarafinas (2018); allow user to customize or use plant RPM
 centerpoint_mode = st.radio(
@@ -347,6 +347,87 @@ if _low_clamped or _high_clamped:
               "\n\nThe achievable P/V range is narrower than the ideal 100× span. "
               "Consider whether this is sufficient to draw conclusions.")
 
+# ── Discrete speed adjustments for fed-batch (constant P/m) ──────────────
+st.subheader("Discrete Speed Adjustments (Fed-Batch)")
+st.markdown(
+    "For fed-batch operations, the impeller speed can be stepped at "
+    "discrete volume milestones to hold **P/m constant** as the working "
+    "volume grows. Enable below to plan those setpoints for each of the "
+    "three Test 1 conditions."
+)
+
+_use_adj = st.checkbox(
+    "Add discrete speed adjustments at higher volumes",
+    key=_bk("t1_use_adj"),
+)
+
+_adj_vols: list[float] = []
+
+if _use_adj:
+    _n_adj = int(st.number_input(
+        "Number of additional volume adjustment points",
+        min_value=1, max_value=10, value=1, step=1,
+        key=_bk("t1_n_adj"),
+    ))
+
+    _vol_upper = V_L_max if V_L_max > V_L else V_L * 2.0
+    _adj_cols = st.columns(min(_n_adj, 4))
+    for _i in range(_n_adj):
+        _col = _adj_cols[_i % len(_adj_cols)]
+        _default_vol = V_L + (_i + 1) * (_vol_upper - V_L) / _n_adj
+        _v = _col.number_input(
+            f"Adjustment {_i + 1} volume (L)",
+            min_value=float(V_L), value=float(_default_vol),
+            step=0.001, format="%.3f",
+            key=_bk(f"t1_adj_vol_{_i}"),
+        )
+        _adj_vols.append(_v)
+
+    _pv_targets_adj = [
+        (_low_label, t1_rows[0]["P/m (W/kg)"]),
+        ("Center (1× P/m)", t1_rows[1]["P/m (W/kg)"]),
+        (_high_label, t1_rows[2]["P/m (W/kg)"]),
+    ]
+
+    _vol_steps = [("Initial", V_L)] + [
+        (f"Adj. {_i + 1}", _v) for _i, _v in enumerate(_adj_vols)
+    ]
+
+    _adj_rows = []
+    _any_clamped = False
+    for _step_label, _vol_L in _vol_steps:
+        _row = {"Step": _step_label, "Volume (L)": round(_vol_L, 3)}
+        _vol_m3_step = _vol_L / 1000.0
+        for _cond_label, _pv_wkg in _pv_targets_adj:
+            # P/m = Np · N³ · D⁵ / V  →  N = (P/m · V / (Np · D⁵))^(1/3)
+            _N_req = (_pv_wkg * _vol_m3_step / (Np_val * D_imp**5))**(1/3)
+            _N_rpm_req = _N_req * 60
+            _flag = ""
+            if N_rps_min is not None and _N_req < N_rps_min:
+                _N_rpm_req = N_rpm_min
+                _flag = " ⚠"
+                _any_clamped = True
+            elif N_rps_max is not None and _N_req > N_rps_max:
+                _N_rpm_req = N_rpm_max
+                _flag = " ⚠"
+                _any_clamped = True
+            _row[f"{_cond_label} (RPM)"] = f"{_N_rpm_req:.1f}{_flag}"
+        _adj_rows.append(_row)
+
+    _adj_df = pd.DataFrame(_adj_rows)
+    st.dataframe(_adj_df, use_container_width=True, hide_index=True)
+    st.caption(
+        "Speeds chosen to hold each condition's P/m constant as volume "
+        "increases. Set each value as a discrete setpoint when the working "
+        "volume reaches the corresponding milestone."
+    )
+    if _any_clamped:
+        st.warning(
+            "⚠ One or more required RPM values fall outside the reactor "
+            "range and were clamped to the reactor min/max. The target P/m "
+            "cannot be maintained at those steps."
+        )
+
 with st.expander("Practical limits to consider"):
     st.markdown("""
     **Min speed:** N_js (solids), N_jd (liquids), flooding (gas)  
@@ -383,7 +464,7 @@ if V_L_min != V_L_max:
     _N_ctr_mark = (PV_center_wkg * V_m3 / (Np_val * D_imp**5))**(1/3) * 60
     fig_t1.add_trace(go.Scatter(
         x=[V_L], y=[_N_ctr_mark], mode='markers',
-        name=f'Centerpoint ({V_L:.2f} L)',
+        name=f'Centerpoint ({V_L:.3f} L)',
         marker=dict(color='black', size=12, symbol='circle'),
     ))
 
@@ -397,6 +478,22 @@ if V_L_min != V_L_max:
             marker=dict(color=_color, size=9, symbol='square'),
             showlegend=False,
         ))
+
+    # Mark discrete fed-batch adjustment points on each iso-line
+    if _adj_vols:
+        for _idx, (_label, _pv_wkg, _color) in enumerate(_pv_targets):
+            _adj_rpm = [
+                (_pv_wkg * (_v / 1000) / (Np_val * D_imp**5))**(1/3) * 60
+                for _v in _adj_vols
+            ]
+            fig_t1.add_trace(go.Scatter(
+                x=_adj_vols, y=_adj_rpm, mode='markers',
+                name='Fed-batch adjustments' if _idx == 0 else None,
+                marker=dict(color=_color, size=11, symbol='diamond',
+                            line=dict(color='black', width=1)),
+                showlegend=(_idx == 0),
+                hovertemplate='%{x:.3f} L → %{y:.1f} RPM<extra></extra>',
+            ))
 
     # RPM bounds
     if N_rpm_min is not None:
@@ -422,18 +519,46 @@ st.subheader("Record Test 1 Responses")
 #  Sensitivity criterion default to 5%
 st.caption("Sensitivity criterion: ≥ 5% relative change from center = sensitive.")
 
-_t1_resp_name = st.text_input("Response metric name", value="Yield (%)",
-                              key=_bk("t1_resp_name"))
-col_t1a, col_t1b, col_t1c = st.columns(3)
-with col_t1a:
-    t1_resp_low = st.number_input(f"{_low_label}", value=0.0, format="%.4g",
-                                  key=_bk("t1_resp_low"))
-with col_t1b:
-    t1_resp_ctr = st.number_input("Center (1× P/m)", value=0.0, format="%.4g",
-                                  key=_bk("t1_resp_ctr"))
-with col_t1c:
-    t1_resp_high = st.number_input(f"{_high_label}", value=0.0, format="%.4g",
-                                   key=_bk("t1_resp_high"))
+_t1_multi = st.checkbox(
+    "Track multiple KPIs",
+    key=_bk("t1_multi"),
+    help=("Enable to record several response metrics and combine them into "
+          "an overall mixing-sensitivity assessment by majority vote."),
+)
+
+if _t1_multi:
+    _t1_n_kpi = int(st.number_input(
+        "Number of KPIs",
+        min_value=2, max_value=10, value=2, step=1,
+        key=_bk("t1_n_kpi"),
+    ))
+else:
+    _t1_n_kpi = 1
+
+_t1_kpi_inputs = []  # [{name, low, ctr, high}, ...]
+for _k in range(_t1_n_kpi):
+    if _t1_multi:
+        st.markdown(f"**KPI {_k + 1}**")
+    _kpi_name = st.text_input(
+        "Response metric name" if not _t1_multi else f"KPI {_k + 1} name",
+        value=("Yield (%)" if _k == 0 else f"KPI {_k + 1}"),
+        key=_bk(f"t1_resp_name_{_k}"),
+    )
+    _col_a, _col_b, _col_c = st.columns(3)
+    with _col_a:
+        _r_low = _col_a.number_input(f"{_low_label}", value=0.0, format="%.4g",
+                                     key=_bk(f"t1_resp_low_{_k}"))
+    with _col_b:
+        _r_ctr = _col_b.number_input("Center (1× P/m)", value=0.0, format="%.4g",
+                                     key=_bk(f"t1_resp_ctr_{_k}"))
+    with _col_c:
+        _r_high = _col_c.number_input(f"{_high_label}", value=0.0, format="%.4g",
+                                      key=_bk(f"t1_resp_high_{_k}"))
+    _t1_kpi_inputs.append({"name": _kpi_name, "low": _r_low,
+                           "ctr": _r_ctr, "high": _r_high})
+
+# back-compat: first KPI name used by later sections
+_t1_resp_name = _t1_kpi_inputs[0]["name"]
 
 # Sensitivity assessment
 _SENSITIVITY_THRESHOLD = 5.0  # % relative change (Sarafinas, 2018)
@@ -451,54 +576,119 @@ def _assess_sensitivity(resp_values, ref_value, threshold_pct=_SENSITIVITY_THRES
 
 # Button-triggered assessment
 if st.button("📊 Assess Test 1 Responses", key=_bk("t1_assess")):
-    if t1_resp_ctr == 0.0 and t1_resp_low == 0.0 and t1_resp_high == 0.0:
-        st.warning("Enter all three response values before assessing.")
+    _all_zero = all(
+        kp["low"] == 0.0 and kp["ctr"] == 0.0 and kp["high"] == 0.0
+        for kp in _t1_kpi_inputs
+    )
+    if _all_zero:
+        st.warning("Enter response values before assessing.")
     else:
-        t1_max_pct, t1_sensitive, t1_pct_detail = _assess_sensitivity(
-            [t1_resp_low, t1_resp_ctr, t1_resp_high], t1_resp_ctr
-        )
+        _kpi_results = []
+        for kp in _t1_kpi_inputs:
+            _mp, _sn, _pd = _assess_sensitivity(
+                [kp["low"], kp["ctr"], kp["high"]], kp["ctr"]
+            )
+            _kpi_results.append({
+                "name": kp["name"],
+                "max_pct": _mp,
+                "sensitive": _sn,
+                "pct_detail": _pd,
+                "resp": [kp["low"], kp["ctr"], kp["high"]],
+            })
+        _n_total = len(_kpi_results)
+        _n_sensitive = sum(1 for r in _kpi_results if r["sensitive"])
+        if _n_sensitive == 0:
+            _status = "not_sensitive"
+        elif _n_sensitive > _n_total / 2:
+            _status = "sensitive"
+        else:
+            _status = "may_be_sensitive"
+
         st.session_state[_bk("t1_assessed")] = {
-            "max_pct": t1_max_pct, "sensitive": t1_sensitive,
-            "pct_detail": t1_pct_detail,
-            "resp": [t1_resp_low, t1_resp_ctr, t1_resp_high],
-            "resp_name": _t1_resp_name,
+            "kpi_results": _kpi_results,
+            "n_total": _n_total,
+            "n_sensitive": _n_sensitive,
+            "status": _status,
             "labels": [_low_label, "Center (1× P/m)", _high_label],
+            # back-compat single-KPI fields (first KPI / max across KPIs)
+            "max_pct": max((r["max_pct"] for r in _kpi_results), default=0.0),
+            "sensitive": _status != "not_sensitive",
+            "resp_name": _kpi_results[0]["name"],
+            "resp": _kpi_results[0]["resp"],
+            "pct_detail": _kpi_results[0]["pct_detail"],
         }
 
 # Display results if assessed
 if _bk("t1_assessed") not in st.session_state:
-    st.info("Enter all three response values, then click **Assess Test 1 Responses**.")
+    st.info("Enter response values, then click **Assess Test 1 Responses**.")
     st.stop()
 
 _t1a = st.session_state[_bk("t1_assessed")]
 t1_max_pct = _t1a["max_pct"]
 t1_sensitive = _t1a["sensitive"]
-t1_pct_detail = _t1a["pct_detail"]
+t1_status = _t1a.get("status", "sensitive" if t1_sensitive else "not_sensitive")
+t1_kpi_results = _t1a.get("kpi_results", [])
+_t1_labels = _t1a["labels"]
 
-if isinstance(t1_pct_detail, list):
-    _t1_res_df = pd.DataFrame({
-        "Condition": _t1a["labels"],
-        _t1a["resp_name"]: _t1a["resp"],
-        "Δ from center (%)": [f"{p:.1f}%" for p in t1_pct_detail],
-    })
-else:
-    _t1_res_df = pd.DataFrame({
-        "Condition": _t1a["labels"],
-        _t1a["resp_name"]: _t1a["resp"],
-    })
-st.dataframe(_t1_res_df, use_container_width=True, hide_index=True)
-st.caption(f"Maximum relative change from center = **{t1_max_pct:.1f}%**  •  "
-           f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**")
-
-if not t1_sensitive:
-    st.success(
-        f"✅ **Mixing not critical.** Max variation {t1_max_pct:.1f}% "
-        f"< {_SENSITIVITY_THRESHOLD:.0f}% threshold. Protocol complete."
+if t1_kpi_results:
+    _rows = []
+    for r in t1_kpi_results:
+        _rows.append({
+            "KPI": r["name"],
+            _t1_labels[0]: r["resp"][0],
+            _t1_labels[1]: r["resp"][1],
+            _t1_labels[2]: r["resp"][2],
+            "Max Δ from center (%)": f"{r['max_pct']:.1f}%",
+            "Sensitive?": "Yes" if r["sensitive"] else "No",
+        })
+    st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+    st.caption(
+        f"{_t1a['n_sensitive']} / {_t1a['n_total']} KPIs sensitive  •  "
+        f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%** relative change"
     )
 else:
-    st.warning(
-        f"⚠️ **Mixing matters!** {t1_max_pct:.1f}% change "
-        f"(≥ {_SENSITIVITY_THRESHOLD:.0f}%). Proceed to **Test 2**."
+    # Legacy single-KPI display (assessment from an older session)
+    _pd_detail = _t1a.get("pct_detail")
+    if isinstance(_pd_detail, list):
+        _t1_res_df = pd.DataFrame({
+            "Condition": _t1_labels,
+            _t1a["resp_name"]: _t1a["resp"],
+            "Δ from center (%)": [f"{p:.1f}%" for p in _pd_detail],
+        })
+    else:
+        _t1_res_df = pd.DataFrame({
+            "Condition": _t1_labels,
+            _t1a["resp_name"]: _t1a["resp"],
+        })
+    st.dataframe(_t1_res_df, use_container_width=True, hide_index=True)
+    st.caption(
+        f"Maximum relative change from center = **{t1_max_pct:.1f}%**  •  "
+        f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**"
+    )
+
+if t1_status == "not_sensitive":
+    st.success(
+        f"✅ **Mixing not critical.** No KPIs exceeded the "
+        f"{_SENSITIVITY_THRESHOLD:.0f}% threshold. Protocol complete."
+    )
+elif t1_status == "sensitive":
+    if t1_kpi_results and _t1a["n_total"] > 1:
+        st.warning(
+            f"⚠️ **Mixing matters!** Majority of KPIs "
+            f"({_t1a['n_sensitive']} / {_t1a['n_total']}) changed by "
+            f"≥ {_SENSITIVITY_THRESHOLD:.0f}%. Proceed to **Test 2**."
+        )
+    else:
+        st.warning(
+            f"⚠️ **Mixing matters!** {t1_max_pct:.1f}% change "
+            f"(≥ {_SENSITIVITY_THRESHOLD:.0f}%). Proceed to **Test 2**."
+        )
+else:  # may_be_sensitive
+    st.info(
+        f"🟡 **Process may be mixing-sensitive.** "
+        f"{_t1a['n_sensitive']} of {_t1a['n_total']} KPIs changed by "
+        f"≥ {_SENSITIVITY_THRESHOLD:.0f}% (fewer than half). "
+        f"Proceed to **Test 2** with caution."
     )
 
 # Allow user to override the automatic assessment
@@ -511,6 +701,7 @@ if t1_override:
         horizontal=True,
     )
     t1_sensitive = t1_result_manual.startswith("Sensitive")
+    t1_status = "sensitive" if t1_sensitive else "not_sensitive"
 
 if not t1_sensitive:
     st.stop()
@@ -874,8 +1065,19 @@ conclusions = []
 scaleup_notes = []
 
 # Test 1 always passed if we reached here
-conclusions.append(("Test 1 – Impeller Speed",
-                    f"**Sensitive** ({t1_max_pct:.1f}% change) → Mixing matters", "⚠️"))
+if t1_status == "may_be_sensitive":
+    conclusions.append((
+        "Test 1 – Impeller Speed",
+        f"**May be sensitive** ({_t1a.get('n_sensitive', '?')} / {_t1a.get('n_total', '?')} KPIs "
+        f"≥ {_SENSITIVITY_THRESHOLD:.0f}%) → Mixing may matter",
+        "🟡",
+    ))
+else:
+    conclusions.append((
+        "Test 1 – Impeller Speed",
+        f"**Sensitive** (max {t1_max_pct:.1f}% change) → Mixing matters",
+        "⚠️",
+    ))
 
 # Test 2
 if not t2_sensitive:
