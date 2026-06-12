@@ -28,15 +28,15 @@ def compute_reactor_hydro(
 ) -> dict:
     """Return a dictionary of all computed hydrodynamic parameters."""
     V = np.pi / 4 * D_tank**2 * H
-    nu = mu / rho
-    Re = reynolds_number(N, D_imp, rho, mu)
+    nu = mu / rho if rho > 0 else 0.0
+    Re = reynolds_number(N, D_imp, rho, mu) if mu > 0 else 0.0
     if Np is None or (isinstance(Np, float) and np.isnan(Np)):
         Np = power_number_correlation(Re)
     if Nq is None or (isinstance(Nq, float) and np.isnan(Nq)):
         Nq = pumping_number_default()
     P = impeller_power(Np, rho, N, D_imp)
-    eps = power_per_volume(P, V)
-    eps_kg = eps / rho
+    eps = power_per_volume(P, V) if V > 0 else 0.0
+    eps_kg = eps / rho if rho > 0 else 0.0
     u_tip = tip_speed(N, D_imp)
     Q = pumping_rate(Nq, N, D_imp)
     t_blend = blend_time_turbulent(Nq, V, D_imp, N)

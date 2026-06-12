@@ -226,7 +226,7 @@ def _build_kwargs(
         N=N, D_imp=D_imp, D_tank=D_tank, H=H,
         rho=rho, mu=mu, nu=nu, Re=Re,
         V=V, V_L=V * 1000,  # m³ and litres
-        P=P, P_V=eps, eps=eps, eps_kg=eps_kg,
+        P=P, P_V=eps, eps=eps_kg, eps_kg=eps_kg,  # P_V is W/m³; eps/eps_kg are W/kg
         Np=Np, Nq=Nq,
         v_s=v_s, D_mol=D_mol,
         coalescing=coalescing,
@@ -276,8 +276,8 @@ def compute_reactor_hydro_with_mode(
 
     # --- Basics ---
     V = np.pi / 4 * D_tank**2 * H
-    nu = mu / rho
-    Re = reynolds_number(N, D_imp, rho, mu)
+    nu = mu / rho if rho > 0 else 0.0
+    Re = reynolds_number(N, D_imp, rho, mu) if mu > 0 else 0.0
 
     if Np is None or (isinstance(Np, float) and np.isnan(Np)):
         Np_val = power_number_correlation(Re)
@@ -312,8 +312,8 @@ def compute_reactor_hydro_with_mode(
             _corr_cache[p] = corrs[0] if corrs else None
 
     P = impeller_power(Np_val, rho, N, D_imp)
-    eps = power_per_volume(P, V)
-    eps_kg = eps / rho
+    eps = power_per_volume(P, V) if V > 0 else 0.0
+    eps_kg = eps / rho if rho > 0 else 0.0
 
     kw = _build_kwargs(N, D_imp, D_tank, H, rho, mu, V, nu, Re, P, eps, eps_kg,
                         Np_val, Nq_val, v_s, D_mol, coalescing)
@@ -324,9 +324,9 @@ def compute_reactor_hydro_with_mode(
         Np_val = c.func(**kw)
         sources["power_number"] = c.name
         P = impeller_power(Np_val, rho, N, D_imp)
-        eps = power_per_volume(P, V)
-        eps_kg = eps / rho
-        kw.update(Np=Np_val, P=P, P_V=eps, eps=eps, eps_kg=eps_kg)
+        eps = power_per_volume(P, V) if V > 0 else 0.0
+        eps_kg = eps / rho if rho > 0 else 0.0
+        kw.update(Np=Np_val, P=P, P_V=eps, eps=eps_kg, eps_kg=eps_kg)
 
     # -- Blend time --
     c = _corr_cache["blend_time"]

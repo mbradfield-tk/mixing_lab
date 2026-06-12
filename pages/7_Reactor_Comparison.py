@@ -44,13 +44,8 @@ SCALE_COLORS = {"Lab": "#1f77b4", "Pilot": "#ff7f0e", "Manufacturing": "#2ca02c"
 
 
 def _load(key, fn):
-    if key not in st.session_state:
-        p = DATA_DIR / fn
-        df = pd.read_csv(p) if p.exists() else pd.DataFrame()
-        if "reactor_name" in df.columns:
-            df = build_search_names(df)
-        st.session_state[key] = df
-    return st.session_state[key]
+    # Delegate to the shared cached loader for consistency across pages.
+    return load_db(key, fn)
 
 
 def _safe_float(val, default=0.0):
@@ -595,7 +590,7 @@ for rname in selected_names:
             _dp = cmp_d50_per.get(rname, cmp_d50_um) * 1e-6
             _rho_p_r = cmp_rho_p_per.get(rname, cmp_rho_p)
             _phi_p_r = cmp_phi_p_per.get(rname, cmp_phi_p)
-            _nu = mu / rho
+            _nu = mu / rho if rho > 0 else 0.0
             _drho = abs(_rho_p_r - rho)
             _vt = settling_velocity(_dp, _rho_p_r, rho, mu, _phi_p_r)
             _rep = particle_reynolds(_dp, _vt, rho, mu)
@@ -712,7 +707,7 @@ curve_data: dict = {}  # rname → {pct_arr, maxV: {param: arr}, minV: {param: a
 # Pre-compute RPM-independent particle quantities (hoisted out of inner loop)
 _p7_part_static: dict[str, dict] = {}
 if include_particles and cmp_d50_um > 0:
-    _nu_p7 = mu / rho
+    _nu_p7 = mu / rho if rho > 0 else 0.0
     for rname, info in reactor_info.items():
         _dp_p7 = cmp_d50_per.get(rname, cmp_d50_um) * 1e-6
         _rho_p_p7 = cmp_rho_p_per.get(rname, cmp_rho_p)
@@ -737,80 +732,116 @@ if include_particles and cmp_d50_um > 0:
             "d_p": _dp_p7, "phi_s": _phi_s_p7,
         }
 
-for rname, info in reactor_info.items():
-    N_arr = np.linspace(info["N_lo"], info["N_hi"], _N_INTERP)
-    pct_arr = N_arr / info["N_hi"] * 100 if info["N_hi"] > 0 else np.zeros(_N_INTERP)
+# ── Cache the envelope sweep on a signature of all its inputs ────────────
+# The reactor × volume × RPM sweep below is the most expensive computation on
+# the page. Re-running it on every Streamlit rerun (e.g. an unrelated widget
+# change) is wasteful, so memoize it in session_state keyed on a hash of every
+# input that affects the result.
+_L = locals()
 
-    curves: dict = {"pct_arr": pct_arr}
-    for vol_key, V_L in [("maxV", info["V_max_L"]), ("minV", info["V_min_L"])]:
-        H_v = _liquid_height(V_L, info["D_tank"], info["H_max"], info["bottom_dish"])
-        param_arrs: dict = {p: np.empty(_N_INTERP) for p in PLOT_PARAMS}
 
-        # Pre-compute RPM-independent heat quantities for this volume
-        _Q_gen_p7 = _A_ht_p7 = 0.0
-        if include_heat and rxn_delta_H != 0:
-            _r_mol_s = reaction_rate_mol_per_s(rxn_order, rxn_k, rxn_C0, V_L)
-            _Q_gen_p7 = heat_generation_rate(rxn_delta_H, _r_mol_s)
-            _A_ht_p7 = info["A_override"] if info["A_override"] > 0 else estimate_jacket_area(info["D_tank"], H_v, info["bottom_dish"])
+def _sig_round(x, ndigits: int = 9):
+    try:
+        return round(float(x), ndigits)
+    except (TypeError, ValueError):
+        return x
 
-        for j, N in enumerate(N_arr):
-            h, _ = compute_reactor_hydro_with_mode(
-                corr_modes.get(rname, "Literature"), rname,
-                N=N, D_imp=info["D_imp"], D_tank=info["D_tank"], H=H_v,
-                rho=rho, mu=mu, Np=info["Np"], Nq=info["Nq"],
-                v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
-            )
-            _kLa_SL_env_p7 = 0.0
-            _ksl_env_p7 = 0.0
-            if rname in _p7_part_static:
-                _ps = _p7_part_static[rname]
-                _eps_kg_p7 = h["P/V (W/kg)"] if h["P/V (W/kg)"] > 0 else 0.0
-                _v_slip_p7 = max(_ps["v_t (m/s)"],
-                                 (_eps_kg_p7 * _ps["d_p"]) ** (1.0 / 3.0) if _eps_kg_p7 > 0 else 0.0)
-                _ksl_env_p7 = solid_liquid_mass_transfer(_ps["d_p"], _v_slip_p7, rho, mu, D_mol)
-                _kLa_SL_env_p7 = solid_liquid_kla(_ksl_env_p7, _ps["d_p"], _ps["phi_s"])
-            da = compute_damkohler_numbers(
-                h["Blend time 95% (s)"], h["Micromix time t_E (s)"], t_rxn,
-                kLa=h["kLa (1/s)"], kLa_surface=h["kLa_surface (1/s)"],
-                kLa_SL=_kLa_SL_env_p7,
-            )
-            vals = {**h, **da}
-            # Particle parameters — use pre-computed statics + dynamic k_SL/kLa_SL/Da_SL
-            if rname in _p7_part_static:
-                _ps = _p7_part_static[rname]
-                vals["N_js Zwietering (RPM)"] = _ps["N_js Zwietering (RPM)"]
-                vals["N_js GMB (RPM)"] = _ps["N_js GMB (RPM)"]
-                vals["N_js (RPM)"] = _ps["N_js (RPM)"]
-                vals["N/N_js"] = N / _ps["N_js_rps"] if _ps["N_js_rps"] > 0 else 0.0
-                vals["v_t (m/s)"] = _ps["v_t (m/s)"]
-                vals["Re_p"] = _ps["Re_p"]
-                vals["k_SL (m/s)"] = _ksl_env_p7
-                vals["kLa_SL (1/s)"] = _kLa_SL_env_p7
-                vals["Da_SL"] = da["Da_SL"]
-            # Heat balance — only U depends on RPM
+
+_p7_env_sig = (
+    repr(sorted(reactor_info.items())),
+    repr(sorted(corr_modes.items())) if isinstance(corr_modes, dict) else repr(corr_modes),
+    repr(sorted(_p7_part_static.items())),
+    _sig_round(rho), _sig_round(mu), _sig_round(v_s), bool(is_coalescing),
+    _sig_round(D_mol), _sig_round(t_rxn),
+    bool(include_heat), _sig_round(rxn_delta_H),
+    str(_L.get("rxn_order", "")), _sig_round(_L.get("rxn_k", 0.0)),
+    _sig_round(_L.get("rxn_C0", 0.0)),
+    _sig_round(_L.get("cmp_T_process", 0.0)), _sig_round(_L.get("cmp_T_coolant", 0.0)),
+    str(fluid_name), tuple(PLOT_PARAMS), _N_INTERP,
+)
+_p7_cached = (st.session_state.get("_p7_env_sig") == _p7_env_sig
+              and "_p7_curve_data" in st.session_state)
+
+if _p7_cached:
+    curve_data = st.session_state["_p7_curve_data"]
+else:
+    for rname, info in reactor_info.items():
+        N_arr = np.linspace(info["N_lo"], info["N_hi"], _N_INTERP)
+        pct_arr = N_arr / info["N_hi"] * 100 if info["N_hi"] > 0 else np.zeros(_N_INTERP)
+
+        curves: dict = {"pct_arr": pct_arr}
+        for vol_key, V_L in [("maxV", info["V_max_L"]), ("minV", info["V_min_L"])]:
+            H_v = _liquid_height(V_L, info["D_tank"], info["H_max"], info["bottom_dish"])
+            param_arrs: dict = {p: np.empty(_N_INTERP) for p in PLOT_PARAMS}
+
+            # Pre-compute RPM-independent heat quantities for this volume
+            _Q_gen_p7 = _A_ht_p7 = 0.0
             if include_heat and rxn_delta_H != 0:
-                if info["U_override"] > 0:
-                    _U_ht = info["U_override"]
-                else:
-                    _U_ht, _ = estimate_U_detailed(
-                        N_rps=N, D_imp=info["D_imp"], D_tank=info["D_tank"],
-                        rho=rho, mu=mu,
-                        material=info["shell_material"],
-                        lining_material=info["lining_material"],
-                        wall_thickness_mm=info["wall_thickness_mm"],
-                        fluid_name=fluid_name,
-                    )
-                _dT = cmp_T_process - cmp_T_coolant
-                _Q_cool = heat_removal_capacity(_U_ht, _A_ht_p7, _dT)
-                vals["Q_gen (W)"] = _Q_gen_p7
-                vals["Q_cool (W)"] = _Q_cool
-                vals["U (W/m²·K)"] = _U_ht
-                vals["A_ht (m²)"] = _A_ht_p7
-                vals["Q_gen/Q_cool (%)"] = _Q_gen_p7 / _Q_cool * 100 if _Q_cool > 0 else np.inf
-            for p in PLOT_PARAMS:
-                param_arrs[p][j] = vals.get(p, np.nan)
-        curves[vol_key] = param_arrs
-    curve_data[rname] = curves
+                _r_mol_s = reaction_rate_mol_per_s(rxn_order, rxn_k, rxn_C0, V_L)
+                _Q_gen_p7 = heat_generation_rate(rxn_delta_H, _r_mol_s)
+                _A_ht_p7 = info["A_override"] if info["A_override"] > 0 else estimate_jacket_area(info["D_tank"], H_v, info["bottom_dish"])
+
+            for j, N in enumerate(N_arr):
+                h, _ = compute_reactor_hydro_with_mode(
+                    corr_modes.get(rname, "Literature"), rname,
+                    N=N, D_imp=info["D_imp"], D_tank=info["D_tank"], H=H_v,
+                    rho=rho, mu=mu, Np=info["Np"], Nq=info["Nq"],
+                    v_s=v_s, coalescing=is_coalescing, D_mol=D_mol,
+                )
+                _kLa_SL_env_p7 = 0.0
+                _ksl_env_p7 = 0.0
+                if rname in _p7_part_static:
+                    _ps = _p7_part_static[rname]
+                    _eps_kg_p7 = h["P/V (W/kg)"] if h["P/V (W/kg)"] > 0 else 0.0
+                    _v_slip_p7 = max(_ps["v_t (m/s)"],
+                                     (_eps_kg_p7 * _ps["d_p"]) ** (1.0 / 3.0) if _eps_kg_p7 > 0 else 0.0)
+                    _ksl_env_p7 = solid_liquid_mass_transfer(_ps["d_p"], _v_slip_p7, rho, mu, D_mol)
+                    _kLa_SL_env_p7 = solid_liquid_kla(_ksl_env_p7, _ps["d_p"], _ps["phi_s"])
+                da = compute_damkohler_numbers(
+                    h["Blend time 95% (s)"], h["Micromix time t_E (s)"], t_rxn,
+                    kLa=h["kLa (1/s)"], kLa_surface=h["kLa_surface (1/s)"],
+                    kLa_SL=_kLa_SL_env_p7,
+                )
+                vals = {**h, **da}
+                # Particle parameters — use pre-computed statics + dynamic k_SL/kLa_SL/Da_SL
+                if rname in _p7_part_static:
+                    _ps = _p7_part_static[rname]
+                    vals["N_js Zwietering (RPM)"] = _ps["N_js Zwietering (RPM)"]
+                    vals["N_js GMB (RPM)"] = _ps["N_js GMB (RPM)"]
+                    vals["N_js (RPM)"] = _ps["N_js (RPM)"]
+                    vals["N/N_js"] = N / _ps["N_js_rps"] if _ps["N_js_rps"] > 0 else 0.0
+                    vals["v_t (m/s)"] = _ps["v_t (m/s)"]
+                    vals["Re_p"] = _ps["Re_p"]
+                    vals["k_SL (m/s)"] = _ksl_env_p7
+                    vals["kLa_SL (1/s)"] = _kLa_SL_env_p7
+                    vals["Da_SL"] = da["Da_SL"]
+                # Heat balance — only U depends on RPM
+                if include_heat and rxn_delta_H != 0:
+                    if info["U_override"] > 0:
+                        _U_ht = info["U_override"]
+                    else:
+                        _U_ht, _ = estimate_U_detailed(
+                            N_rps=N, D_imp=info["D_imp"], D_tank=info["D_tank"],
+                            rho=rho, mu=mu,
+                            material=info["shell_material"],
+                            lining_material=info["lining_material"],
+                            wall_thickness_mm=info["wall_thickness_mm"],
+                            fluid_name=fluid_name,
+                        )
+                    _dT = cmp_T_process - cmp_T_coolant
+                    _Q_cool = heat_removal_capacity(_U_ht, _A_ht_p7, _dT)
+                    vals["Q_gen (W)"] = _Q_gen_p7
+                    vals["Q_cool (W)"] = _Q_cool
+                    vals["U (W/m²·K)"] = _U_ht
+                    vals["A_ht (m²)"] = _A_ht_p7
+                    vals["Q_gen/Q_cool (%)"] = _Q_gen_p7 / _Q_cool * 100 if _Q_cool > 0 else np.inf
+                for p in PLOT_PARAMS:
+                    param_arrs[p][j] = vals.get(p, np.nan)
+            curves[vol_key] = param_arrs
+        curve_data[rname] = curves
+
+    st.session_state["_p7_env_sig"] = _p7_env_sig
+    st.session_state["_p7_curve_data"] = curve_data
 
 st.divider()
 

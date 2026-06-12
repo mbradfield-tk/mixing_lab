@@ -39,6 +39,6 @@ Welcome to **Mixing Lab** – an interactive tool for assessing reaction mixing 
 3. **Run the Bourne Protocol** – If mixing sensitivity is suspected, use the *Bourne Protocol* page to experimentally determine whether micro-, meso-, or macromixing controls your process.
 4. **Analyse a single system** – On the *Mixing Assessment* page, select a reactor, fluid, reaction, and operating conditions. Confirm each step to compute hydrodynamic parameters, Damköhler numbers, heat balance, solid-particle suspension, and full operating envelopes.
 5. **Compare across scales** – Use the *Reactor Comparison* page to evaluate operating envelopes and scale-up impacts across multiple reactors side-by-side.
-6. **Generate a report** – Navigate to *Mixing Report* to preview the latest assessment results and export a branded PDF with metrics, sensitivity assessment, and envelope charts.
+6. **Generate a report** – Most analysis pages (*Mixing Assessment*, *Reactor Comparison*, the sensitivity protocols, and *Bourne Protocol*) can export a branded PDF with metrics, sensitivity assessment, and envelope charts directly from the page.
 7. **Record & export** – Save results from any analysis page to *Recorded Results* for documentation and comparison.
 """)

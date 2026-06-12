@@ -21,9 +21,17 @@ IMG_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
 # Load HTM names for heat_transfer_medium dropdown
 _HTM_CSV = DATA_DIR / "HTM.csv"
+
+
+@st.cache_data(show_spinner=False)
+def _load_htm_names(csv_path: str, mtime: float) -> list[str]:
+    """Load HTM names once; cache keyed on path + file mtime."""
+    return pd.read_csv(csv_path)["htm_name"].tolist()
+
+
 _HTM_NAMES: list[str] = []
 if _HTM_CSV.exists():
-    _HTM_NAMES = pd.read_csv(_HTM_CSV)["htm_name"].tolist()
+    _HTM_NAMES = _load_htm_names(str(_HTM_CSV), _HTM_CSV.stat().st_mtime)
 
 # Columns the app expects (superset – legacy + enriched)
 CORE_COLS = [

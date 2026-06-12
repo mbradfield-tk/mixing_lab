@@ -114,13 +114,18 @@ with col_r:
                                     format_func=lambda n: reactor_search_name(reactors, n))
         st.session_state["_sel_bp_reactor"] = reactor_name
         r = safe_iloc(reactors, "reactor_name", reactor_name, "Reactor")
-        D_tank = safe_float(r["D_tank_m"], 0.10)
-        H = safe_float(r["H_m"], 0.13)
-        D_imp = safe_float(r["D_imp_m"], 0.05)
-        Np_val = safe_float(r["Np"], 1.27)
-        Nq_val = safe_float(r["Nq"], 0.79)
-        V_L_min = safe_float(r.get("V_L_min"), 0.0) or safe_float(r["V_L"], 0.0)
-        V_L_max = safe_float(r.get("V_L_max"), 0.0) or safe_float(r["V_L"], 0.0)
+        D_tank = safe_float(r.get("D_tank_m"), 0.10)
+        H = safe_float(r.get("H_m"), 0.13)
+        D_imp = safe_float(r.get("D_imp_m"), 0.05)
+        # NOTE: the Bourne protocol uses a single fixed power number (the reactor's
+        # tabulated Np, or 1.27 if unset) for every speed. This differs from the
+        # Mixing Assessment / Reactor Comparison pages, which derive Np from a
+        # Reynolds-dependent correlation or ROM. For the same reactor the power
+        # (and thus P/V) reported here can therefore differ from those pages.
+        Np_val = safe_float(r.get("Np"), 1.27)
+        Nq_val = safe_float(r.get("Nq"), 0.79)
+        V_L_min = safe_float(r.get("V_L_min"), 0.0) or safe_float(r.get("V_L"), 0.0)
+        V_L_max = safe_float(r.get("V_L_max"), 0.0) or safe_float(r.get("V_L"), 0.0)
         V_L_avg = (V_L_min + V_L_max) / 2.0
         # RPM bounds from reactor database
         N_rpm_min = safe_float(r.get("N_rpm_min"), 0.0) or None
@@ -129,7 +134,7 @@ with col_r:
         if N_rpm_min is not None and N_rpm_max is not None:
             N_center = (N_rpm_min + N_rpm_max) / 2.0 / 60.0  # rev/s
         else:
-            N_center = safe_float(r["N_rps"], 5.0)
+            N_center = safe_float(r.get("N_rps"), 5.0)
         N_rps_min = N_rpm_min / 60.0 if N_rpm_min is not None else None
         N_rps_max = N_rpm_max / 60.0 if N_rpm_max is not None else None
     else:
@@ -173,7 +178,7 @@ with col_f:
         rho = float(_cust["rho_kg_m3"])
         mu = float(_cust["mu_Pa_s"])
 
-nu = mu / rho
+nu = mu / rho if rho > 0 else 0.0
 
 # ── Volume selection ──────────────────────────────────────────────────────
 st.subheader("Working Volume")
@@ -329,7 +334,12 @@ with st.expander("Additional hydrodynamic parameters"):
     st.dataframe(t1_df[_t1_detail_cols], use_container_width=True, hide_index=True)
 
 pv_ratio = t1_rows[2]["P/m (W/kg)"] / t1_rows[0]["P/m (W/kg)"] if t1_rows[0]["P/m (W/kg)"] > 0 else 0
-st.caption(f"P/m ratio (high/low) = **{pv_ratio:.1f}×**  •  Speed ratio (high/low) = **{N_high/N_low:.2f}×**")
+_speed_ratio = N_high / N_low if N_low > 0 else 0
+st.caption(f"P/m ratio (high/low) = **{pv_ratio:.1f}×**  •  Speed ratio (high/low) = **{_speed_ratio:.2f}×**")
+st.caption(f"Power is computed with a fixed power number Np = **{Np_val:.2f}** "
+           f"(from the reactor database, or 1.27 if unset). The Mixing Assessment "
+           f"and Reactor Comparison pages instead use a Reynolds-dependent / ROM "
+           f"power number, so their P/V values may differ for the same reactor.")
 
 if _low_clamped or _high_clamped:
     _msgs = []

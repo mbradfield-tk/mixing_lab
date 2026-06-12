@@ -500,8 +500,8 @@ with st.expander("Fluid properties (continuous phase)", expanded=False):
     if _is_solvent:
         st.caption(f"Computed from **{fluid_name}** correlations at **{fluid_T_C:.1f} °C**")
     fc1, fc2, fc3, fc4 = st.columns(4)
-    rho = fc1.number_input("ρ (kg/m³)", value=_rho_default, format="%.1f", key=f"ov_rho_{_fk}")
-    mu = fc2.number_input("μ (Pa·s)", value=_mu_default, format="%.6f", key=f"ov_mu_{_fk}")
+    rho = fc1.number_input("ρ (kg/m³)", value=_rho_default, min_value=0.1, format="%.1f", key=f"ov_rho_{_fk}")
+    mu = fc2.number_input("μ (Pa·s)", value=_mu_default, min_value=1e-7, format="%.6f", key=f"ov_mu_{_fk}")
     D_mol = fc3.number_input("D_mol (m²/s)", value=_D_mol_default, format="%.2e", key=f"ov_Dmol_{_fk}")
     sigma_c = fc4.number_input("σ surface tension (N/m)", value=_sigma_default, format="%.4f", key=f"ov_sigma_{_fk}",
                                help="Used for GL/LL calculations")
@@ -855,7 +855,7 @@ particle_meta = {}
 if include_SL and not particles.empty:
     st.subheader("Solid-Liquid")
     d_p_m = d50_um * 1e-6
-    nu = mu / rho
+    nu = mu / rho if rho > 0 else 0.0
     delta_rho = abs(rho_p - rho)
 
     v_t = settling_velocity(d_p_m, rho_p, rho, mu, phi_p)
@@ -1033,14 +1033,60 @@ if _can_envelope:
             _mode_label_to_key[_mode_label] = _mode_label
             _mode_dicts[_mode_label] = _md
 
-    # ── Sweep only unique mode dicts ─────────────────────────────────────
+    # ── Sweep only unique mode dicts (memoized) ──────────────────────────
     # curve_data: mode_label → vol_key → {param: np.array}
-    _unique_curve_data: dict[str, dict[str, dict[str, np.ndarray]]] = {}
+    # Build a signature of every input that affects the sweep so the result
+    # can be reused across reruns when nothing relevant changed.
+    _L = locals()
 
-    with st.spinner("Computing operating envelopes…"):
-      for _mode_label, _mode_dict in _mode_dicts.items():
-        mode_curves: dict[str, dict[str, np.ndarray]] = {}
-        for vol_key, _vl in [("maxV", _env_V_max), ("minV", _env_V_min)]:
+    def _sig_round(x, n=6):
+        try:
+            return round(float(x), n)
+        except (TypeError, ValueError):
+            return x
+
+    _env_sig = (
+        reactor_name, _sig_round(D_imp), _sig_round(D_tank), _sig_round(H_max),
+        str(_bottom_dish), _sig_round(_env_V_min), _sig_round(_env_V_max),
+        _sig_round(_N_lo), _sig_round(_N_hi), _N_INTERP,
+        _sig_round(rho), _sig_round(mu), _sig_round(Np_in), _sig_round(Nq_in),
+        _sig_round(v_s), bool(is_coalescing), _sig_round(D_mol), _sig_round(t_rxn),
+        tuple(_active_modes),
+        tuple(sorted((k, tuple(v)) for k, v in corr_selections.items())),
+        tuple(PLOT_PARAMS),
+        # Heat
+        bool(include_heat), _sig_round(rxn_delta_H),
+        str(_L.get("rxn_order", "")), _sig_round(_L.get("k_val", 0.0)),
+        _sig_round(_L.get("C0", 0.0)), _sig_round(_r_U_override_env),
+        _sig_round(_r_A_override_env), _sig_round(_r_wall_mm_env),
+        str(_r_material_env), str(_r_lining_env), str(fluid_name),
+        _sig_round(_L.get("ms_T_process", 0.0)), _sig_round(_L.get("ms_T_coolant", 0.0)),
+        # Solid-liquid
+        bool(include_SL and not particles.empty),
+        _sig_round(_L.get("d50_um", 0.0)), _sig_round(_L.get("rho_p", 0.0)),
+        _sig_round(_L.get("phi_p", 0.0)), _sig_round(_L.get("S_zw", 0.0)),
+        _sig_round(_L.get("gmb_z", 0.0)), _sig_round(_L.get("X_wt", 0.0)),
+        _sig_round(_L.get("X_vol", 0.0)), _sig_round(_L.get("C_D_ratio", 0.0)),
+        # Gas-liquid
+        bool(include_GL and gl_sparged and v_s > 0), _sig_round(sigma_c),
+        # Liquid-liquid
+        bool(include_LL), _sig_round(_L.get("ll_sigma_LL", 0.0)),
+        _sig_round(_L.get("ll_phi_d", 0.0)), _sig_round(_L.get("ll_D_mol_LL", 0.0)),
+    )
+
+    _env_cached = (
+        st.session_state.get("_ms_env_sig") == _env_sig
+        and "_ms_unique_curve_data" in st.session_state
+    )
+    _unique_curve_data: dict[str, dict[str, dict[str, np.ndarray]]] = (
+        st.session_state["_ms_unique_curve_data"] if _env_cached else {}
+    )
+
+    if not _env_cached:
+      with st.spinner("Computing operating envelopes…"):
+        for _mode_label, _mode_dict in _mode_dicts.items():
+          mode_curves: dict[str, dict[str, np.ndarray]] = {}
+          for vol_key, _vl in [("maxV", _env_V_max), ("minV", _env_V_min)]:
             H_v = liquid_height_from_volume(_vl, D_tank, H_max, _bottom_dish)
             param_arrs = {p: np.empty(_N_INTERP) for p in PLOT_PARAMS}
 
@@ -1122,7 +1168,9 @@ if _can_envelope:
                 for p in PLOT_PARAMS:
                     param_arrs[p][j] = _vals.get(p, np.nan)
             mode_curves[vol_key] = param_arrs
-        _unique_curve_data[_mode_label] = mode_curves
+          _unique_curve_data[_mode_label] = mode_curves
+      st.session_state["_ms_env_sig"] = _env_sig
+      st.session_state["_ms_unique_curve_data"] = _unique_curve_data
 
     # Map all mode labels (including duplicates) to their computed data
     curve_data: dict[str, dict[str, dict[str, np.ndarray]]] = {}
