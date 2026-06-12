@@ -951,29 +951,147 @@ if is_semi_batch:
     ))
 
 # Overall summary verdict
-_n_red = sum(1 for _, s, _ in findings if "🔴" in s)
-_n_yellow = sum(1 for _, s, _ in findings if "🟡" in s)
+#
+# The theoretical assessment (Steps 1–5) estimates *how likely* the system is
+# to be mixing sensitive and *which* mechanism is responsible.  The Bourne
+# pre-screen, when actually performed, is independent experimental evidence of
+# *whether* a sensitivity exists — but Part 1 alone does not reveal which
+# mechanism.  It is therefore combined with AND-style logic rather than being
+# counted among the mechanism red/yellow flags.
+_mech_findings = [f for f in findings if f[0] != "Bourne pre-screen"]
+_n_red = sum(1 for _, s, _ in _mech_findings if "🔴" in s)
+_n_yellow = sum(1 for _, s, _ in _mech_findings if "🟡" in s)
+_red_mechs = [m for m, s, _ in _mech_findings if "🔴" in s]
 
-if _n_red >= 2:
-    st.error(
-        "🔴 **High mixing sensitivity risk** — multiple mechanisms are likely "
-        "to limit this reaction at scale. Detailed characterisation is strongly recommended."
-    )
-elif _n_red == 1:
-    st.warning(
-        "🟡 **Moderate mixing sensitivity risk** — at least one mechanism is likely "
-        "to be sensitive. Targeted investigation is recommended."
-    )
-elif _n_yellow >= 1:
-    st.warning(
-        "🟡 **Low-to-moderate mixing sensitivity risk** — no mechanisms are flagged as "
-        "likely sensitive, but some require verification at scale."
-    )
+
+def _join_mechs(names: list[str]) -> str:
+    """Render mechanism names as a readable lower-case phrase."""
+    _clean = [n.split("(")[0].strip().lower() for n in names]
+    if len(_clean) == 1:
+        return _clean[0]
+    if len(_clean) == 2:
+        return f"{_clean[0]} and {_clean[1]}"
+    return ", ".join(_clean[:-1]) + f", and {_clean[-1]}"
+
+
+if _bourne_sensitive is True:
+    # Experimental evidence confirms a sensitivity is present.
+    if _red_mechs:
+        _verdict = (
+            f"Mixing sensitivity confirmed -- the reaction may be {_join_mechs(_red_mechs)} "
+            "limited, and the Bourne pre-screen confirms a sensitivity is present. "
+            "Detailed characterisation is recommended to identify the controlling mechanism."
+        )
+        st.error(
+            f"🔴 **Mixing sensitivity confirmed** — the reaction may be "
+            f"**{_join_mechs(_red_mechs)} limited**, and the Bourne pre-screen confirms "
+            "a sensitivity is present. Detailed characterisation is recommended to "
+            "identify the controlling mechanism."
+        )
+    elif _n_yellow >= 1:
+        _verdict = (
+            "Mixing sensitivity confirmed -- the Bourne pre-screen shows a sensitivity is "
+            "present. The theoretical assessment did not flag a specific mechanism as likely, "
+            "but some items require verification at scale. Further screening is needed to "
+            "pinpoint the controlling scale."
+        )
+        st.error(
+            "🔴 **Mixing sensitivity confirmed** — the Bourne pre-screen shows a sensitivity "
+            "is present. The theoretical assessment did not flag a specific mechanism as "
+            "*likely*, but some items require verification at scale (see below). Further "
+            "screening (full Bourne Protocol) is needed to pinpoint the controlling scale."
+        )
+    else:
+        _verdict = (
+            "Mixing sensitivity confirmed -- the Bourne pre-screen shows an experimental "
+            "sensitivity, although the theoretical assessment flagged no mechanism. Revisit "
+            "the inputs (kinetics, phases, feed strategy) and run the full Bourne Protocol "
+            "to identify the controlling scale."
+        )
+        st.error(
+            "🔴 **Mixing sensitivity confirmed** — the Bourne pre-screen shows an experimental "
+            "sensitivity even though the theoretical assessment flagged no mechanism. Revisit "
+            "the inputs (kinetics, phases, feed strategy) and run the full Bourne Protocol "
+            "to identify the controlling scale."
+        )
+elif _bourne_sensitive is False:
+    # Experimental evidence showed no sensitivity at lab scale.
+    if _red_mechs:
+        _verdict = (
+            f"Possible scale-dependent sensitivity -- the Bourne pre-screen showed no "
+            f"sensitivity at lab scale, but the assessment flags {_join_mechs(_red_mechs)} "
+            "as likely to become limiting at larger scale. Confirm with Damkohler analysis "
+            "before scale-up."
+        )
+        st.warning(
+            f"🟡 **Possible scale-dependent sensitivity** — the Bourne pre-screen showed "
+            f"no sensitivity at lab scale, but the assessment flags **{_join_mechs(_red_mechs)}** "
+            "as likely to become limiting at larger scale. Confirm with Damköhler analysis "
+            "before scale-up."
+        )
+    elif _n_yellow >= 1:
+        _verdict = (
+            "Low mixing sensitivity risk -- the Bourne pre-screen showed no sensitivity and "
+            "no mechanism is flagged as likely, though a few items warrant a check at scale."
+        )
+        st.success(
+            "🟢 **Low mixing sensitivity risk** — the Bourne pre-screen showed no sensitivity "
+            "and no mechanism is flagged as likely, though a few items warrant a check at scale."
+        )
+    else:
+        _verdict = (
+            "Low mixing sensitivity risk -- the Bourne pre-screen showed no sensitivity and "
+            "no mixing mechanism is expected to limit this reaction."
+        )
+        st.success(
+            "🟢 **Low mixing sensitivity risk** — the Bourne pre-screen showed no sensitivity "
+            "and no mixing mechanism is expected to limit this reaction."
+        )
 else:
-    st.success(
-        "🟢 **Low mixing sensitivity risk** — no mixing mechanisms are expected "
-        "to limit this reaction under typical operating conditions."
-    )
+    # Bourne pre-screen not performed — rely on the theoretical assessment alone.
+    if _n_red >= 2:
+        _verdict = (
+            f"High mixing sensitivity risk -- multiple mechanisms ({_join_mechs(_red_mechs)}) "
+            "are likely to limit this reaction at scale. Detailed characterisation is strongly "
+            "recommended; a Bourne pre-screen would provide direct experimental confirmation."
+        )
+        st.error(
+            f"🔴 **High mixing sensitivity risk** — multiple mechanisms "
+            f"(**{_join_mechs(_red_mechs)}**) are likely to limit this reaction at scale. "
+            "Detailed characterisation is strongly recommended. A Bourne pre-screen would "
+            "provide direct experimental confirmation."
+        )
+    elif _n_red == 1:
+        _verdict = (
+            f"Moderate mixing sensitivity risk -- {_join_mechs(_red_mechs)} is likely to be "
+            "sensitive. Targeted investigation is recommended; a Bourne pre-screen would "
+            "confirm whether a sensitivity is present experimentally."
+        )
+        st.warning(
+            f"🟡 **Moderate mixing sensitivity risk** — **{_join_mechs(_red_mechs)}** is likely "
+            "to be sensitive. Targeted investigation is recommended; a Bourne pre-screen would "
+            "confirm whether a sensitivity is present experimentally."
+        )
+    elif _n_yellow >= 1:
+        _verdict = (
+            "Low-to-moderate mixing sensitivity risk -- no mechanisms are flagged as likely "
+            "sensitive, but some require verification at scale. A Bourne pre-screen would "
+            "provide a direct experimental answer."
+        )
+        st.warning(
+            "🟡 **Low-to-moderate mixing sensitivity risk** — no mechanisms are flagged as "
+            "likely sensitive, but some require verification at scale. A Bourne pre-screen "
+            "would provide a direct experimental answer."
+        )
+    else:
+        _verdict = (
+            "Low mixing sensitivity risk -- no mixing mechanisms are expected to limit this "
+            "reaction under typical operating conditions."
+        )
+        st.success(
+            "🟢 **Low mixing sensitivity risk** — no mixing mechanisms are expected "
+            "to limit this reaction under typical operating conditions."
+        )
 
 # Render summary table
 _summary_rows = []
@@ -1066,15 +1184,8 @@ if st.button("📥 Export PDF Report", type="primary", key="p10_export_pdf"):
         try:
             from utils.report_builder import build_protocol_pdf, report_filename
 
-            # Determine overall verdict text
-            if _n_red >= 2:
-                _verdict = "High mixing sensitivity risk -- multiple mechanisms are likely to limit this reaction at scale."
-            elif _n_red == 1:
-                _verdict = "Moderate mixing sensitivity risk -- at least one mechanism is likely sensitive."
-            elif _n_yellow >= 1:
-                _verdict = "Low-to-moderate mixing sensitivity risk -- some mechanisms require verification at scale."
-            else:
-                _verdict = "Low mixing sensitivity risk -- no mixing mechanisms are expected to limit this reaction."
+            # Overall verdict text (_verdict) is computed in the summary section
+            # above and already reflects the Bourne pre-screen AND-style logic.
 
             # Bourne result text
             if _bourne_sensitive is True:
