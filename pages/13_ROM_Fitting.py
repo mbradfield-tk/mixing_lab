@@ -269,7 +269,7 @@ with tab_fit:
     else:
         df_raw = pd.read_csv(uploaded)
         st.subheader("Uploaded data preview")
-        st.dataframe(df_raw.head(20), use_container_width=True)
+        st.dataframe(df_raw.head(20), width='stretch')
 
         data_cols = list(df_raw.columns)
         numeric_cols = [c for c in data_cols if pd.api.types.is_numeric_dtype(df_raw[c])]
@@ -444,7 +444,7 @@ with tab_fit:
                 width=600, height=500,
                 showlegend=True,
             )
-            st.plotly_chart(fig, use_container_width=False)
+            st.plotly_chart(fig, width='content')
 
             # ── Residual plot ────────────────────────────────────────────
             st.subheader("Residuals")
@@ -461,7 +461,7 @@ with tab_fit:
                 yaxis_title="Residual (Obs − Pred)",
                 width=600, height=400,
             )
-            st.plotly_chart(fig_res, use_container_width=False)
+            st.plotly_chart(fig_res, width='content')
 
             # ── Step 7: Register the correlation ─────────────────────────
             st.header("⑦ Register correlation")

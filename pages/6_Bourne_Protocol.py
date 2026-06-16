@@ -25,6 +25,7 @@ References
 
 import streamlit as st
 
+import json
 import pandas as pd
 import numpy as np
 import pathlib
@@ -203,9 +204,114 @@ def _reset_bourne():
     st.session_state["_bp_started"] = False
 
 
+def _json_default(o):
+    """Fallback JSON encoder for numpy scalar / array values."""
+    if isinstance(o, np.integer):
+        return int(o)
+    if isinstance(o, np.floating):
+        return float(o)
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    return str(o)
+
+
+def _collect_bourne_inputs():
+    """Gather all user inputs (system + tests) into a tidy key/scope/value frame."""
+    gen = st.session_state.get("_bp_gen", 0)
+    prefix = f"bp_{gen}_"
+    # These widgets are restored via their companion "_sel_bp_*" keys (which use
+    # them as the default value/index), so we skip the raw widget keys here.
+    # The button keys carry no reusable input and are skipped too.
+    _skip = {"reactor", "fluid", "project", "step_no", "uop",
+             "t1_assess", "t2_assess", "t3_assess", "export_pdf", "save"}
+    rows = []
+    for k, v in list(st.session_state.items()):
+        if k.startswith(prefix):
+            logical = k[len(prefix):]
+            if (logical in _skip
+                    or logical.startswith("gen_step")
+                    or logical.startswith("dl_step")):
+                continue
+            try:
+                vj = json.dumps(v, default=_json_default)
+            except (TypeError, ValueError):
+                continue
+            rows.append({"key": logical, "scope": "gen", "value": vj})
+        elif k.startswith("_sel_bp_"):
+            try:
+                vj = json.dumps(v, default=_json_default)
+            except (TypeError, ValueError):
+                continue
+            rows.append({"key": k, "scope": "raw", "value": vj})
+    df = pd.DataFrame(rows, columns=["key", "scope", "value"])
+    if not df.empty:
+        df = df.sort_values(["scope", "key"]).reset_index(drop=True)
+    return df
+
+
+def _apply_bourne_inputs(df):
+    """Restore inputs from an exported frame into a fresh widget generation."""
+    old_gen = st.session_state.get("_bp_gen", 0)
+    for k in list(st.session_state.keys()):
+        if k.startswith(f"bp_{old_gen}_") or k.startswith("_sel_bp_"):
+            del st.session_state[k]
+    new_gen = old_gen + 1
+    for _, row in df.iterrows():
+        try:
+            val = json.loads(row["value"])
+        except (TypeError, ValueError):
+            continue
+        if row["scope"] == "gen":
+            st.session_state[f"bp_{new_gen}_{row['key']}"] = val
+        else:
+            st.session_state[str(row["key"])] = val
+    st.session_state["_bp_gen"] = new_gen
+    st.session_state["_bp_started"] = True
+
+
 st.button("🔄 Restart protocol", key="bp_restart", on_click=_reset_bourne)
 
 st.divider()
+
+# ════════════════════════════════════════════════════════════════════════════
+# Save / Load all protocol inputs (CSV) so a run can be reproduced later.
+# ════════════════════════════════════════════════════════════════════════════
+with st.expander("💾 Save / Load Protocol Inputs", expanded=False):
+    st.caption(
+        "Export every input you've entered (system definition plus all three "
+        "tests) to a CSV, then re-import it later to reproduce and re-run the "
+        "protocol from where you left off."
+    )
+    _exp_col, _imp_col = st.columns(2)
+    with _exp_col:
+        st.markdown("**Export inputs**")
+        _inputs_df = _collect_bourne_inputs()
+        _proj_tag = (st.session_state.get("_sel_bp_project") or "protocol").strip().replace(" ", "_") or "protocol"
+        st.download_button(
+            "⬇️ Download inputs CSV",
+            data=_inputs_df.to_csv(index=False).encode("utf-8"),
+            file_name=f"Bourne_inputs_{_proj_tag}.csv",
+            mime="text/csv",
+            key="bp_export_inputs",
+            disabled=_inputs_df.empty,
+        )
+        if _inputs_df.empty:
+            st.caption("Nothing entered yet — fill in the protocol first.")
+    with _imp_col:
+        st.markdown("**Import inputs**")
+        _up = st.file_uploader("Upload inputs CSV", type=["csv"], key="bp_import_file")
+        if _up is not None and st.button("📤 Load these inputs", key="bp_apply_import"):
+            try:
+                _imp_df = pd.read_csv(_up, dtype=str, keep_default_na=False)
+                _missing = {"key", "scope", "value"} - set(_imp_df.columns)
+                if _missing:
+                    st.error(f"Invalid inputs file (missing columns: {', '.join(sorted(_missing))}).")
+                else:
+                    _apply_bourne_inputs(_imp_df)
+                    st.toast("Protocol inputs loaded.", icon="✅")
+                    st.rerun()
+            except Exception as exc:
+                st.error(f"Failed to load inputs: {exc}")
 
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 00 – Project & Step Metadata
@@ -499,11 +605,11 @@ t1_rows = [
 ]
 t1_df = pd.DataFrame(t1_rows)
 _t1_basic_cols = ["Condition", "Volume (L)", "N (RPM)", "P/m (W/kg)", "P/m rel. to center", "P/V (W/L)", "Tip speed (m/s)"]
-st.dataframe(t1_df[_t1_basic_cols], use_container_width=True, hide_index=True)
+st.dataframe(t1_df[_t1_basic_cols], width='stretch', hide_index=True)
 
 with st.expander("Additional hydrodynamic parameters"):
     _t1_detail_cols = ["Condition", "Re", "Blend time (s)", "t_E micro (s)", "η Kolmogorov (µm)"]
-    st.dataframe(t1_df[_t1_detail_cols], use_container_width=True, hide_index=True)
+    st.dataframe(t1_df[_t1_detail_cols], width='stretch', hide_index=True)
 
 pv_ratio = t1_rows[2]["P/m (W/kg)"] / t1_rows[0]["P/m (W/kg)"] if t1_rows[0]["P/m (W/kg)"] > 0 else 0
 _speed_ratio = N_high / N_low if N_low > 0 else 0
@@ -597,7 +703,7 @@ if _use_adj:
         _adj_rows.append(_row)
 
     _adj_df = pd.DataFrame(_adj_rows)
-    st.dataframe(_adj_df, use_container_width=True, hide_index=True)
+    st.dataframe(_adj_df, width='stretch', hide_index=True)
     st.caption(
         "Speeds chosen to hold each condition's P/m constant as volume "
         "increases. Set each value as a discrete setpoint when the working "
@@ -694,7 +800,7 @@ if V_L_min != V_L_max:
         legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.8)"),
         height=500,
     )
-    st.plotly_chart(fig_t1, use_container_width=True)
+    st.plotly_chart(fig_t1, width='stretch')
 
 # ── Response entry for Test 1 ───────────────────────────────────────────
 st.subheader("Record Test 1 Responses")
@@ -731,7 +837,7 @@ def _step_export_ui(step, snap_extra):
     """Render a 'generate + download' PDF control for a single protocol step."""
     _bytes_key = f"_p6_step{step}_pdf_bytes"
     _name_key = f"_p6_step{step}_pdf_name"
-    if st.button(f"📥 Export Test {step} PDF", key=_bk(f"gen_step{step}_pdf")):
+    if st.button(f"📥 Create Test {step} PDF", key=_bk(f"gen_step{step}_pdf")):
         with st.spinner("Generating PDF…"):
             try:
                 from utils.report_builder import build_bourne_step_pdf, report_filename
@@ -906,6 +1012,8 @@ if st.button("📊 Assess Test 1 Responses", key=_bk("t1_assess")):
             "resp": _kpi_results[0]["resp"],
             "pct_detail": _kpi_results[0]["pct_detail"],
         }
+        # Rerun so the top-of-page input export captures the new assessment.
+        st.rerun()
 
 # Display results if assessed
 if _bk("t1_assessed") not in st.session_state:
@@ -928,7 +1036,7 @@ if t1_kpi_results:
             _vals = [str(v) if str(v).strip() else "—" for v in r["resp"]]
             _delta = "—"
         else:
-            _vals = r["resp"]
+            _vals = [f"{v:g}" for v in r["resp"]]
             _delta = f"{r['max_pct']:.1f}%"
         _rows.append({
             "KPI": r["name"],
@@ -939,7 +1047,7 @@ if t1_kpi_results:
             "Max Δ from center (%)": _delta,
             "Sensitive?": "Yes" if r["sensitive"] else "No",
         })
-    st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(_rows), width='stretch', hide_index=True)
     st.caption(
         f"{_t1a['n_sensitive']} / {_t1a['n_total']} KPIs sensitive  •  "
         f"Quantitative threshold = **{_SENSITIVITY_THRESHOLD:.0f}%** relative change"
@@ -950,7 +1058,7 @@ elif _t1_qualitative:
         "Condition": _t1_labels,
         _t1a["resp_name"]: [str(v) if v else "—" for v in _t1a["resp"]],
     })
-    st.dataframe(_t1_res_df, use_container_width=True, hide_index=True)
+    st.dataframe(_t1_res_df, width='stretch', hide_index=True)
     st.caption("Qualitative observations — sensitivity judged manually below.")
 else:
     # Legacy single-KPI numeric display (assessment from an older session)
@@ -966,7 +1074,7 @@ else:
             "Condition": _t1_labels,
             _t1a["resp_name"]: _t1a["resp"],
         })
-    st.dataframe(_t1_res_df, use_container_width=True, hide_index=True)
+    st.dataframe(_t1_res_df, width='stretch', hide_index=True)
     st.caption(
         f"Maximum relative change from center = **{t1_max_pct:.1f}%**  •  "
         f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**"
@@ -1128,6 +1236,8 @@ if st.button("📊 Assess Test 2 Responses", key=_bk("t2_assess")):
             "resp": [t2_resp_fast, t2_resp_ctr, t2_resp_slow],
             "resp_name": _t2_resp_name,
         }
+        # Rerun so the top-of-page input export captures the new assessment.
+        st.rerun()
 
 if _bk("t2_assessed") not in st.session_state:
     st.info("Enter all three response values, then click **Assess Test 2 Responses**.")
@@ -1149,7 +1259,7 @@ else:
         "Condition": ["Fast (1/3×)", "Center (1×)", "Slow (3×)"],
         _t2a["resp_name"]: _t2a["resp"],
     })
-st.dataframe(_t2_res_df, use_container_width=True, hide_index=True)
+st.dataframe(_t2_res_df, width='stretch', hide_index=True)
 st.caption(f"Maximum relative change from center = **{t2_max_pct:.1f}%**  •  "
            f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**")
 
@@ -1245,7 +1355,7 @@ if t2_sensitive:
             "t_E micro (s)": round(micromixing_time_engulfment(3.0 * eps_avg_kg, nu), 5),
         },
     ])
-    st.dataframe(t3_locs, use_container_width=True, hide_index=True)
+    st.dataframe(t3_locs, width='stretch', hide_index=True)
     st.caption("Local ε estimated at centerpoint impeller speed. Actual values depend on impeller type and geometry.")
 
     with st.expander("Practical considerations for feed location"):
@@ -1291,6 +1401,8 @@ if t2_sensitive:
                 "resp": [t3_resp_surf, t3_resp_mid, t3_resp_imp],
                 "resp_name": _t3_resp_name,
             }
+            # Rerun so the top-of-page input export captures the new assessment.
+            st.rerun()
 
     if _bk("t3_assessed") not in st.session_state:
         st.info("Enter all three response values, then click **Assess Test 3 Responses**.")
@@ -1312,7 +1424,7 @@ if t2_sensitive:
             "Feed Location": ["Surface", "Sub-surface (mid)", "Impeller zone"],
             _t3a["resp_name"]: _t3a["resp"],
         })
-    st.dataframe(_t3_res_df, use_container_width=True, hide_index=True)
+    st.dataframe(_t3_res_df, width='stretch', hide_index=True)
     st.caption(f"Maximum relative change from mid-tank = **{t3_max_pct:.1f}%**  •  "
                f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**")
 

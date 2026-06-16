@@ -617,7 +617,7 @@ for scale, te_lo, te_hi, tb_lo, tb_hi in _SCALE_DATA:
     })
 
 da_df = pd.DataFrame(_da_rows)
-st.dataframe(da_df, use_container_width=True, hide_index=True)
+st.dataframe(da_df, width='stretch', hide_index=True)
 st.caption(
     "🟢 Da < 0.01 (not sensitive)  •  🔵 0.01–0.1 (monitor)  •  "
     "🟡 0.1–1 (potentially sensitive)  •  🔴 Da > 1 (likely sensitive)"

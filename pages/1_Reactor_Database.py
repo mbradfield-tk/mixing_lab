@@ -626,7 +626,7 @@ with tab_browse:
                             height=550,
                         )
                         _fig3d = go.Figure(data=_traces, layout=_layout)
-                        st.plotly_chart(_fig3d, use_container_width=True)
+                        st.plotly_chart(_fig3d, width='stretch')
 
             # ── Reactor Images (shown automatically) ─────────────────────
             if reactor_imgs:
@@ -847,7 +847,7 @@ with tab_browse:
                                     _fig_data.update_xaxes(title_text=_x_label)
                                     _fig_data.update_yaxes(title_text=_y_label, col=1)
                                     _fig_data.update_layout(height=450, title=f"{_y_label} vs {_x_label}")
-                                    st.plotly_chart(_fig_data, use_container_width=True)
+                                    st.plotly_chart(_fig_data, width='stretch')
                                 else:
                                     _fig_data = go.Figure()
                                     if _series_var != "(none)":
@@ -880,14 +880,14 @@ with tab_browse:
                                         title=f"{_y_label} vs {_x_label}",
                                         height=450,
                                     )
-                                    st.plotly_chart(_fig_data, use_container_width=True)
+                                    st.plotly_chart(_fig_data, width='stretch')
 
                                 # Data table
                                 _table_cols = ["exp_id", "meas_id", "fluid"]
                                 _table_cols += [c for c in _needed if c not in _table_cols]
                                 _table_cols = [c for c in _table_cols if c in _plot_df.columns]
                                 st.markdown("##### Plotted data")
-                                st.dataframe(_plot_df[_table_cols], use_container_width=True, hide_index=True)
+                                st.dataframe(_plot_df[_table_cols], width='stretch', hide_index=True)
             else:
                 st.info("`measurements_all.csv` not found in `data/measured/`.")
 

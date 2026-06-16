@@ -554,7 +554,7 @@ if st.session_state.get("_ht_computed"):
             height=380,
             margin=dict(t=80),
         )
-        st.plotly_chart(fig_res, use_container_width=True)
+        st.plotly_chart(fig_res, width='stretch')
 
         # Percentage breakdown — show wall and lining separately
         _pct_parts = []
@@ -708,7 +708,7 @@ if st.session_state.get("_ht_computed"):
         hovermode="x unified",
         legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
     )
-    st.plotly_chart(fig_T, use_container_width=True)
+    st.plotly_chart(fig_T, width='stretch')
 
     # Heat duty vs time (using per-step U from T-dependent simulation)
     st.subheader("Heat Duty vs. Time")
@@ -739,7 +739,7 @@ if st.session_state.get("_ht_computed"):
         height=400,
         hovermode="x unified",
     )
-    st.plotly_chart(fig_Q, use_container_width=True)
+    st.plotly_chart(fig_Q, width='stretch')
 
     # dT/dt vs time (use per-step thermal mass from T-dependent properties)
     st.subheader("Cooling / Heating Rate vs. Time")
@@ -774,7 +774,7 @@ if st.session_state.get("_ht_computed"):
         height=400,
         hovermode="x unified",
     )
-    st.plotly_chart(fig_rate, use_container_width=True)
+    st.plotly_chart(fig_rate, width='stretch')
 
     # ── U vs time (temperature-dependent) ─────────────────────────────
     if _tdep_available:
@@ -801,7 +801,7 @@ if st.session_state.get("_ht_computed"):
             height=400,
             hovermode="x unified",
         )
-        st.plotly_chart(fig_U, use_container_width=True)
+        st.plotly_chart(fig_U, width='stretch')
 
     # ── RPM sensitivity ───────────────────────────────────────────────
     st.subheader("RPM Sensitivity")
@@ -856,7 +856,7 @@ if st.session_state.get("_ht_computed"):
         height=400,
         hovermode="x unified",
     )
-    st.plotly_chart(fig_rpm, use_container_width=True)
+    st.plotly_chart(fig_rpm, width='stretch')
 
     fig_trpm = go.Figure()
     fig_trpm.add_trace(go.Scatter(
@@ -873,7 +873,7 @@ if st.session_state.get("_ht_computed"):
         height=400,
         hovermode="x unified",
     )
-    st.plotly_chart(fig_trpm, use_container_width=True)
+    st.plotly_chart(fig_trpm, width='stretch')
 
     # ── Nusselt correlation comparison ────────────────────────────────
     st.subheader("Nusselt Correlation Comparison")
@@ -899,7 +899,7 @@ if st.session_state.get("_ht_computed"):
             "Time (min)": f"{_t_c / 60:.1f}" if _t_c < np.inf else "∞",
         })
 
-    st.dataframe(pd.DataFrame(_comp_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(_comp_rows), width='stretch', hide_index=True)
 
     # ── HTM comparison ────────────────────────────────────────────────
     st.subheader("Heat Transfer Media Comparison")
@@ -938,7 +938,7 @@ if st.session_state.get("_ht_computed"):
             "In range?": "✅" if _in_range else "⚠️",
         })
 
-    st.dataframe(pd.DataFrame(_htm_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(_htm_rows), width='stretch', hide_index=True)
 
     # ── Summary table ─────────────────────────────────────────────────
     st.subheader("Full Results Summary")
@@ -971,7 +971,7 @@ if st.session_state.get("_ht_computed"):
         "Fouling R (m²·K/W)": f"{fouling_R:.5f}",
     }
     st.dataframe(pd.DataFrame([_summary]).T.rename(columns={0: "Value"}),
-                 use_container_width=True)
+                 width='stretch')
 
     # ── Export PDF Report ─────────────────────────────────────────────
     st.divider()

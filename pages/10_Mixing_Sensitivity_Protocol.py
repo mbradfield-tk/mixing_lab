@@ -1102,7 +1102,7 @@ for mechanism, status, detail in findings:
     })
 
 summary_df = pd.DataFrame(_summary_rows)
-st.dataframe(summary_df, use_container_width=True, hide_index=True)
+st.dataframe(summary_df, width='stretch', hide_index=True)
 
 # st.caption(
 #     "🔴 Likely sensitive · 🟡 Potentially sensitive / check at scale · "
@@ -1173,7 +1173,7 @@ if not _steps:
     })
 
 steps_df = pd.DataFrame(_steps)
-st.dataframe(steps_df, use_container_width=True, hide_index=True)
+st.dataframe(steps_df, width='stretch', hide_index=True)
 
 # ── Generate PDF Report ──────────────────────────────────────────────────
 st.divider()
