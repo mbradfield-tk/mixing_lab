@@ -201,33 +201,114 @@ class MixingReport(FPDF):
         self.set_text_color(0, 0, 0)
 
     def data_table(self, headers: list[str], rows: list[list[str]],
-                   col_widths: list[float] | None = None):
-        """Render a bordered table with a header row and data rows."""
+                   col_widths: list[float] | None = None,
+                   wrap: bool = False):
+        """Render a bordered table with a header row and data rows.
+
+        When *wrap* is True, cell text that is wider than its column is
+        wrapped onto multiple lines and the row grows in height to fit,
+        so no content is clipped by the column border.
+        """
         usable = self.w - 20
         n = len(headers)
         if col_widths is None:
             col_widths = [usable / n] * n
         row_h = 6
+
+        if not wrap:
+            # Header
+            self.set_font(self._FONT, "B", 8)
+            self.set_fill_color(230, 230, 240)
+            self.set_text_color(30, 30, 80)
+            for i, h in enumerate(headers):
+                self.cell(col_widths[i], row_h, self._s(h), border=1, fill=True)
+            self.ln(row_h)
+            # Data rows
+            self.set_font(self._FONT, "", 8)
+            self.set_text_color(40, 40, 40)
+            _alt = False
+            for row in rows:
+                if _alt:
+                    self.set_fill_color(245, 245, 250)
+                else:
+                    self.set_fill_color(255, 255, 255)
+                for i, val in enumerate(row):
+                    self.cell(col_widths[i], row_h, self._s(str(val)),
+                              border=1, fill=True)
+                self.ln(row_h)
+                _alt = not _alt
+            self.ln(4)
+            return
+
+        # ── Wrapped variant ───────────────────────────────────────────
+        line_h = 4.5
+        pad = 1.0
+
+        def _cell_lines(text: str, width: float) -> list[str]:
+            """Split *text* into lines that fit within *width* mm."""
+            text = self._s(str(text))
+            avail = max(1.0, width - 2 * pad)
+            lines: list[str] = []
+            for para in text.split("\n"):
+                if para == "":
+                    lines.append("")
+                    continue
+                words = para.split(" ")
+                cur = ""
+                for word in words:
+                    # Hard-break words that are too long on their own.
+                    while self.get_string_width(word) > avail:
+                        cut = len(word)
+                        while cut > 1 and self.get_string_width(word[:cut]) > avail:
+                            cut -= 1
+                        piece = word[:cut]
+                        if cur:
+                            lines.append(cur)
+                            cur = ""
+                        lines.append(piece)
+                        word = word[cut:]
+                    trial = word if not cur else f"{cur} {word}"
+                    if self.get_string_width(trial) <= avail:
+                        cur = trial
+                    else:
+                        if cur:
+                            lines.append(cur)
+                        cur = word
+                lines.append(cur)
+            return lines or [""]
+
+        def _render_row(cells, fill_rgb, bold):
+            self.set_font(self._FONT, "B" if bold else "", 8)
+            self.set_fill_color(*fill_rgb)
+            wrapped = [_cell_lines(c, col_widths[i]) for i, c in enumerate(cells)]
+            max_lines = max(len(w) for w in wrapped)
+            cell_h = max_lines * line_h + 2 * pad
+            # Page break if the row would overflow the page.
+            if self.get_y() + cell_h > self.h - self.b_margin:
+                self.add_page()
+            x0 = self.get_x()
+            y0 = self.get_y()
+            x = x0
+            for i, w in enumerate(wrapped):
+                cw = col_widths[i]
+                self.rect(x, y0, cw, cell_h, style="DF")
+                ty = y0 + pad
+                for ln in w:
+                    self.set_xy(x + pad, ty)
+                    self.cell(cw - 2 * pad, line_h, ln, border=0)
+                    ty += line_h
+                x += cw
+            self.set_xy(x0, y0 + cell_h)
+
         # Header
-        self.set_font(self._FONT, "B", 8)
-        self.set_fill_color(230, 230, 240)
         self.set_text_color(30, 30, 80)
-        for i, h in enumerate(headers):
-            self.cell(col_widths[i], row_h, self._s(h), border=1, fill=True)
-        self.ln(row_h)
+        _render_row(headers, (230, 230, 240), bold=True)
         # Data rows
-        self.set_font(self._FONT, "", 8)
         self.set_text_color(40, 40, 40)
         _alt = False
         for row in rows:
-            if _alt:
-                self.set_fill_color(245, 245, 250)
-            else:
-                self.set_fill_color(255, 255, 255)
-            for i, val in enumerate(row):
-                self.cell(col_widths[i], row_h, self._s(str(val)),
-                          border=1, fill=True)
-            self.ln(row_h)
+            fill = (245, 245, 250) if _alt else (255, 255, 255)
+            _render_row([str(v) for v in row], fill, bold=False)
             _alt = not _alt
         self.ln(4)
 
@@ -991,10 +1072,23 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     pdf.cell(0, 14, pdf._s("Bourne Protocol Report"), align="C")
     pdf.ln(18)
 
+    _project_name = snap.get("project_name", "")
+    _step_number = snap.get("step_number", "")
+    _unit_operation = snap.get("unit_operation", "")
+    if _project_name or _step_number or _unit_operation:
+        pdf.section_title("Project Information")
+        if _project_name:
+            pdf.kv("Project", _project_name, bold_val=True)
+        if _step_number:
+            pdf.kv("Step number", _step_number, bold_val=True)
+        if _unit_operation:
+            pdf.kv("Unit operation", _unit_operation, bold_val=True)
+        pdf.ln(2)
+
     pdf.section_title("System Configuration")
     pdf.kv("Reactor", reactor_name, bold_val=True)
     pdf.kv("Fluid", fluid_name, bold_val=True)
-    pdf.kv("Working volume", f"{V_L:.1f} L")
+    pdf.kv("Working volume", f"{V_L:.3f} L")
     if centerpoint_metrics:
         pdf.ln(2)
         pdf.sub_title("Centerpoint Hydrodynamics")
@@ -1025,10 +1119,11 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     if t1_responses:
         pdf.ln(2)
         labels = t1_responses.get("labels", [])
+        _short_labels = [str(l).split("(")[0].strip() for l in labels]
         kpi_results = t1_responses.get("kpi_results", [])
         if kpi_results:
             pdf.sub_title("Responses")
-            _hdr = ["KPI", "Mode"] + list(labels) + ["Max change", "Sensitive?"]
+            _hdr = ["KPI", "Mode"] + list(_short_labels) + ["Max change", "Sensitive?"]
             _rows = []
             for r in kpi_results:
                 _is_qual = r.get("qualitative", False)
@@ -1043,7 +1138,7 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
                     + _vals + [_delta, "Yes" if r.get("sensitive") else "No"]
                 )
             pdf.data_table(_hdr, _rows,
-                           col_widths=[32, 16, 24, 24, 24, 22, 20])
+                           col_widths=[40, 14, 22, 22, 22, 20, 18], wrap=True)
             n_sensitive = t1_responses.get("n_sensitive", 0)
             n_total = t1_responses.get("n_total", len(kpi_results))
             colour = "RED" if n_sensitive > 0 else "GREEN"
@@ -1057,11 +1152,11 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
             _qualitative = t1_responses.get("qualitative", False)
             if _qualitative:
                 _t1_resp_rows = [[lbl, (str(val) if val else "--")]
-                                 for lbl, val in zip(labels, resp)]
+                                 for lbl, val in zip(_short_labels, resp)]
             else:
-                _t1_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(labels, resp)]
+                _t1_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(_short_labels, resp)]
             pdf.data_table(["Condition", "Response"], _t1_resp_rows,
-                           col_widths=[80, 60])
+                           col_widths=[80, 60], wrap=True)
             sensitive = t1_responses.get("sensitive", False)
             colour = "RED" if sensitive else "GREEN"
             if _qualitative:
@@ -1084,7 +1179,7 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
         if t2_conds:
             pdf.body_text(
                 f"Impeller speed held at N = {t2_conds.get('N_RPM', 0):.0f} RPM.  "
-                f"Volume = {V_L:.1f} L.  "
+                f"Volume = {V_L:.3f} L.  "
                 f"Feed location: {t2_conds.get('feed_location', 'constant')}."
             )
             pdf.ln(1)
@@ -1106,7 +1201,7 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
         t2_resp = t2_responses.get("resp", [])
         _t2_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(t2_labels, t2_resp)]
         pdf.data_table(["Condition", "Response"], _t2_resp_rows,
-                       col_widths=[80, 60])
+                       col_widths=[80, 60], wrap=True)
         t2_pct = t2_responses.get("max_pct", 0)
         t2_sens = t2_responses.get("sensitive", False)
         colour = "RED" if t2_sens else "GREEN"
@@ -1123,7 +1218,7 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
         if t3_conds:
             pdf.body_text(
                 f"Impeller speed held at N = {t3_conds.get('N_RPM', 0):.0f} RPM.  "
-                f"Volume = {V_L:.1f} L.  "
+                f"Volume = {V_L:.3f} L.  "
                 f"Feed time = {t3_conds.get('feed_time_min', 0):.1f} min (centerpoint)."
             )
             pdf.ln(1)
@@ -1143,7 +1238,7 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
         t3_resp = t3_responses.get("resp", [])
         _t3_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(t3_labels, t3_resp)]
         pdf.data_table(["Feed Location", "Response"], _t3_resp_rows,
-                       col_widths=[80, 60])
+                       col_widths=[80, 60], wrap=True)
         t3_pct = t3_responses.get("max_pct", 0)
         t3_sens = t3_responses.get("sensitive", False)
         colour = "RED" if t3_sens else "GREEN"
@@ -1198,8 +1293,224 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     return report_bytes(pdf)
 
 
+def build_bourne_step_pdf(snap: dict) -> bytes:
+    """Build a focused single-step PDF for the Bourne Protocol (Page 6).
+
+    Renders the system configuration plus one test step (1, 2, or 3) with its
+    conditions and recorded responses. Complements the full end-of-protocol
+    report produced by ``build_bourne_protocol_pdf``.
+    """
+    step = int(snap.get("step", 1))
+    reactor_name = snap.get("reactor", "Manual entry")
+    fluid_name = snap.get("fluid", "")
+    V_L = snap.get("V_L", 0.0)
+    centerpoint_metrics = snap.get("centerpoint_metrics", {})
+
+    _step_titles = {
+        1: "Test 1 -- Impeller Speed",
+        2: "Test 2 -- Feed Rate / Feed Time",
+        3: "Test 3 -- Feed Location",
+    }
+    step_title = _step_titles.get(step, f"Test {step}")
+
+    title = f"Bourne Protocol {step_title} \u2014 {reactor_name}"
+    pdf = new_report(title)
+
+    # ── Title & System ───────────────────────────────────────────────────
+    pdf.add_page()
+    pdf.set_font(pdf._FONT, "B", 18)
+    pdf.set_text_color(30, 30, 80)
+    pdf.cell(0, 12, pdf._s(f"Bourne Protocol -- {step_title}"), align="C")
+    pdf.ln(16)
+
+    _project_name = snap.get("project_name", "")
+    _step_number = snap.get("step_number", "")
+    _unit_operation = snap.get("unit_operation", "")
+    if _project_name or _step_number or _unit_operation:
+        pdf.section_title("Project Information")
+        if _project_name:
+            pdf.kv("Project", _project_name, bold_val=True)
+        if _step_number:
+            pdf.kv("Step number", _step_number, bold_val=True)
+        if _unit_operation:
+            pdf.kv("Unit operation", _unit_operation, bold_val=True)
+        pdf.ln(2)
+
+    pdf.section_title("System Configuration")
+    pdf.kv("Reactor", reactor_name, bold_val=True)
+    pdf.kv("Fluid", fluid_name, bold_val=True)
+    pdf.kv("Working volume", f"{V_L:.3f} L")
+    if centerpoint_metrics:
+        pdf.ln(2)
+        pdf.sub_title("Centerpoint Hydrodynamics")
+        cm_rows = []
+        for k, v in centerpoint_metrics.items():
+            cm_rows.append((k, f"{v:.4g}" if isinstance(v, float) else str(v)))
+        pdf.metric_table(cm_rows, cols=2)
+    pdf.ln(4)
+
+    # ── Step 1 ───────────────────────────────────────────────────────────
+    if step == 1:
+        t1_conditions = snap.get("t1_conditions", [])
+        t1_responses = snap.get("t1_responses")
+        pdf.section_title(step_title)
+        pdf.sub_title("Conditions")
+        if t1_conditions:
+            _t1_cond_headers = ["Condition", "Volume (L)", "N (RPM)", "P/m (W/kg)", "P/V (W/L)", "Tip speed (m/s)"]
+            _t1_cond_rows = []
+            for cond in t1_conditions:
+                _t1_cond_rows.append([
+                    cond.get("Condition", ""),
+                    f"{cond.get('Volume (L)', 0):.2f}",
+                    f"{cond.get('N (RPM)', 0):.0f}",
+                    f"{cond.get('P/m (W/kg)', 0):.4g}",
+                    f"{cond.get('P/V (W/L)', 0):.4g}",
+                    f"{cond.get('Tip speed (m/s)', 0):.3f}",
+                ])
+            pdf.data_table(_t1_cond_headers, _t1_cond_rows, col_widths=[50, 25, 25, 30, 25, 30])
+            pdf.ln(1)
+            pdf.body_text("Feed rate and feed location held constant.")
+        if t1_responses:
+            pdf.ln(2)
+            labels = t1_responses.get("labels", [])
+            _short_labels = [str(l).split("(")[0].strip() for l in labels]
+            kpi_results = t1_responses.get("kpi_results", [])
+            if kpi_results:
+                pdf.sub_title("Responses")
+                _hdr = ["KPI", "Mode"] + list(_short_labels) + ["Max change", "Sensitive?"]
+                _rows = []
+                for r in kpi_results:
+                    _is_qual = r.get("qualitative", False)
+                    if _is_qual:
+                        _vals = [(str(v) if str(v).strip() else "--") for v in r.get("resp", [])]
+                        _delta = "--"
+                    else:
+                        _vals = [f"{v:.4g}" for v in r.get("resp", [])]
+                        _delta = f"{r.get('max_pct', 0):.1f}%"
+                    _rows.append(
+                        [r.get("name", ""), "Qual" if _is_qual else "Quant"]
+                        + _vals + [_delta, "Yes" if r.get("sensitive") else "No"]
+                    )
+                pdf.data_table(_hdr, _rows, col_widths=[40, 14, 22, 22, 22, 20, 18], wrap=True)
+                n_sensitive = t1_responses.get("n_sensitive", 0)
+                n_total = t1_responses.get("n_total", len(kpi_results))
+                _status = t1_responses.get(
+                    "status", "sensitive" if n_sensitive > 0 else "not_sensitive")
+                if _status == "not_sensitive":
+                    _verdict = "Mixing does NOT matter -- process insensitive to impeller speed"
+                    colour = "GREEN"
+                elif _status == "may_be_sensitive":
+                    _verdict = "Mixing MAY matter -- proceed to Test 2 with caution"
+                    colour = "AMBER"
+                else:
+                    _verdict = "Mixing MATTERS -- proceed to Test 2"
+                    colour = "RED"
+                pdf.assessment_box(
+                    f"{_verdict}  ({n_sensitive} / {n_total} KPIs sensitive)", colour)
+            else:
+                pdf.sub_title(f"Responses ({t1_responses.get('resp_name', '')})")
+                resp = t1_responses.get("resp", [])
+                _qualitative = t1_responses.get("qualitative", False)
+                if _qualitative:
+                    _t1_resp_rows = [[lbl, (str(val) if val else "--")]
+                                     for lbl, val in zip(_short_labels, resp)]
+                else:
+                    _t1_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(_short_labels, resp)]
+                pdf.data_table(["Condition", "Response"], _t1_resp_rows, col_widths=[80, 60], wrap=True)
+                sensitive = t1_responses.get("sensitive", False)
+                colour = "RED" if sensitive else "GREEN"
+                _verdict = ("Mixing MATTERS -- proceed to Test 2" if sensitive
+                            else "Mixing does NOT matter -- process insensitive to impeller speed")
+                if _qualitative:
+                    pdf.assessment_box(
+                        f"{_verdict}  (qualitative judgment)", colour)
+                else:
+                    max_pct = t1_responses.get("max_pct", 0)
+                    pdf.assessment_box(
+                        f"{_verdict}  (max change = {max_pct:.1f}%)", colour)
+
+    # ── Step 2 ───────────────────────────────────────────────────────────
+    elif step == 2:
+        t2_responses = snap.get("t2_responses")
+        pdf.section_title(step_title)
+        pdf.sub_title("Conditions")
+        t2_conds = snap.get("t2_conditions", {})
+        if t2_conds:
+            pdf.body_text(
+                f"Impeller speed held at N = {t2_conds.get('N_RPM', 0):.0f} RPM.  "
+                f"Volume = {V_L:.3f} L.  "
+                f"Feed location: {t2_conds.get('feed_location', 'constant')}."
+            )
+            pdf.ln(1)
+            _t2_cond_headers = ["Condition", "Feed time (min)", "Flow rate (mL/min)"]
+            _t2_cond_rows = []
+            for row in t2_conds.get("rows", []):
+                _t2_cond_rows.append([
+                    row.get("Condition", ""),
+                    f"{row.get('Feed time (min)', 0):.2f}",
+                    f"{row.get('Flow rate (mL/min)', 0):.2f}",
+                ])
+            if _t2_cond_rows:
+                pdf.data_table(_t2_cond_headers, _t2_cond_rows, col_widths=[65, 45, 45])
+            pdf.ln(1)
+            pdf.body_text(f"Total feed volume: {t2_conds.get('feed_vol_mL', 0):.1f} mL.")
+        if t2_responses:
+            pdf.ln(2)
+            pdf.sub_title(f"Responses ({t2_responses.get('resp_name', '')})")
+            t2_labels = ["Fast (1/3x)", "Center (1x)", "Slow (3x)"]
+            t2_resp = t2_responses.get("resp", [])
+            _t2_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(t2_labels, t2_resp)]
+            pdf.data_table(["Condition", "Response"], _t2_resp_rows, col_widths=[80, 60], wrap=True)
+            t2_pct = t2_responses.get("max_pct", 0)
+            t2_sens = t2_responses.get("sensitive", False)
+            colour = "RED" if t2_sens else "GREEN"
+            pdf.assessment_box(
+                f"Max change = {t2_pct:.1f}% -- {'Sensitive (mesomixing involved)' if t2_sens else 'Not sensitive (micromixing controls)'}",
+                colour,
+            )
+
+    # ── Step 3 ───────────────────────────────────────────────────────────
+    elif step == 3:
+        t3_responses = snap.get("t3_responses")
+        pdf.section_title(step_title)
+        pdf.sub_title("Conditions")
+        t3_conds = snap.get("t3_conditions", {})
+        if t3_conds:
+            pdf.body_text(
+                f"Impeller speed held at N = {t3_conds.get('N_RPM', 0):.0f} RPM.  "
+                f"Volume = {V_L:.3f} L.  "
+                f"Feed time = {t3_conds.get('feed_time_min', 0):.1f} min (centerpoint)."
+            )
+            pdf.ln(1)
+            _t3_cond_headers = ["Feed Location", "eps_loc/eps_avg", "eps_loc (W/m3)"]
+            _t3_cond_rows = []
+            for row in t3_conds.get("rows", []):
+                _t3_cond_rows.append([
+                    row.get("Feed Location", ""),
+                    f"{row.get('eps_loc/eps_avg', 0):.1f}",
+                    f"{row.get('eps_loc (W/m3)', 0):.1f}",
+                ])
+            if _t3_cond_rows:
+                pdf.data_table(_t3_cond_headers, _t3_cond_rows, col_widths=[65, 40, 40])
+        if t3_responses:
+            pdf.ln(2)
+            pdf.sub_title(f"Responses ({t3_responses.get('resp_name', '')})")
+            t3_labels = ["Surface", "Sub-surface (mid)", "Impeller zone"]
+            t3_resp = t3_responses.get("resp", [])
+            _t3_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(t3_labels, t3_resp)]
+            pdf.data_table(["Feed Location", "Response"], _t3_resp_rows, col_widths=[80, 60], wrap=True)
+            t3_pct = t3_responses.get("max_pct", 0)
+            t3_sens = t3_responses.get("sensitive", False)
+            colour = "RED" if t3_sens else "GREEN"
+            pdf.assessment_box(
+                f"Max change = {t3_pct:.1f}% -- {'Sensitive (mesomixing controls)' if t3_sens else 'Not sensitive (macromixing controls)'}",
+                colour,
+            )
+
+    return report_bytes(pdf)
+
+
 def build_heat_transfer_pdf(snap: dict) -> bytes:
-    """Build PDF report for Page 14 -- Heat Transfer Modeling."""
     reactor_name = snap["reactor"]
     fluid_name = snap["fluid"]
     fluid_T_C = snap["fluid_T_C"]

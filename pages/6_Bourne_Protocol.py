@@ -208,6 +208,50 @@ st.button("🔄 Restart protocol", key="bp_restart", on_click=_reset_bourne)
 st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════
+# SECTION 00 – Project & Step Metadata
+# ══════════════════════════════════════════════════════════════════════════
+st.header("Project Information")
+
+_UNIT_OPS = [
+    "Reaction",
+    "Crystallization",
+    "Reaction and crystallization",
+    "Extraction / Wash",
+    "Dissolution",
+    "Distillation",
+    "Other",
+]
+
+col_proj, col_step, col_uop = st.columns([2, 1, 2])
+with col_proj:
+    project_name = st.text_input(
+        "Project name", value=st.session_state.get("_sel_bp_project", ""),
+        key=_bk("project"), placeholder="e.g. Project Apollo / API-123",
+    )
+    st.session_state["_sel_bp_project"] = project_name
+with col_step:
+    step_number = st.text_input(
+        "Step number", value=st.session_state.get("_sel_bp_step", ""),
+        key=_bk("step_no"), placeholder="e.g. 3",
+    )
+    st.session_state["_sel_bp_step"] = step_number
+with col_uop:
+    _uop_default = st.session_state.get("_sel_bp_uop", _UNIT_OPS[0])
+    unit_operation = st.selectbox(
+        "Type of unit operation", _UNIT_OPS,
+        index=_UNIT_OPS.index(_uop_default) if _uop_default in _UNIT_OPS else 0,
+        key=_bk("uop"),
+    )
+    if unit_operation == "Other":
+        unit_operation = st.text_input(
+            "Specify unit operation", value="",
+            key=_bk("uop_custom"), placeholder="e.g. Phase separation",
+        ) or "Other"
+    st.session_state["_sel_bp_uop"] = unit_operation
+
+st.divider()
+
+# ══════════════════════════════════════════════════════════════════════════
 # SECTION 0 – Reactor & Fluid Selection
 # ══════════════════════════════════════════════════════════════════════════
 st.header("Define Your System")
@@ -669,6 +713,53 @@ def _assess_sensitivity(resp_values, ref_value, threshold_pct=_SENSITIVITY_THRES
     sensitive = max_pct >= threshold_pct
     return (max_pct, sensitive, pct_changes)
 
+def _bp_centerpoint_metrics():
+    """Return the centerpoint hydrodynamic metrics dict for step PDF exports."""
+    _eps = power_per_volume(impeller_power(Np_val, rho, N_center_calc, D_imp), V_m3)
+    _eps_kg = _eps / rho
+    return {
+        "N (RPM)": round(N_center_calc * 60, 1),
+        "P/m (W/kg)": round(PV_center_wkg, 4),
+        "Re": round(reynolds_number(N_center_calc, D_imp, rho, mu), 0),
+        "Tip speed (m/s)": round(tip_speed(N_center_calc, D_imp), 3),
+        "Blend time (s)": round(blend_time_turbulent(Nq_val, V_m3, D_imp, N_center_calc), 2),
+        "Micromix t_E (s)": round(micromixing_time_engulfment(_eps_kg, nu), 5),
+        "Kolmogorov eta (um)": round(kolmogorov_length(nu, _eps_kg) * 1e6, 1),
+    }
+
+def _step_export_ui(step, snap_extra):
+    """Render a 'generate + download' PDF control for a single protocol step."""
+    _bytes_key = f"_p6_step{step}_pdf_bytes"
+    _name_key = f"_p6_step{step}_pdf_name"
+    if st.button(f"📥 Export Test {step} PDF", key=_bk(f"gen_step{step}_pdf")):
+        with st.spinner("Generating PDF…"):
+            try:
+                from utils.report_builder import build_bourne_step_pdf, report_filename
+                _snap = {
+                    "step": step,
+                    "project_name": project_name,
+                    "step_number": step_number,
+                    "unit_operation": unit_operation,
+                    "reactor": reactor_name if not reactors.empty else "Manual entry",
+                    "fluid": fluid_name,
+                    "V_L": V_L,
+                    "centerpoint_metrics": _bp_centerpoint_metrics(),
+                }
+                _snap.update(snap_extra)
+                st.session_state[_bytes_key] = build_bourne_step_pdf(_snap)
+                st.session_state[_name_key] = report_filename(
+                    f"Bourne_Test{step}", reactor_name if not reactors.empty else "")
+            except Exception as exc:
+                st.error(f"PDF generation failed: {exc}")
+    if _bytes_key in st.session_state:
+        st.download_button(
+            f"⬇️ Download Test {step} PDF",
+            data=st.session_state[_bytes_key],
+            file_name=st.session_state[_name_key],
+            mime="application/pdf",
+            key=_bk(f"dl_step{step}_pdf"),
+        )
+
 _t1_multi = st.checkbox(
     "Track multiple KPIs",
     key=_bk("t1_multi"),
@@ -932,6 +1023,12 @@ if t1_override:
     t1_sensitive = t1_result_manual.startswith("Sensitive")
     t1_status = "sensitive" if t1_sensitive else "not_sensitive"
 
+# Export this step's results to PDF
+_step_export_ui(1, {
+    "t1_conditions": t1_rows,
+    "t1_responses": st.session_state.get(_bk("t1_assessed")),
+})
+
 if not t1_sensitive:
     st.stop()
 
@@ -1080,6 +1177,21 @@ if t2_override:
     )
     t2_sensitive = t2_result_manual.startswith("Sensitive")
     _micro_conclusion = not t2_sensitive
+
+# Export this step's results to PDF
+_step_export_ui(2, {
+    "t2_conditions": {
+        "N_RPM": round(N_center_calc * 60, 1),
+        "feed_vol_mL": feed_vol,
+        "feed_location": "Held constant (centerpoint)",
+        "rows": [
+            {"Condition": "Fast (1/3x feed time)", "Feed time (min)": round(t_feed_fast, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_fast, 2)},
+            {"Condition": "Center (1x feed time)", "Feed time (min)": round(t_feed_center, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_center, 2)},
+            {"Condition": "Slow (3x feed time)", "Feed time (min)": round(t_feed_slow, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_slow, 2)},
+        ],
+    },
+    "t2_responses": st.session_state.get(_bk("t2_assessed")),
+})
 
 st.divider()
 
@@ -1233,6 +1345,21 @@ if t2_sensitive:
         t3_sensitive = t3_result_manual.startswith("Sensitive")
         _macro_conclusion = not t3_sensitive
         _meso_conclusion = t3_sensitive
+
+    # Export this step's results to PDF
+    _step_export_ui(3, {
+        "t3_conditions": {
+            "N_RPM": round(N_center_calc * 60, 1),
+            "feed_time_min": round(t_feed_center, 2),
+            "eps_avg_W_m3": round(eps_avg, 2),
+            "rows": [
+                {"Feed Location": "Surface", "eps_loc/eps_avg": 0.1, "eps_loc (W/m3)": round(0.1 * eps_avg, 2)},
+                {"Feed Location": "Sub-surface (mid-tank)", "eps_loc/eps_avg": 1.0, "eps_loc (W/m3)": round(1.0 * eps_avg, 2)},
+                {"Feed Location": "Impeller zone", "eps_loc/eps_avg": 3.0, "eps_loc (W/m3)": round(3.0 * eps_avg, 2)},
+            ],
+        },
+        "t3_responses": st.session_state.get(_bk("t3_assessed")),
+    })
 
 st.divider()
 
@@ -1441,6 +1568,9 @@ if st.button("📥 Export PDF Report", type="primary", key=_bk("export_pdf")):
                 "reactor": reactor_name if not reactors.empty else "Manual entry",
                 "fluid": fluid_name,
                 "V_L": V_L,
+                "project_name": project_name,
+                "step_number": step_number,
+                "unit_operation": unit_operation,
                 "dominant": dominant,
                 "conclusions": conclusions,
                 "scaleup_notes": scaleup_notes,
