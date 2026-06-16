@@ -53,7 +53,120 @@ custom_fluids = load_db("fluid_db", "fluids.csv")
 
 _all_fluid_names = all_fluid_names(custom_fluids)
 
+# Response metrics relevant to reaction / crystallization screening in
+# small-molecule API manufacturing. Units are captured separately (see
+# RESPONSE_UNITS) so the metric name stays unit-free.
+RESPONSE_METRICS = [
+    "Yield",
+    "Conversion",
+    "Selectivity",
+    "Concentration",
+    "HPLC area",
+    "Potency",
+    "Assay",
+    "Total impurities",
+    "Largest single impurity",
+    "Enantiomeric excess (ee)",
+    "Diastereomeric ratio (dr)",
+    "Residual solvent",
+    "Particle size D50",
+    "Particle size D90",
+    "Span (D90−D10)/D50",
+    "Polymorph / form purity",
+    "Filtration rate (or time)",
+    "Bulk density",
+    "Cake density"
+]
+
+# Common units for the metrics above. Users may also enter a custom unit.
+RESPONSE_UNITS = [
+    "%",
+    "% w/w",
+    "wt%",
+    "area %",
+    "g/L",
+    "mg/mL",
+    "mol/L",
+    "ppm",
+    "µm",
+    "kg/m²/h",
+    "g/mL",
+    "ratio",
+    "(none)",
+    "s",
+    "min",
+    "h",
+]
+
+_CUSTOM_UNIT = "Custom…"
+
+# Sensible default unit for each metric (used to preselect the unit dropdown).
+_METRIC_DEFAULT_UNIT = {
+    "Yield": "%",
+    "Conversion": "%",
+    "Selectivity": "%",
+    "Concentration": "g/L",
+    "HPLC area": "area %",
+    "Potency": "% w/w",
+    "Assay": "% w/w",
+    "Total impurities": "%",
+    "Largest single impurity": "%",
+    "Enantiomeric excess (ee)": "%",
+    "Diastereomeric ratio (dr)": "ratio",
+    "Residual solvent": "ppm",
+    "Particle size D50": "µm",
+    "Particle size D90": "µm",
+    "Span (D90−D10)/D50": "ratio",
+    "Polymorph / form purity": "%",
+    "Filtration rate": "kg/m²/h",
+    "Bulk density": "g/mL",
+}
+
+
+def _metric_index(name: str) -> int:
+    """Return the index of a metric in RESPONSE_METRICS, or 0 if not found."""
+    try:
+        return RESPONSE_METRICS.index(name)
+    except ValueError:
+        return 0
+
+
+def _unit_selector(container, key, default_unit="%", label="Unit"):
+    """Render a unit dropdown (with a custom-entry option) and return the unit."""
+    _opts = RESPONSE_UNITS + [_CUSTOM_UNIT]
+    _idx = _opts.index(default_unit) if default_unit in _opts else 0
+    _sel = container.selectbox(label, _opts, index=_idx, key=key)
+    if _sel == _CUSTOM_UNIT:
+        _sel = container.text_input(
+            "Custom unit", value="", key=f"{key}_custom",
+            placeholder="e.g. g/100 g",
+        ) or ""
+    return _sel
+
+
+def _fmt_metric(metric: str, unit: str) -> str:
+    """Combine a metric name and unit into a display label."""
+    unit = (unit or "").strip()
+    if unit and unit != "(none)":
+        return f"{metric} ({unit})"
+    return metric
+
 # ══════════════════════════════════════════════════════════════════════════
+# Constrain the page content to a centered, narrower column so widgets and
+# tables don't stretch across the full (wide-layout) screen width.
+st.markdown(
+    """
+    <style>
+    section.main div.block-container {
+        max-width: 900px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("🅱️ Bourne Protocol – Mixing Sensitivity Screening")
 st.markdown("""
 Determines **which mixing scale** (macro / meso / micro) controls your
@@ -86,6 +199,8 @@ def _reset_bourne():
         if k.startswith("bp_") or k.startswith("_sel_bp_"):
             del st.session_state[k]
     st.session_state["_bp_gen"] = old_gen + 1
+    # Return to the start screen so the user re-begins the protocol.
+    st.session_state["_bp_started"] = False
 
 
 st.button("🔄 Restart protocol", key="bp_restart", on_click=_reset_bourne)
@@ -195,6 +310,19 @@ V_L = st.number_input(
 V_m3 = V_L / 1000.0  # m³
 
 st.divider()
+
+# ── Start gate ────────────────────────────────────────────────────────────
+# The protocol walkthrough (Test 1 onward) and all results stay hidden until
+# the user has defined their system and clicks Start Protocol.
+if not st.session_state.get("_bp_started", False):
+    st.info(
+        "Define your reactor, fluid system, and working volume above, then "
+        "click **Start Protocol** to begin the walkthrough."
+    )
+    if st.button("🚀 Start Protocol", type="primary", key="bp_start"):
+        st.session_state["_bp_started"] = True
+        st.rerun()
+    st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 1 – TEST 1: Impeller Speed  (Does mixing matter?)
@@ -524,10 +652,22 @@ if V_L_min != V_L_max:
     )
     st.plotly_chart(fig_t1, use_container_width=True)
 
-# ── Quantitative response entry for Test 1 ──────────────────────────────
+# ── Response entry for Test 1 ───────────────────────────────────────────
 st.subheader("Record Test 1 Responses")
-#  Sensitivity criterion default to 5%
-st.caption("Sensitivity criterion: ≥ 5% relative change from center = sensitive.")
+
+# Sensitivity assessment helpers (used by all three tests)
+_SENSITIVITY_THRESHOLD = 5.0  # % relative change (Sarafinas, 2018)
+
+def _assess_sensitivity(resp_values, ref_value, threshold_pct=_SENSITIVITY_THRESHOLD):
+    """Return (max_pct_change, is_sensitive, detail_text)."""
+    if ref_value == 0:
+        # Fall back to absolute range if center is zero
+        rng = max(resp_values) - min(resp_values)
+        return (rng, rng > 0, f"Absolute range = {rng:.4g} (center = 0; cannot compute relative change)")
+    pct_changes = [abs(v - ref_value) / abs(ref_value) * 100 for v in resp_values]
+    max_pct = max(pct_changes)
+    sensitive = max_pct >= threshold_pct
+    return (max_pct, sensitive, pct_changes)
 
 _t1_multi = st.checkbox(
     "Track multiple KPIs",
@@ -545,66 +685,112 @@ if _t1_multi:
 else:
     _t1_n_kpi = 1
 
-_t1_kpi_inputs = []  # [{name, low, ctr, high}, ...]
+st.caption(
+    "Each KPI can be tracked **Quantitatively** (numeric values, auto-assessed "
+    "at a ≥ 5% relative change) or **Qualitatively** (observations with a "
+    "manual sensitivity judgment)."
+)
+
+_t1_kpi_inputs = []  # [{mode, name, low, ctr, high, [judgment]}, ...]
 for _k in range(_t1_n_kpi):
     if _t1_multi:
+        if _k > 0:
+            st.divider()
         st.markdown(f"**KPI {_k + 1}**")
-    _kpi_name = st.text_input(
-        "Response metric name" if not _t1_multi else f"KPI {_k + 1} name",
-        value=("Yield (%)" if _k == 0 else f"KPI {_k + 1}"),
+    _kpi_mode = st.radio(
+        "Capture mode" if not _t1_multi else f"KPI {_k + 1} capture mode",
+        ["Quantitative", "Qualitative"],
+        horizontal=True, key=_bk(f"t1_mode_{_k}"),
+    )
+    _mcol, _ucol = st.columns([2, 1])
+    _kpi_metric = _mcol.selectbox(
+        "Response metric" if not _t1_multi else f"KPI {_k + 1} metric",
+        RESPONSE_METRICS,
+        index=0,
         key=_bk(f"t1_resp_name_{_k}"),
     )
-    _col_a, _col_b, _col_c = st.columns(3)
-    with _col_a:
-        _r_low = _col_a.number_input(f"{_low_label}", value=0.0, format="%.4g",
-                                     key=_bk(f"t1_resp_low_{_k}"))
-    with _col_b:
-        _r_ctr = _col_b.number_input("Center (1× P/m)", value=0.0, format="%.4g",
-                                     key=_bk(f"t1_resp_ctr_{_k}"))
-    with _col_c:
-        _r_high = _col_c.number_input(f"{_high_label}", value=0.0, format="%.4g",
-                                      key=_bk(f"t1_resp_high_{_k}"))
-    _t1_kpi_inputs.append({"name": _kpi_name, "low": _r_low,
-                           "ctr": _r_ctr, "high": _r_high})
+    _kpi_unit = _unit_selector(
+        _ucol, _bk(f"t1_resp_unit_{_k}"),
+        default_unit=_METRIC_DEFAULT_UNIT.get(_kpi_metric, "%"),
+    )
+    _kpi_name = _fmt_metric(_kpi_metric, _kpi_unit)
+    if _kpi_mode == "Quantitative":
+        _col_a, _col_b, _col_c = st.columns(3)
+        with _col_a:
+            _r_low = _col_a.number_input(f"{_low_label}", value=0.0, format="%.4g",
+                                         key=_bk(f"t1_resp_low_{_k}"))
+        with _col_b:
+            _r_ctr = _col_b.number_input("Center (1× P/m)", value=0.0, format="%.4g",
+                                         key=_bk(f"t1_resp_ctr_{_k}"))
+        with _col_c:
+            _r_high = _col_c.number_input(f"{_high_label}", value=0.0, format="%.4g",
+                                          key=_bk(f"t1_resp_high_{_k}"))
+        _t1_kpi_inputs.append({"mode": "quant", "metric": _kpi_metric,
+                               "unit": _kpi_unit, "name": _kpi_name,
+                               "low": _r_low, "ctr": _r_ctr, "high": _r_high})
+    else:
+        _col_a, _col_b, _col_c = st.columns(3)
+        with _col_a:
+            _q_low = st.text_area(f"{_low_label}", value="", height=100,
+                                  key=_bk(f"t1_qual_low_{_k}"),
+                                  placeholder="e.g. hazy, slow dissolution…")
+        with _col_b:
+            _q_ctr = st.text_area("Center (1× P/m)", value="", height=100,
+                                  key=_bk(f"t1_qual_ctr_{_k}"),
+                                  placeholder="e.g. clear solution…")
+        with _col_c:
+            _q_high = st.text_area(f"{_high_label}", value="", height=100,
+                                   key=_bk(f"t1_qual_high_{_k}"),
+                                   placeholder="e.g. fully dissolved, no haze…")
+        _q_judgment = st.radio(
+            "Does this response indicate mixing sensitivity?",
+            ["Sensitive – mixing matters", "Not sensitive – mixing not critical"],
+            key=_bk(f"t1_qual_judgment_{_k}"),
+            horizontal=True,
+        )
+        _t1_kpi_inputs.append({"mode": "qual", "metric": _kpi_metric,
+                               "unit": _kpi_unit, "name": _kpi_name,
+                               "low": _q_low, "ctr": _q_ctr, "high": _q_high,
+                               "judgment": _q_judgment})
 
-# back-compat: first KPI name used by later sections
-_t1_resp_name = _t1_kpi_inputs[0]["name"]
-
-# Sensitivity assessment
-_SENSITIVITY_THRESHOLD = 5.0  # % relative change (Sarafinas, 2018)
-
-def _assess_sensitivity(resp_values, ref_value, threshold_pct=_SENSITIVITY_THRESHOLD):
-    """Return (max_pct_change, is_sensitive, detail_text)."""
-    if ref_value == 0:
-        # Fall back to absolute range if center is zero
-        rng = max(resp_values) - min(resp_values)
-        return (rng, rng > 0, f"Absolute range = {rng:.4g} (center = 0; cannot compute relative change)")
-    pct_changes = [abs(v - ref_value) / abs(ref_value) * 100 for v in resp_values]
-    max_pct = max(pct_changes)
-    sensitive = max_pct >= threshold_pct
-    return (max_pct, sensitive, pct_changes)
+# back-compat: first KPI base metric used by later sections
+_t1_resp_name = _t1_kpi_inputs[0]["metric"]
 
 # Button-triggered assessment
 if st.button("📊 Assess Test 1 Responses", key=_bk("t1_assess")):
-    _all_zero = all(
-        kp["low"] == 0.0 and kp["ctr"] == 0.0 and kp["high"] == 0.0
-        for kp in _t1_kpi_inputs
-    )
-    if _all_zero:
+    def _kpi_has_data(kp):
+        if kp["mode"] == "quant":
+            return not (kp["low"] == 0.0 and kp["ctr"] == 0.0 and kp["high"] == 0.0)
+        return any(str(v).strip() for v in (kp["low"], kp["ctr"], kp["high"]))
+
+    if not any(_kpi_has_data(kp) for kp in _t1_kpi_inputs):
         st.warning("Enter response values before assessing.")
     else:
         _kpi_results = []
         for kp in _t1_kpi_inputs:
-            _mp, _sn, _pd = _assess_sensitivity(
-                [kp["low"], kp["ctr"], kp["high"]], kp["ctr"]
-            )
-            _kpi_results.append({
-                "name": kp["name"],
-                "max_pct": _mp,
-                "sensitive": _sn,
-                "pct_detail": _pd,
-                "resp": [kp["low"], kp["ctr"], kp["high"]],
-            })
+            if kp["mode"] == "quant":
+                _mp, _sn, _pd = _assess_sensitivity(
+                    [kp["low"], kp["ctr"], kp["high"]], kp["ctr"]
+                )
+                _kpi_results.append({
+                    "name": kp["name"],
+                    "qualitative": False,
+                    "max_pct": _mp,
+                    "sensitive": _sn,
+                    "pct_detail": _pd,
+                    "resp": [kp["low"], kp["ctr"], kp["high"]],
+                })
+            else:
+                _sn = kp["judgment"].startswith("Sensitive")
+                _kpi_results.append({
+                    "name": kp["name"],
+                    "qualitative": True,
+                    "max_pct": 0.0,
+                    "sensitive": _sn,
+                    "pct_detail": None,
+                    "resp": [kp["low"], kp["ctr"], kp["high"]],
+                    "judgment": kp["judgment"],
+                })
         _n_total = len(_kpi_results)
         _n_sensitive = sum(1 for r in _kpi_results if r["sensitive"])
         if _n_sensitive == 0:
@@ -614,14 +800,16 @@ if st.button("📊 Assess Test 1 Responses", key=_bk("t1_assess")):
         else:
             _status = "may_be_sensitive"
 
+        _quant_pcts = [r["max_pct"] for r in _kpi_results if not r["qualitative"]]
         st.session_state[_bk("t1_assessed")] = {
+            "qualitative": all(r["qualitative"] for r in _kpi_results),
             "kpi_results": _kpi_results,
             "n_total": _n_total,
             "n_sensitive": _n_sensitive,
             "status": _status,
             "labels": [_low_label, "Center (1× P/m)", _high_label],
             # back-compat single-KPI fields (first KPI / max across KPIs)
-            "max_pct": max((r["max_pct"] for r in _kpi_results), default=0.0),
+            "max_pct": max(_quant_pcts, default=0.0),
             "sensitive": _status != "not_sensitive",
             "resp_name": _kpi_results[0]["name"],
             "resp": _kpi_results[0]["resp"],
@@ -638,26 +826,43 @@ t1_max_pct = _t1a["max_pct"]
 t1_sensitive = _t1a["sensitive"]
 t1_status = _t1a.get("status", "sensitive" if t1_sensitive else "not_sensitive")
 t1_kpi_results = _t1a.get("kpi_results", [])
+_t1_qualitative = _t1a.get("qualitative", False)
 _t1_labels = _t1a["labels"]
 
 if t1_kpi_results:
     _rows = []
     for r in t1_kpi_results:
+        _is_qual = r.get("qualitative", False)
+        if _is_qual:
+            _vals = [str(v) if str(v).strip() else "—" for v in r["resp"]]
+            _delta = "—"
+        else:
+            _vals = r["resp"]
+            _delta = f"{r['max_pct']:.1f}%"
         _rows.append({
             "KPI": r["name"],
-            _t1_labels[0]: r["resp"][0],
-            _t1_labels[1]: r["resp"][1],
-            _t1_labels[2]: r["resp"][2],
-            "Max Δ from center (%)": f"{r['max_pct']:.1f}%",
+            "Mode": "Qual" if _is_qual else "Quant",
+            _t1_labels[0]: _vals[0],
+            _t1_labels[1]: _vals[1],
+            _t1_labels[2]: _vals[2],
+            "Max Δ from center (%)": _delta,
             "Sensitive?": "Yes" if r["sensitive"] else "No",
         })
     st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
     st.caption(
         f"{_t1a['n_sensitive']} / {_t1a['n_total']} KPIs sensitive  •  "
-        f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%** relative change"
+        f"Quantitative threshold = **{_SENSITIVITY_THRESHOLD:.0f}%** relative change"
     )
+elif _t1_qualitative:
+    # Legacy single-KPI qualitative display (assessment from an older session)
+    _t1_res_df = pd.DataFrame({
+        "Condition": _t1_labels,
+        _t1a["resp_name"]: [str(v) if v else "—" for v in _t1a["resp"]],
+    })
+    st.dataframe(_t1_res_df, use_container_width=True, hide_index=True)
+    st.caption("Qualitative observations — sensitivity judged manually below.")
 else:
-    # Legacy single-KPI display (assessment from an older session)
+    # Legacy single-KPI numeric display (assessment from an older session)
     _pd_detail = _t1a.get("pct_detail")
     if isinstance(_pd_detail, list):
         _t1_res_df = pd.DataFrame({
@@ -676,17 +881,31 @@ else:
         f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**"
     )
 
+_t1_single = _t1a.get("n_total", 1) == 1
+_t1_single_qual = _t1_single and t1_kpi_results and t1_kpi_results[0].get("qualitative", False)
+
 if t1_status == "not_sensitive":
-    st.success(
-        f"✅ **Mixing not critical.** No KPIs exceeded the "
-        f"{_SENSITIVITY_THRESHOLD:.0f}% threshold. Protocol complete."
-    )
+    if _t1_qualitative:
+        st.success(
+            "✅ **Mixing not critical.** Qualitative response(s) judged "
+            "insensitive to impeller speed. Protocol complete."
+        )
+    else:
+        st.success(
+            "✅ **Mixing not critical.** No KPIs indicated sensitivity. "
+            "Protocol complete."
+        )
 elif t1_status == "sensitive":
-    if t1_kpi_results and _t1a["n_total"] > 1:
+    if not _t1_single:
         st.warning(
             f"⚠️ **Mixing matters!** Majority of KPIs "
-            f"({_t1a['n_sensitive']} / {_t1a['n_total']}) changed by "
-            f"≥ {_SENSITIVITY_THRESHOLD:.0f}%. Proceed to **Test 2**."
+            f"({_t1a['n_sensitive']} / {_t1a['n_total']}) indicated "
+            f"sensitivity. Proceed to **Test 2**."
+        )
+    elif _t1_single_qual or _t1_qualitative:
+        st.warning(
+            "⚠️ **Mixing matters!** Qualitative response judged sensitive "
+            "to impeller speed. Proceed to **Test 2**."
         )
     else:
         st.warning(
@@ -696,8 +915,8 @@ elif t1_status == "sensitive":
 else:  # may_be_sensitive
     st.info(
         f"🟡 **Process may be mixing-sensitive.** "
-        f"{_t1a['n_sensitive']} of {_t1a['n_total']} KPIs changed by "
-        f"≥ {_SENSITIVITY_THRESHOLD:.0f}% (fewer than half). "
+        f"{_t1a['n_sensitive']} of {_t1a['n_total']} KPIs indicated "
+        f"sensitivity (fewer than half). "
         f"Proceed to **Test 2** with caution."
     )
 
@@ -780,8 +999,13 @@ with st.expander("Understanding mesomixing"):
 st.subheader("Record Test 2 Responses")
 st.caption("Use the same response metric as Test 1.")
 
-_t2_resp_name = st.text_input("Response metric name", value=_t1_resp_name,
-                              key=_bk("t2_resp_name"))
+_t2_mcol, _t2_ucol = st.columns([2, 1])
+_t2_metric = _t2_mcol.selectbox("Response metric", RESPONSE_METRICS,
+                                index=_metric_index(_t1_resp_name),
+                                key=_bk("t2_resp_name"))
+_t2_unit = _unit_selector(_t2_ucol, _bk("t2_resp_unit"),
+                          default_unit=_METRIC_DEFAULT_UNIT.get(_t2_metric, "%"))
+_t2_resp_name = _fmt_metric(_t2_metric, _t2_unit)
 col_t2a, col_t2b, col_t2c = st.columns(3)
 with col_t2a:
     t2_resp_fast = st.number_input("Fast (1/3× feed time)", value=0.0,
@@ -923,8 +1147,13 @@ if t2_sensitive:
     st.subheader("Record Test 3 Responses")
     st.caption("Use the same response metric as Tests 1 & 2.")
 
-    _t3_resp_name = st.text_input("Response metric name", value=_t2_resp_name,
-                                  key=_bk("t3_resp_name"))
+    _t3_mcol, _t3_ucol = st.columns([2, 1])
+    _t3_metric = _t3_mcol.selectbox("Response metric", RESPONSE_METRICS,
+                                    index=_metric_index(_t2_metric),
+                                    key=_bk("t3_resp_name"))
+    _t3_unit = _unit_selector(_t3_ucol, _bk("t3_resp_unit"),
+                              default_unit=_METRIC_DEFAULT_UNIT.get(_t3_metric, "%"))
+    _t3_resp_name = _fmt_metric(_t3_metric, _t3_unit)
     col_t3a, col_t3b, col_t3c = st.columns(3)
     with col_t3a:
         t3_resp_surf = st.number_input("Surface feed", value=0.0, format="%.4g",
@@ -1081,6 +1310,12 @@ if t1_status == "may_be_sensitive":
         f"**May be sensitive** ({_t1a.get('n_sensitive', '?')} / {_t1a.get('n_total', '?')} KPIs "
         f"≥ {_SENSITIVITY_THRESHOLD:.0f}%) → Mixing may matter",
         "🟡",
+    ))
+elif _t1a.get("qualitative", False):
+    conclusions.append((
+        "Test 1 – Impeller Speed",
+        "**Sensitive** (qualitative judgment) → Mixing matters",
+        "⚠️",
     ))
 else:
     conclusions.append((

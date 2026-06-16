@@ -1024,19 +1024,57 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
         pdf.body_text("Feed rate and feed location held constant.")
     if t1_responses:
         pdf.ln(2)
-        pdf.sub_title(f"Responses ({t1_responses.get('resp_name', '')})")
         labels = t1_responses.get("labels", [])
-        resp = t1_responses.get("resp", [])
-        _t1_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(labels, resp)]
-        pdf.data_table(["Condition", "Response"], _t1_resp_rows,
-                       col_widths=[80, 60])
-        max_pct = t1_responses.get("max_pct", 0)
-        sensitive = t1_responses.get("sensitive", False)
-        colour = "RED" if sensitive else "GREEN"
-        pdf.assessment_box(
-            f"Max change = {max_pct:.1f}% -- {'Sensitive' if sensitive else 'Not sensitive'}",
-            colour,
-        )
+        kpi_results = t1_responses.get("kpi_results", [])
+        if kpi_results:
+            pdf.sub_title("Responses")
+            _hdr = ["KPI", "Mode"] + list(labels) + ["Max change", "Sensitive?"]
+            _rows = []
+            for r in kpi_results:
+                _is_qual = r.get("qualitative", False)
+                if _is_qual:
+                    _vals = [(str(v) if str(v).strip() else "--") for v in r.get("resp", [])]
+                    _delta = "--"
+                else:
+                    _vals = [f"{v:.4g}" for v in r.get("resp", [])]
+                    _delta = f"{r.get('max_pct', 0):.1f}%"
+                _rows.append(
+                    [r.get("name", ""), "Qual" if _is_qual else "Quant"]
+                    + _vals + [_delta, "Yes" if r.get("sensitive") else "No"]
+                )
+            pdf.data_table(_hdr, _rows,
+                           col_widths=[32, 16, 24, 24, 24, 22, 20])
+            n_sensitive = t1_responses.get("n_sensitive", 0)
+            n_total = t1_responses.get("n_total", len(kpi_results))
+            colour = "RED" if n_sensitive > 0 else "GREEN"
+            pdf.assessment_box(
+                f"{n_sensitive} / {n_total} KPIs sensitive", colour,
+            )
+        else:
+            # Legacy single-KPI snapshot (older sessions)
+            pdf.sub_title(f"Responses ({t1_responses.get('resp_name', '')})")
+            resp = t1_responses.get("resp", [])
+            _qualitative = t1_responses.get("qualitative", False)
+            if _qualitative:
+                _t1_resp_rows = [[lbl, (str(val) if val else "--")]
+                                 for lbl, val in zip(labels, resp)]
+            else:
+                _t1_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(labels, resp)]
+            pdf.data_table(["Condition", "Response"], _t1_resp_rows,
+                           col_widths=[80, 60])
+            sensitive = t1_responses.get("sensitive", False)
+            colour = "RED" if sensitive else "GREEN"
+            if _qualitative:
+                pdf.assessment_box(
+                    f"Qualitative -- {'Sensitive' if sensitive else 'Not sensitive'}",
+                    colour,
+                )
+            else:
+                max_pct = t1_responses.get("max_pct", 0)
+                pdf.assessment_box(
+                    f"Max change = {max_pct:.1f}% -- {'Sensitive' if sensitive else 'Not sensitive'}",
+                    colour,
+                )
 
     # ── Test 2 ───────────────────────────────────────────────────────────
     if t2_responses:
