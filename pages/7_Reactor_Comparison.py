@@ -182,7 +182,8 @@ with col2:
             C0 = rxn_C0
             order = rxn_order
             if order in ("1", "pseudo-1") and k > 0:
-                t_rxn = np.log(2) / k
+                # Characteristic time = reciprocal rate constant (1/k).
+                t_rxn = 1.0 / k
             elif order in ("2", "pseudo-2") and k * C0 > 0:
                 t_rxn = 1.0 / (k * C0)
             else:

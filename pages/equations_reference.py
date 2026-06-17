@@ -352,12 +352,18 @@ When $k_L a_{SL} = 0$ (no solid phase present), $Da_{SL}$ is set to zero.
     st.header("Characteristic Reaction Time")
 
     st.subheader("First-order or pseudo-first-order")
-    st.latex(r"t_{rxn} = \frac{\ln 2}{k}")
+    st.latex(r"t_{rxn} = \frac{1}{k}")
 
     st.subheader("Second-order")
     st.latex(r"t_{rxn} = \frac{1}{k \, C_0}")
 
     st.markdown("""
+The characteristic reaction time is taken as the **reaction time constant**
+(the e-folding time, i.e. the time for the limiting reagent to fall to $1/e$ of
+its initial value), consistent with the Damköhler-number definition
+$Da = t_{mix} / t_{rxn}$.  Note this is **not** the 50 % half-life
+$t_{1/2} = \\ln 2 / k$, which is ~30 % shorter for a first-order reaction.
+
 | Symbol | Description | Units |
 |--------|-------------|-------|
 | $k$ | Rate constant | 1/s (1st order) or L/(mol·s) (2nd order) |
@@ -680,6 +686,28 @@ with st.expander("**Heat Balance**", expanded=False):
 | $Q_{\\text{gen}}$ | Rate of heat release | W |
 
 **Reference:** Levenspiel (1999), Ch. 9.
+""")
+
+    # ── Adiabatic temperature rise
+    st.header("Adiabatic Temperature Rise")
+    st.latex(r"\Delta T_{ad} = \frac{\lvert \Delta H_{rxn} \rvert \, C_0}{\rho \, C_p}")
+    st.markdown("""
+The temperature the batch would reach if **all** reaction heat were retained
+(no cooling).  Unlike the molar enthalpy alone, $\\Delta T_{ad}$ accounts for
+reagent concentration and the thermal mass of the mixture, and is the basis of
+the Stoessel criticality classification used to rank thermal-runaway risk.
+
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $\\Delta H_{rxn}$ | Enthalpy of reaction | J/mol (or kJ/mol × 1000) |
+| $C_0$ | Limiting-reagent concentration | mol/m³ (= mol/L × 1000) |
+| $\\rho \\, C_p$ | Volumetric heat capacity of the mixture | J/(m³·K) |
+| $\\Delta T_{ad}$ | Adiabatic temperature rise | K |
+
+**Indicative severity bands:** ΔT_ad < 20 K low · 20–50 K moderate ·
+50–200 K high · > 200 K very high (assess MTSR and secondary decomposition).
+
+**Reference:** Stoessel, F. (2020). [*Thermal Safety of Chemical Processes: Risk Assessment and Process Design*](https://doi.org/10.1002/9783527697854), 2nd ed. Wiley-VCH, Ch. 2–3.
 """)
 
     # ── Heat removal

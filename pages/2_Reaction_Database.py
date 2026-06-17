@@ -157,8 +157,8 @@ with tab_add:
             # Auto-compute t_rxn if not provided
             if t_rxn == 0 and k_val > 0:
                 if order in ("1", "pseudo-1"):
-                    import numpy as np
-                    t_rxn = float(np.log(2) / k_val)
+                    # Characteristic time = reciprocal rate constant (1/k).
+                    t_rxn = float(1.0 / k_val)
                 elif order in ("2", "pseudo-2") and C0 > 0:
                     t_rxn = 1.0 / (k_val * C0)
 

@@ -567,7 +567,9 @@ t_rxn = t_rxn_input
 if t_rxn <= 0 and k_val > 0:
     order = str(reaction.get("order", "1"))
     if order in ("1", "pseudo-1"):
-        t_rxn = np.log(2) / k_val
+        # Characteristic time = reciprocal rate constant (time constant 1/k),
+        # the e-folding time used in the Damkohler definition.
+        t_rxn = 1.0 / k_val
     elif order in ("2", "pseudo-2") and C0 > 0:
         t_rxn = 1.0 / (k_val * C0)
     else:

@@ -413,11 +413,11 @@ _BOURNE_DOT = """
                fillcolor="#4CAF50" fontcolor=white fontsize=11]
 
         /* Test 1 */
-        T1 [label="Test 1\nVary Impeller Speed\n(~100× change in P/V)" shape=diamond
+        T1 [label="Test 1\nVary Impeller Speed\n(~100× change in P/m)" shape=diamond
             fillcolor="#E3F2FD" color="#90CAF9" fontsize=10]
-        T1_SETUP [label="3 speeds:\nLow (0.1× P/V)\nCenter (1× P/V)\nHigh (10× P/V)"
+        T1_SETUP [label="3 speeds:\nLow (0.1× P/m)\nCenter (1× P/m)\nHigh (10× P/m)"
                   fillcolor="#FFF3E0" color="#FFB74D"]
-        T1_NO [label="✅ Mixing is NOT critical\nover tested P/V range\n— Protocol Complete"
+        T1_NO [label="✅ Mixing is NOT critical\nover tested P/m range\n— Protocol Complete"
                fillcolor="#E8F5E9" color="#81C784" fontsize=10]
 
         /* Test 2 */
@@ -435,7 +435,7 @@ _BOURNE_DOT = """
                   fillcolor="#FFF3E0" color="#FFB74D"]
         T3_MACRO [label="🌀 Macromixing\nControls Process\n\n→ Reduce blend time\n→ High-efficiency impellers\n→ Multiple impellers / static mixers"
                   fillcolor="#FFEBEE" color="#EF9A9A" fontsize=10]
-        T3_MESO [label="📐 Mesomixing\nControls Process\n\n→ Keep impeller speed constant\n→ Extend feed time\n→ Multiple feed points"
+        T3_MESO [label="📐 Mesomixing\nControls Process\n\n→ Hold local ε constant (match P/m,\n   i.e. lower RPM at larger scale)\n→ Extend feed time\n→ Multiple feed points / smaller feed pipe"
                  fillcolor="#FFF8E1" color="#FFD54F" fontsize=10]
 
         /* Confirmatory */
@@ -525,6 +525,8 @@ _MSP_DOT = """
                 fillcolor="#E3F2FD" color="#90CAF9"]
         B_SENS [label="🔴 Mixing sensitivity\\nconfirmed experimentally"
                 fillcolor="#FFEBEE" color="#EF9A9A"]
+        B_MECH [label="(optional) identify controlling\\nscale from Bourne tests:\\nTest 1 → micromixing\\nTest 2 → mesomixing\\nTest 3 → meso-/macromixing"
+                fillcolor="#FFF8E1" color="#FFD54F"]
         B_NONE [label="🟢 No sensitivity\\nobserved at lab scale"
                 fillcolor="#E8F5E9" color="#81C784"]
         B_SKIP [label="⚪ Skipped\\n→ proceed with theory"
@@ -568,14 +570,16 @@ _MSP_DOT = """
         SB_OVR [label="⚠️ Semi-batch override:\\nmesomixing controls\\nfeed-plume concentration\\n(even without competing rxns)"
                 fillcolor="#FFF8E1" color="#FFD54F"]
 
-        /* Step 4 – Heat transfer (4-tier classification) */
+        /* Step 4 – Heat transfer (ΔH + ΔT_ad classification) */
         HT     [label="4 · ΔH data\\navailable?" shape=diamond
                 fillcolor="#E3F2FD" color="#90CAF9"]
         HT_MEASURE [label="Perform calorimetry\\n→ measure ΔH"
                     fillcolor="#FFF3E0" color="#FFB74D"]
         HT_EST [label="Estimate ΔH from\\nsimilar reaction"
                 fillcolor="#FFF8E1" color="#FFD54F"]
-        HT_CHK [label="|ΔH|\\nclassification" shape=diamond
+        HT_DTAD [label="Compute ΔT_ad =\\n|ΔH|·C₀ / (ρ·Cp)\\n(adiabatic temp rise)\\nbands: <20 / 20–50 / 50–200 / >200 K"
+                 fillcolor="#FFF3E0" color="#FFB74D"]
+        HT_CHK [label="|ΔH| & ΔT_ad\\nclassification\\n(heat-sensitive if\\n|ΔH| ≥ 50 OR ΔT_ad ≥ 50)" shape=diamond
                 fillcolor="#E3F2FD" color="#90CAF9"]
         HT_HI  [label="🔴 |ΔH| ≥ 100 kJ/mol\\nHighly exothermic\\n→ run heat balance"
                 fillcolor="#FFEBEE" color="#EF9A9A"]
@@ -609,7 +613,8 @@ _MSP_DOT = """
         BOURNE -> B_SENS [label="Sensitivity\\nconfirmed"]
         BOURNE -> B_NONE [label="No sensitivity\\nobserved"]
         BOURNE -> B_SKIP [label="Skip"]
-        B_SENS -> K
+        B_SENS -> B_MECH [style=dashed]
+        B_MECH -> K
         B_NONE -> K
         B_SKIP -> K
 
@@ -646,9 +651,10 @@ _MSP_DOT = """
         /* Step 4 */
         HT -> HT_MEASURE [label="No ΔH"]
         HT -> HT_EST     [label="Estimate"]
-        HT -> HT_CHK     [label="Yes"]
+        HT -> HT_DTAD    [label="Yes"]
         HT_MEASURE -> HT [label="Data obtained\\n→ repeat Step 4" style=dashed]
-        HT_EST -> HT_CHK
+        HT_EST -> HT_DTAD
+        HT_DTAD -> HT_CHK
         HT_CHK -> HT_HI   [label="≥ 100"]
         HT_CHK -> HT_MOD  [label="50 – 100"]
         HT_CHK -> HT_MILD [label="20 – 50"]

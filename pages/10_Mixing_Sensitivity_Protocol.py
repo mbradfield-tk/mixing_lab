@@ -23,6 +23,7 @@ import pathlib
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
 from utils.data_helpers import load_db, safe_float as _safe
+from utils.solvent_properties import is_known_solvent, get_properties
 
 reactions = load_db("reaction_db", "reactions.csv")
 fluids = load_db("fluid_db", "fluids.csv")
@@ -56,7 +57,7 @@ st.caption(
 
 # ── Visual overview of the decision tree ─────────────────────────────────
 _IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "general"
-_MSP_IMG = _IMG_DIR / "mixing_sensitivity_protocol-3.png"
+_MSP_IMG = _IMG_DIR / "mixing_sensitivity_protocol.png"
 
 with st.expander("📋 Protocol overview", expanded=False):
     if _MSP_IMG.exists():
@@ -115,6 +116,35 @@ if bourne_screen == "Already done – results show mixing sensitivity":
         "(micro-, meso-, macromixing, heat transfer) are responsible."
     )
     _bourne_sensitive = True
+
+    _bourne_mech_opts = [
+        "Micromixing (impeller-speed sensitive)",
+        "Mesomixing (feed-rate / feed-time sensitive)",
+        "Macromixing (feed-location sensitive)",
+    ]
+    _bourne_mech_sel = st.multiselect(
+        "If the Bourne Protocol identified the controlling scale(s), select them "
+        "(leave blank if not yet known):",
+        _bourne_mech_opts,
+        key=_key("bourne_mech"),
+        help=(
+            "Bourne Test 1 (impeller speed) probes **micromixing**; "
+            "Test 2 (feed rate / time) probes **mesomixing**; "
+            "Test 3 (feed location) probes **meso-/macromixing**."
+        ),
+    )
+    _bourne_mechanisms = [m.split("(")[0].strip() for m in _bourne_mech_sel]
+    if _bourne_mechanisms:
+        st.caption(
+            "Identified controlling scale(s): **" + ", ".join(_bourne_mechanisms) +
+            "**. These are carried into the summary as experimentally confirmed "
+            "sensitivities and drive the conclusions and recommendations below."
+        )
+    else:
+        st.caption(
+            "No specific scale selected — run the full Bourne Protocol (Tests 1–3) "
+            "to pinpoint micro-, meso-, or macromixing control."
+        )
 elif bourne_screen == "Already done – no mixing sensitivity observed":
     st.success(
         "✅ **No mixing sensitivity observed** in the pre-screen.  "
@@ -122,6 +152,7 @@ elif bourne_screen == "Already done – no mixing sensitivity observed":
         "any latent risks at larger scale."
     )
     _bourne_sensitive = False
+    _bourne_mechanisms = []
 else:
     st.info(
         "💡 **Recommendation:** Performing Bourne Part 1 before this "
@@ -130,6 +161,7 @@ else:
         "Proceeding with the theoretical assessment for now."
     )
     _bourne_sensitive = None
+    _bourne_mechanisms = []
 
 st.divider()
 
@@ -215,7 +247,9 @@ if rxn_t_rxn > 0:
     t_rxn = rxn_t_rxn
 elif rxn_k > 0:
     if rxn_order in ("1", "pseudo-1"):
-        t_rxn = np.log(2) / rxn_k
+        # Characteristic time = reciprocal rate constant (time constant 1/k),
+        # the e-folding time used in the Damkohler definition.
+        t_rxn = 1.0 / rxn_k
     elif rxn_order in ("2", "pseudo-2") and rxn_C0 > 0:
         t_rxn = 1.0 / (rxn_k * rxn_C0)
     else:
@@ -242,6 +276,11 @@ if t_rxn <= 0:
     st.stop()
 
 st.success(f"✅ Kinetics available — characteristic reaction time **t_rxn = {t_rxn:.4g} s**.")
+st.caption(
+    "Convention: t_rxn is the reaction time constant — 1/k (first order) or "
+    "1/(k·C₀) (second order) — i.e. the e-folding time used in the Damköhler "
+    "number, not the 50 % half-life (which is ~30 % shorter for first order)."
+)
 
 # ── Process mode ─────────────────────────────────────────────────────────
 is_semi_batch = st.checkbox(
@@ -349,7 +388,7 @@ if _multiphase:
                 "- $t_{rxn}$ = characteristic reaction time (s)\n"
                 "- $1 / k_L a$ = characteristic gas-liquid transport time (s)\n\n"
                 "This is the ratio of the **transport time** to the **reaction time**, "
-                "consistent with the definition on the 📐 Mixing & Damköhler page."
+                "consistent with the Da_GL definition on the 📐 Equations Reference page."
             )
             st.markdown(
                 "| Da_GL range | Regime |\n"
@@ -357,30 +396,33 @@ if _multiphase:
                 "| Da_GL ≪ 1 | **Reaction-limited** — transport is fast relative to reaction |\n"
                 "| Da_GL ≈ 1 | **Transition** — both transport and kinetics matter |\n"
                 "| Da_GL ≫ 1 | **Mass-transfer-limited** — gas absorption controls the rate |\n\n"
-                "For fast reactions, the **Hatta number** Ha = √($k \\cdot D_A$) / $k_L$ "
-                "is also useful: when Ha > 3 the reaction occurs within the liquid film "
+                "For fast reactions, the **Hatta number** Ha = √($k_1 \\cdot D_A$) / $k_L$ "
+                "(with $k_1$ the pseudo-first-order rate constant, s⁻¹) is also useful: "
+                "when Ha > 3 the reaction occurs within the liquid film "
                 "and enhancement of absorption must be considered."
             )
 
         if _has_solid:
             st.markdown("##### Liquid–Solid Transport")
             st.markdown(
-                "The liquid-solid Damköhler number is defined as:\n\n"
-                "$$Da_{LS} = \\frac{1}{k_{SL} \\cdot a_s \\; t_{rxn}} = \\frac{t_{\\text{transfer,LS}}}{t_{rxn}}$$\n\n"
+                "The solid-liquid Damköhler number is defined as:\n\n"
+                "$$Da_{SL} = \\frac{1}{k_{SL} \\cdot a_s \\; t_{rxn}} = \\frac{t_{\\text{transfer,SL}}}{t_{rxn}}$$\n\n"
                 "where:\n"
                 "- $k_{SL}$ = solid-liquid mass-transfer coefficient (m/s)\n"
-                "- $a_s$ = specific surface area of the solids (m²/m³), "
-                "depends on particle size ($a_s$ ≈ 6 / $d_p$ for spheres)\n"
-                "- $1 / (k_{SL} \\cdot a_s)$ = characteristic liquid-solid transport time (s)\n\n"
+                "- $a_s$ = specific surface area of the solids **per unit liquid "
+                "volume** (m²/m³): $a_s = 6\\,\\phi_s / d_p$ for spheres, where "
+                "$\\phi_s$ is the volumetric solids fraction\n"
+                "- $1 / (k_{SL} \\cdot a_s)$ = characteristic solid-liquid transport time (s)\n\n"
                 "This is the ratio of the **transport time** to the **reaction time**, "
-                "consistent with the Da_GL convention above."
+                "consistent with the Da_GL convention above and the Da_SL definition "
+                "on the 📐 Equations Reference page."
             )
             st.markdown(
-                "| Da_LS range | Regime |\n"
+                "| Da_SL range | Regime |\n"
                 "|-------------|--------|\n"
-                "| Da_LS ≪ 1 | **Reaction-limited** — dissolution is fast relative to reaction |\n"
-                "| Da_LS ≈ 1 | **Transition** — both transport and reaction compete |\n"
-                "| Da_LS ≫ 1 | **Mass-transfer-limited** — particle dissolution rate controls |\n\n"
+                "| Da_SL ≪ 1 | **Reaction-limited** — dissolution is fast relative to reaction |\n"
+                "| Da_SL ≈ 1 | **Transition** — both transport and reaction compete |\n"
+                "| Da_SL ≫ 1 | **Mass-transfer-limited** — particle dissolution rate controls |\n\n"
                 "Solid-liquid transport also depends on particle suspension quality. "
                 "If particles are not fully suspended (below Zwietering $N_{js}$), "
                 "the effective surface area drops dramatically."
@@ -484,9 +526,16 @@ if competing == "Yes":
             "super-saturation.\n"
             "- **Feed pipe diameter** — affects the feed jet momentum and initial "
             "mixing at the nozzle.\n"
-            "- The **mesomixing time** can be estimated from the turbulent "
-            "dispersion model: $t_{meso}$ ≈ 0.15 ($Q_f$ / $k_T$ $ε$)^(1/3), "
-            "where $Q_f$ is feed flow rate and $k_T$ is a turbulence constant."
+            "- Baldyga & Bourne (1999) describe **two** mesomixing time scales:\n"
+            "  - *Inertial-convective disintegration* of the feed plume: "
+            r"$\tau_S = A\,(\Lambda_C^{2}/\varepsilon)^{1/3}$, "
+            "where $\\Lambda_C$ is the feed-plume (or feed-pipe) scale and "
+            "$A\\approx 1{-}2$ (this app uses $\\tau_S = 2\\,(d_{feed}^2/\\varepsilon)^{1/3}$).\n"
+            "  - *Turbulent dispersion* of the plume by the mean flow: "
+            r"$\tau_D = Q_{feed}/(\bar{u}\,D_t)$, "
+            "where $Q_{feed}$ is the feed flow rate, $\\bar{u}$ the local mean "
+            "velocity and $D_t$ the turbulent diffusivity.\n"
+            "  The larger of the two scales controls the mesomixing rate."
         )
 
     st.info(
@@ -538,6 +587,7 @@ st.divider()
 st.header("4 · Heat Transfer Screening")
 
 _has_enthalpy = rxn_delta_H != 0.0
+_dT_ad = None  # adiabatic temperature rise (K), computed below when data allow
 
 if not _has_enthalpy:
     st.warning(
@@ -611,6 +661,66 @@ if _has_enthalpy:
         f"({'exothermic' if rxn_delta_H < 0 else 'endothermic'})."
     )
 
+    # ── Adiabatic temperature rise (ΔT_ad) — the proper thermal criterion ──
+    # ΔH per mole alone does not determine thermal-runaway risk: a large ΔH at
+    # low concentration may be benign, while a modest ΔH at high concentration
+    # can be hazardous. ΔT_ad = |ΔH|·C0 / (ρ·Cp) is the temperature the batch
+    # would reach with no cooling, and is the basis of the Stoessel
+    # criticality classification.
+    _rho_cp_auto = None  # volumetric heat capacity, kJ/(m³·K)
+    if rxn_solvent and is_known_solvent(rxn_solvent):
+        try:
+            _sp_heat = get_properties(rxn_solvent, rxn_T, 1.0)
+            _rho_cp_auto = _sp_heat["rho_kg_m3"] * _sp_heat["Cp_J_per_kgK"] / 1000.0
+        except Exception:
+            _rho_cp_auto = None
+
+    with st.expander("🌡️ Adiabatic temperature rise (ΔT_ad) — refine the estimate", expanded=True):
+        st.caption(
+            "ΔT_ad = |ΔH|·C₀ / (ρ·Cp) is the temperature the batch would reach if "
+            "all reaction heat were retained (no cooling). It — not ΔH per mole — "
+            "is the proper measure of thermal-runaway potential (Stoessel)."
+        )
+        _rc1, _rc2 = st.columns(2)
+        _rho_cp_in = _rc1.number_input(
+            "Volumetric heat capacity ρ·Cp (kJ/m³·K)",
+            value=float(_rho_cp_auto) if _rho_cp_auto else 1800.0,
+            min_value=100.0, step=50.0, key=_key("rho_cp"),
+            help="Auto-filled from the reaction solvent when known "
+                 "(≈1800 for typical organics, ≈4180 for water).",
+        )
+        _C0_heat = _rc2.number_input(
+            "Limiting-reagent concentration C₀ (mol/L)",
+            value=float(rxn_C0) if rxn_C0 > 0 else 1.0,
+            min_value=0.0, step=0.1, key=_key("c0_heat"),
+            help="Concentration of the reagent that drives the heat release.",
+        )
+        if _C0_heat > 0 and _rho_cp_in > 0:
+            # |ΔH| [kJ/mol] · C0 [mol/L] · 1000 [L/m³] / (ρCp [kJ/m³·K]) = K
+            _dT_ad = abs_dH * _C0_heat * 1000.0 / _rho_cp_in
+            if _dT_ad >= 200:
+                st.error(
+                    f"🔴 **ΔT_ad ≈ {_dT_ad:.0f} K** — very high. Loss of cooling could "
+                    "drive a runaway; secondary decomposition (MTSR/MTT) must be assessed."
+                )
+            elif _dT_ad >= 50:
+                st.error(
+                    f"🔴 **ΔT_ad ≈ {_dT_ad:.0f} K** — high. Strong cooling and feed-rate "
+                    "control are required; quantify Q_gen vs Q_cool at scale."
+                )
+            elif _dT_ad >= 20:
+                st.warning(
+                    f"🟡 **ΔT_ad ≈ {_dT_ad:.0f} K** — moderate. Manageable with adequate "
+                    "cooling, but verify the heat balance at production scale."
+                )
+            else:
+                st.success(
+                    f"🟢 **ΔT_ad ≈ {_dT_ad:.0f} K** — low. Thermal runaway is unlikely, "
+                    "though local hot spots at the feed point may still occur."
+                )
+        else:
+            st.caption("Enter C₀ and ρ·Cp to estimate ΔT_ad.")
+
     # Heuristic classification
     if abs_dH >= 100:
         _heat_class = "highly exothermic"
@@ -636,8 +746,10 @@ if _has_enthalpy:
     else:
         st.success(f"🟢 {_heat_msg}")
 
-    # Detailed guidance
-    if abs_dH >= 50:
+    # Detailed guidance — flag heat sensitivity on either a large molar
+    # enthalpy or (more rigorously) a significant adiabatic temperature rise.
+    _heat_flag = abs_dH >= 50 or (_dT_ad is not None and _dT_ad >= 50)
+    if _heat_flag:
         with st.expander("ℹ️ Background — heat-transfer scale-up considerations", expanded=False):
             st.markdown(
                 "**Heat-transfer sensitivity is likely**, especially in vessels "
@@ -830,11 +942,22 @@ findings: list[tuple[str, str, str]] = []  # (mechanism, status, detail)
 
 # Bourne pre-screening
 if _bourne_sensitive is True:
-    findings.append((
-        "Bourne pre-screen",
-        "🔴 Mixing sensitivity confirmed",
-        "Experimental pre-screen showed yield/impurity changes with mixing conditions.",
-    ))
+    if _bourne_mechanisms:
+        findings.append((
+            "Bourne pre-screen",
+            "🔴 Mixing sensitivity confirmed",
+            "Experimental pre-screen showed yield/impurity changes with mixing "
+            "conditions. Identified controlling scale(s): "
+            f"{', '.join(_bourne_mechanisms)}.",
+        ))
+    else:
+        findings.append((
+            "Bourne pre-screen",
+            "🔴 Mixing sensitivity confirmed",
+            "Experimental pre-screen showed yield/impurity changes with mixing "
+            "conditions. Controlling scale not yet identified — run the full "
+            "Bourne Protocol (Tests 1–3) to pinpoint micro-, meso-, or macromixing.",
+        ))
 elif _bourne_sensitive is False:
     findings.append((
         "Bourne pre-screen",
@@ -920,17 +1043,22 @@ else:
 
 # Heat transfer
 if _has_enthalpy and _heat_sensitive:
+    _ht_detail = f"|ΔH| = {abs(rxn_delta_H):.1f} kJ/mol"
+    if _dT_ad is not None:
+        _ht_detail += f", ΔT_ad ≈ {_dT_ad:.0f} K"
     findings.append((
         "Heat transfer",
         "🔴 Likely sensitive",
-        f"|ΔH| = {abs(rxn_delta_H):.1f} kJ/mol — run a heat balance "
-        "to confirm adequate cooling capacity.",
+        f"{_ht_detail} — run a heat balance to confirm adequate cooling capacity.",
     ))
 elif _has_enthalpy and not _heat_sensitive:
+    _ht_detail = f"|ΔH| = {abs(rxn_delta_H):.1f} kJ/mol"
+    if _dT_ad is not None:
+        _ht_detail += f", ΔT_ad ≈ {_dT_ad:.0f} K"
     findings.append((
         "Heat transfer",
         "🟢 Manageable",
-        f"|ΔH| = {abs(rxn_delta_H):.1f} kJ/mol — modest exothermicity, "
+        f"{_ht_detail} — modest thermal load, "
         "unlikely to be limiting in most configurations.",
     ))
 else:
@@ -976,7 +1104,21 @@ def _join_mechs(names: list[str]) -> str:
 
 if _bourne_sensitive is True:
     # Experimental evidence confirms a sensitivity is present.
-    if _red_mechs:
+    if _bourne_mechanisms:
+        # The Bourne Protocol identified the controlling scale(s) directly —
+        # this experimental result takes precedence over the theoretical flags.
+        _bm_phrase = _join_mechs(_bourne_mechanisms)
+        _verdict = (
+            f"Mixing sensitivity confirmed -- the Bourne Protocol identified "
+            f"{_bm_phrase} as the controlling scale(s). Focus scale-up on this "
+            "mechanism (see recommendations below)."
+        )
+        st.error(
+            f"🔴 **Mixing sensitivity confirmed** — the Bourne Protocol identified "
+            f"**{_bm_phrase}** as the controlling scale(s). Focus scale-up efforts "
+            "on this mechanism (see recommendations below)."
+        )
+    elif _red_mechs:
         _verdict = (
             f"Mixing sensitivity confirmed -- the reaction may be {_join_mechs(_red_mechs)} "
             "limited, and the Bourne pre-screen confirms a sensitivity is present. "
@@ -1120,6 +1262,32 @@ if _bourne_sensitive is None:
                   "to confirm whether mixing sensitivity exists experimentally.",
     })
 
+# Targeted scale-up actions for the Bourne-identified controlling scale(s)
+if _bourne_sensitive is True and _bourne_mechanisms:
+    _mech_actions = {
+        "Micromixing": (
+            "Hold local energy dissipation ε (P/V) constant on scale-up and keep the "
+            "feed point in the high-shear zone near the impeller. Confirm with Da_micro "
+            "on the 🌀 Mixing Assessment page.",
+        ),
+        "Mesomixing": (
+            "Control feed-plume dispersion: hold local ε constant at the feed point "
+            "(match P/V → a *lower* RPM at larger scale, not constant RPM) and cut the "
+            "local feed rate — extend feed time, add feed points, and/or use a smaller "
+            "feed-pipe diameter.",
+        ),
+        "Macromixing": (
+            "Reduce bulk blend time on scale-up: use high-efficiency (hydrofoil) or "
+            "multiple impellers, optimise baffling, or consider static/in-line mixers.",
+        ),
+    }
+    for _m in _bourne_mechanisms:
+        if _m in _mech_actions:
+            _steps.append({
+                "Area": f"{_m} (Bourne-confirmed)",
+                "Action": _mech_actions[_m][0],
+            })
+
 if _using_approximate:
     _steps.append({
         "Area": "Kinetics",
@@ -1190,6 +1358,10 @@ if st.button("📥 Export PDF Report", type="primary", key="p10_export_pdf"):
             # Bourne result text
             if _bourne_sensitive is True:
                 _bourne_txt = "Mixing sensitivity confirmed experimentally"
+                if _bourne_mechanisms:
+                    _bourne_txt += (
+                        " — controlling scale(s): " + ", ".join(_bourne_mechanisms)
+                    )
             elif _bourne_sensitive is False:
                 _bourne_txt = "No sensitivity observed"
             else:
@@ -1199,6 +1371,7 @@ if st.button("📥 Export PDF Report", type="primary", key="p10_export_pdf"):
                 "reaction": rxn_name,
                 "t_rxn": t_rxn,
                 "rxn_delta_H": rxn_delta_H,
+                "dT_ad": _dT_ad,
                 "phases": phases,
                 "findings": findings,
                 "next_steps": _steps,
