@@ -479,13 +479,15 @@ if not st.session_state.get("_bp_started", False):
 # ══════════════════════════════════════════════════════════════════════════
 st.header("Test 1 - Vary Impeller Speed")
 st.markdown("""
-Vary **impeller speed only** (hold feed rate & location constant).\n
-Target ≈**100× P/m range** across three agitation speeds.\n
-If the response changes → mixing matters; proceed to Test 2.
+- Vary **impeller speed only** (hold feed rate & location constant)
+- Target ≈**100× P/m range** across 3 agitation speeds
+- If the response changes → mixing matters; proceed to Test 2
 
-**Speed selection:** Default centerpoint P/m ≈ **0.2 W/kg**. Set high/low at
-**10×** and **0.1×** (speed ratios ≈ 2.15× and 0.46×, since P ∝ N³).
-Use plant condition as centerpoint if targeting existing equipment.
+        
+**Speed selection:**
+- Default centerpoint P/m ≈ **0.2 W/kg**. Can also use a specified centerpoint agitation speed (RPM) or P/m if required.
+- Set high/low P/m at **10×** and **0.1×** (speed ratios ≈ 2.15× and 0.46×, since P ∝ N³)
+- Use plant condition as centerpoint if targeting existing equipment
 """)
 
 st.subheader("Experimental Conditions")
@@ -819,6 +821,157 @@ def _assess_sensitivity(resp_values, ref_value, threshold_pct=_SENSITIVITY_THRES
     sensitive = max_pct >= threshold_pct
     return (max_pct, sensitive, pct_changes)
 
+
+def _kpi_defs_from_t1(assessed):
+    """Return the KPI definitions (name + capture mode) recorded in Test 1.
+
+    Used by Tests 2 & 3 so their response-recording sections mirror the exact
+    number and types of KPIs the user configured in Test 1.
+    """
+    kpi_results = assessed.get("kpi_results", [])
+    if kpi_results:
+        return [{"name": r.get("name", ""),
+                 "qualitative": r.get("qualitative", False)}
+                for r in kpi_results]
+    # Legacy single-KPI fallback (assessment from an older session)
+    return [{"name": assessed.get("resp_name", ""),
+             "qualitative": assessed.get("qualitative", False)}]
+
+
+def _render_kpi_responses(test_key, kpi_defs, labels, placeholders=None):
+    """Render response-entry widgets mirroring Test 1's KPIs for a later test.
+
+    ``labels`` are the three condition headers (reference = ``labels[1]``).
+    Returns a list of input dicts: {mode, name, low, ctr, high, [judgment]}.
+    """
+    placeholders = placeholders or ["", "", ""]
+    multi = len(kpi_defs) > 1
+    inputs = []
+    for _k, kd in enumerate(kpi_defs):
+        if multi:
+            if _k > 0:
+                st.divider()
+            st.markdown(f"**KPI {_k + 1}: {kd['name']}**")
+        else:
+            st.markdown(f"**{kd['name']}**")
+        if not kd.get("qualitative", False):
+            _cols = st.columns(3)
+            _vals = [
+                _cols[_i].number_input(
+                    labels[_i], value=0.0, format="%.4g",
+                    key=_bk(f"{test_key}_resp_{_k}_{_i}"),
+                )
+                for _i in range(3)
+            ]
+            inputs.append({"mode": "quant", "name": kd["name"],
+                           "low": _vals[0], "ctr": _vals[1], "high": _vals[2]})
+        else:
+            _cols = st.columns(3)
+            _vals = [
+                _cols[_i].text_area(
+                    labels[_i], value="", height=100,
+                    key=_bk(f"{test_key}_qual_{_k}_{_i}"),
+                    placeholder=placeholders[_i],
+                )
+                for _i in range(3)
+            ]
+            _judgment = st.radio(
+                "Does this response indicate mixing sensitivity?",
+                ["Sensitive – mixing matters", "Not sensitive – mixing not critical"],
+                key=_bk(f"{test_key}_qual_judgment_{_k}"),
+                horizontal=True,
+            )
+            inputs.append({"mode": "qual", "name": kd["name"],
+                           "low": _vals[0], "ctr": _vals[1], "high": _vals[2],
+                           "judgment": _judgment})
+    return inputs
+
+
+def _kpi_inputs_have_data(kpi_inputs):
+    """Return True if any KPI input carries a non-empty value."""
+    for kp in kpi_inputs:
+        if kp["mode"] == "quant":
+            if not (kp["low"] == 0.0 and kp["ctr"] == 0.0 and kp["high"] == 0.0):
+                return True
+        elif any(str(v).strip() for v in (kp["low"], kp["ctr"], kp["high"])):
+            return True
+    return False
+
+
+def _assess_kpi_inputs(kpi_inputs, labels):
+    """Assess a list of KPI inputs into a multi-KPI result dict (majority vote)."""
+    kpi_results = []
+    for kp in kpi_inputs:
+        if kp["mode"] == "quant":
+            _mp, _sn, _pdt = _assess_sensitivity(
+                [kp["low"], kp["ctr"], kp["high"]], kp["ctr"])
+            kpi_results.append({"name": kp["name"], "qualitative": False,
+                                "max_pct": _mp, "sensitive": _sn,
+                                "pct_detail": _pdt,
+                                "resp": [kp["low"], kp["ctr"], kp["high"]]})
+        else:
+            _sn = kp["judgment"].startswith("Sensitive")
+            kpi_results.append({"name": kp["name"], "qualitative": True,
+                                "max_pct": 0.0, "sensitive": _sn,
+                                "pct_detail": None,
+                                "resp": [kp["low"], kp["ctr"], kp["high"]],
+                                "judgment": kp["judgment"]})
+    n_total = len(kpi_results)
+    n_sensitive = sum(1 for r in kpi_results if r["sensitive"])
+    if n_sensitive == 0:
+        status = "not_sensitive"
+    elif n_sensitive > n_total / 2:
+        status = "sensitive"
+    else:
+        status = "may_be_sensitive"
+    quant_pcts = [r["max_pct"] for r in kpi_results if not r["qualitative"]]
+    return {
+        "qualitative": all(r["qualitative"] for r in kpi_results),
+        "kpi_results": kpi_results,
+        "n_total": n_total,
+        "n_sensitive": n_sensitive,
+        "status": status,
+        "labels": list(labels),
+        # back-compat single-KPI fields (first KPI / max across KPIs)
+        "max_pct": max(quant_pcts, default=0.0),
+        "sensitive": status != "not_sensitive",
+        "resp_name": kpi_results[0]["name"],
+        "resp": kpi_results[0]["resp"],
+        "pct_detail": kpi_results[0]["pct_detail"],
+    }
+
+
+def _display_kpi_assessment(assessed, ref_label):
+    """Render the multi-KPI results table + caption for a later test."""
+    kpi_results = assessed.get("kpi_results", [])
+    labels = assessed.get("labels", [])
+    if not kpi_results:
+        return
+    _rows = []
+    for r in kpi_results:
+        _is_qual = r.get("qualitative", False)
+        if _is_qual:
+            _vals = [str(v) if str(v).strip() else "—" for v in r["resp"]]
+            _delta = "—"
+        else:
+            _vals = [f"{v:g}" for v in r["resp"]]
+            _delta = f"{r['max_pct']:.1f}%"
+        _rows.append({
+            "KPI": r["name"],
+            "Mode": "Qual" if _is_qual else "Quant",
+            labels[0]: _vals[0],
+            labels[1]: _vals[1],
+            labels[2]: _vals[2],
+            f"Max Δ from {ref_label} (%)": _delta,
+            "Sensitive?": "Yes" if r["sensitive"] else "No",
+        })
+    st.dataframe(pd.DataFrame(_rows), width='stretch', hide_index=True)
+    st.caption(
+        f"{assessed['n_sensitive']} / {assessed['n_total']} KPIs sensitive  •  "
+        f"Quantitative threshold = **{_SENSITIVITY_THRESHOLD:.0f}%** relative change"
+    )
+
+
 def _bp_centerpoint_metrics():
     """Return the centerpoint hydrodynamic metrics dict for step PDF exports."""
     _eps = power_per_volume(impeller_power(Np_val, rho, N_center_calc, D_imp), V_m3)
@@ -1147,26 +1300,45 @@ st.divider()
 # ══════════════════════════════════════════════════════════════════════════
 st.header("Test 2 - Feed Rate / Feed Time")
 st.markdown("""
-Vary **feed time only** (hold speed & location at centerpoint). Test a **9× flow-rate
-range** (1/3× and 3× the centerpoint feed time).
-
-Sensitive → mesomixing-controlled. Insensitive → micromixing-controlled.
-
+- Vary **feed time only** (hold speed & location at centerpoint)         
+- Test a **9× flow-rate range** (1/3× and 3× the centerpoint feed time)
+- Sensitive → mesomixing-controlled     
+- Insensitive → micromixing-controlled
 """)
 
-st.subheader("Suggested Feed Time Conditions")
-
-t_feed_center = st.number_input(
-    "Centerpoint feed time (min)",
-    min_value=0.1, value=60.0, step=5.0,
-    help="Fastest safe & practical plant-scale feed time, or your current lab feed time.",
-    key=_bk("tfeed_ctr"),
-)
-
-t_feed_fast = t_feed_center / 3.0
-t_feed_slow = t_feed_center * 3.0
+st.subheader("Feed Rate/Time Conditions")
 
 feed_vol = st.number_input("Total feed volume (mL)", min_value=0.1, value=100.0, key=_bk("feed_vol"))
+
+t2_center_mode = st.radio(
+    "Define centerpoint by",
+    ["Feed time", "Feed rate"],
+    horizontal=True, key=_bk("t2_ctr_mode"),
+)
+
+if t2_center_mode == "Feed rate":
+    q_feed_center = st.number_input(
+        "Centerpoint feed rate (mL/min)",
+        min_value=0.001, value=round(feed_vol / 60.0, 4), step=0.1, format="%.4g",
+        help="Fastest safe & practical plant-scale feed rate, or your current lab feed rate.",
+        key=_bk("qfeed_ctr"),
+    )
+    t_feed_center = feed_vol / q_feed_center
+    st.caption(f"Centerpoint feed time = **{t_feed_center:.2f} min** "
+               f"(feed volume {feed_vol:g} mL ÷ {q_feed_center:.4g} mL/min)")
+else:
+    t_feed_center = st.number_input(
+        "Centerpoint feed time (min)",
+        min_value=0.1, value=60.0, step=5.0,
+        help="Fastest safe & practical plant-scale feed time, or your current lab feed time.",
+        key=_bk("tfeed_ctr"),
+    )
+    st.caption(f"Centerpoint feed rate = **{feed_vol / t_feed_center:.4g} mL/min** "
+               f"(feed volume {feed_vol:g} mL ÷ {t_feed_center:.2f} min)")
+
+# Fast = 1/3× feed time (3× feed rate); Slow = 3× feed time (1/3× feed rate).
+t_feed_fast = t_feed_center / 3.0
+t_feed_slow = t_feed_center * 3.0
 
 t2_conditions = pd.DataFrame([
     {
@@ -1193,87 +1365,108 @@ st.caption(f"Flow-rate ratio (fast/slow) = **9×**  •  Hold impeller speed at 
 
 with st.expander("Understanding mesomixing"):
     st.markdown(r"""
-    $$t_{meso} \propto \frac{Q_{feed}}{k \cdot \varepsilon_{loc}}$$
+    Mesomixing has **two** time scales (Baldyga & Bourne, 1999):
+
+    $$\tau_S = A\left(\frac{\Lambda_C^{2}}{\varepsilon_{loc}}\right)^{1/3}\;(A\approx1.2)
+    \qquad\qquad
+    \tau_D = \frac{Q_{feed}}{\bar{u}\,D_t}$$
+
+    - $\tau_S$ — inertial-convective break-up of the feed plume; set by the
+      plume / feed-pipe scale $\Lambda_C$ and local $\varepsilon$.
+    - $\tau_D$ — turbulent dispersion of the plume; **grows with feed rate**
+      $Q_{feed}$ (this is what Test 2 probes).
 
     Higher feed rate → longer plume persistence → more concentration gradients.
     If response is **insensitive** to feed rate → **micromixing-controlled**
-    (plume disperses fast; molecular-scale mixing is rate-limiting).
+    (plume disperses fast; molecular-scale engulfment is rate-limiting).
     """)
 
-# ── Quantitative response entry for Test 2 ──────────────────────────────
+# ── Response entry for Test 2 (mirrors Test 1 KPIs) ─────────────────────
 st.subheader("Record Test 2 Responses")
-st.caption("Use the same response metric as Test 1.")
 
-_t2_mcol, _t2_ucol = st.columns([2, 1])
-_t2_metric = _t2_mcol.selectbox("Response metric", RESPONSE_METRICS,
-                                index=_metric_index(_t1_resp_name),
-                                key=_bk("t2_resp_name"))
-_t2_unit = _unit_selector(_t2_ucol, _bk("t2_resp_unit"),
-                          default_unit=_METRIC_DEFAULT_UNIT.get(_t2_metric, "%"))
-_t2_resp_name = _fmt_metric(_t2_metric, _t2_unit)
-col_t2a, col_t2b, col_t2c = st.columns(3)
-with col_t2a:
-    t2_resp_fast = st.number_input("Fast (1/3× feed time)", value=0.0,
-                                   format="%.4g", key=_bk("t2_resp_fast"))
-with col_t2b:
-    t2_resp_ctr = st.number_input("Center (1× feed time)", value=0.0,
-                                  format="%.4g", key=_bk("t2_resp_ctr"))
-with col_t2c:
-    t2_resp_slow = st.number_input("Slow (3× feed time)", value=0.0,
-                                   format="%.4g", key=_bk("t2_resp_slow"))
+_t2_kpi_defs = _kpi_defs_from_t1(_t1a)
+if len(_t2_kpi_defs) > 1:
+    st.caption(
+        f"Recording the **same {len(_t2_kpi_defs)} KPIs** (and capture modes) "
+        f"defined in Test 1."
+    )
+else:
+    st.caption("Recording the same response KPI defined in Test 1.")
+
+_t2_labels = ["Fast (1/3× feed time)", "Center (1× feed time)", "Slow (3× feed time)"]
+_t2_kpi_inputs = _render_kpi_responses("t2", _t2_kpi_defs, _t2_labels)
 
 # Button-triggered assessment
 if st.button("📊 Assess Test 2 Responses", key=_bk("t2_assess")):
-    if t2_resp_ctr == 0.0 and t2_resp_fast == 0.0 and t2_resp_slow == 0.0:
-        st.warning("Enter all three response values before assessing.")
+    if not _kpi_inputs_have_data(_t2_kpi_inputs):
+        st.warning("Enter response values before assessing.")
     else:
-        t2_max_pct, t2_sensitive, t2_pct_detail = _assess_sensitivity(
-            [t2_resp_fast, t2_resp_ctr, t2_resp_slow], t2_resp_ctr
-        )
-        st.session_state[_bk("t2_assessed")] = {
-            "max_pct": t2_max_pct, "sensitive": t2_sensitive,
-            "pct_detail": t2_pct_detail,
-            "resp": [t2_resp_fast, t2_resp_ctr, t2_resp_slow],
-            "resp_name": _t2_resp_name,
-        }
+        st.session_state[_bk("t2_assessed")] = _assess_kpi_inputs(
+            _t2_kpi_inputs, _t2_labels)
         # Rerun so the top-of-page input export captures the new assessment.
         st.rerun()
 
 if _bk("t2_assessed") not in st.session_state:
-    st.info("Enter all three response values, then click **Assess Test 2 Responses**.")
+    st.info("Enter response values, then click **Assess Test 2 Responses**.")
     st.stop()
 
 _t2a = st.session_state[_bk("t2_assessed")]
 t2_max_pct = _t2a["max_pct"]
 t2_sensitive = _t2a["sensitive"]
-t2_pct_detail = _t2a["pct_detail"]
+t2_status = _t2a.get("status", "sensitive" if t2_sensitive else "not_sensitive")
 
-if isinstance(t2_pct_detail, list):
-    _t2_res_df = pd.DataFrame({
-        "Condition": ["Fast (1/3×)", "Center (1×)", "Slow (3×)"],
-        _t2a["resp_name"]: _t2a["resp"],
-        "Δ from center (%)": [f"{p:.1f}%" for p in t2_pct_detail],
-    })
+if _t2a.get("kpi_results"):
+    _display_kpi_assessment(_t2a, "center")
 else:
-    _t2_res_df = pd.DataFrame({
-        "Condition": ["Fast (1/3×)", "Center (1×)", "Slow (3×)"],
-        _t2a["resp_name"]: _t2a["resp"],
-    })
-st.dataframe(_t2_res_df, width='stretch', hide_index=True)
-st.caption(f"Maximum relative change from center = **{t2_max_pct:.1f}%**  •  "
-           f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**")
+    # Legacy single-KPI assessment (from an older session)
+    _t2_pct_detail = _t2a.get("pct_detail")
+    if isinstance(_t2_pct_detail, list):
+        _t2_res_df = pd.DataFrame({
+            "Condition": ["Fast (1/3×)", "Center (1×)", "Slow (3×)"],
+            _t2a["resp_name"]: _t2a["resp"],
+            "Δ from center (%)": [f"{p:.1f}%" for p in _t2_pct_detail],
+        })
+    else:
+        _t2_res_df = pd.DataFrame({
+            "Condition": ["Fast (1/3×)", "Center (1×)", "Slow (3×)"],
+            _t2a["resp_name"]: _t2a["resp"],
+        })
+    st.dataframe(_t2_res_df, width='stretch', hide_index=True)
+    st.caption(f"Maximum relative change from center = **{t2_max_pct:.1f}%**  •  "
+               f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**")
 
-if not t2_sensitive:
-    st.info(
-        f"🔬 **Micromixing controls.** {t2_max_pct:.1f}% change "
-        f"(< {_SENSITIVITY_THRESHOLD:.0f}%). Scale-up: hold **local ε** constant."
-    )
+_t2_multi = _t2a.get("n_total", 1) > 1
+if t2_status == "not_sensitive":
+    if _t2_multi:
+        st.info(
+            "🔬 **Micromixing controls.** No KPIs were sensitive to feed rate "
+            f"(< {_SENSITIVITY_THRESHOLD:.0f}%). Scale-up: hold **local ε** constant."
+        )
+    else:
+        st.info(
+            f"🔬 **Micromixing controls.** {t2_max_pct:.1f}% change "
+            f"(< {_SENSITIVITY_THRESHOLD:.0f}%). Scale-up: hold **local ε** constant."
+        )
     _micro_conclusion = True
-else:
-    st.warning(
-        f"⚠️ **Mesomixing matters!** {t2_max_pct:.1f}% change "
-        f"(≥ {_SENSITIVITY_THRESHOLD:.0f}%). Proceed to **Test 3**."
+elif t2_status == "may_be_sensitive":
+    st.info(
+        f"🟡 **Process may be mesomixing-sensitive.** "
+        f"{_t2a['n_sensitive']} of {_t2a['n_total']} KPIs were sensitive "
+        f"(fewer than half). Proceed to **Test 3** with caution."
     )
+    _micro_conclusion = False
+else:
+    if _t2_multi:
+        st.warning(
+            f"⚠️ **Mesomixing matters!** Majority of KPIs "
+            f"({_t2a['n_sensitive']} / {_t2a['n_total']}) were sensitive to "
+            f"feed rate. Proceed to **Test 3**."
+        )
+    else:
+        st.warning(
+            f"⚠️ **Mesomixing matters!** {t2_max_pct:.1f}% change "
+            f"(≥ {_SENSITIVITY_THRESHOLD:.0f}%). Proceed to **Test 3**."
+        )
     _micro_conclusion = False
 
 # Allow user to override
@@ -1322,9 +1515,9 @@ eps_avg_kg = eps_avg / rho  # W/kg for micromixing calculations
 if t2_sensitive:
     st.header("Test 3 - Feed Location")
     st.markdown("""
-    Vary **feed location only** (hold speed & feed time at centerpoint). Move
-    from surface → impeller zone. This changes **local ε** without affecting
-    macromixing.
+    - Vary **feed location only** (hold speed & feed time at centerpoint).
+    - Move from surface to impeller zone.
+    - This changes **local ε** without affecting macromixing.
 
     | Feed location | ε_loc / ε_avg |
     |---|---|
@@ -1365,83 +1558,105 @@ if t2_sensitive:
         - *"Subsurface addition — prove it is not needed!"* — Ed Paul
         """)
 
-    # ── Quantitative response entry for Test 3 ──────────────────────────
+    # ── Response entry for Test 3 (mirrors Test 1 KPIs) ─────────────────
     st.subheader("Record Test 3 Responses")
-    st.caption("Use the same response metric as Tests 1 & 2.")
 
-    _t3_mcol, _t3_ucol = st.columns([2, 1])
-    _t3_metric = _t3_mcol.selectbox("Response metric", RESPONSE_METRICS,
-                                    index=_metric_index(_t2_metric),
-                                    key=_bk("t3_resp_name"))
-    _t3_unit = _unit_selector(_t3_ucol, _bk("t3_resp_unit"),
-                              default_unit=_METRIC_DEFAULT_UNIT.get(_t3_metric, "%"))
-    _t3_resp_name = _fmt_metric(_t3_metric, _t3_unit)
-    col_t3a, col_t3b, col_t3c = st.columns(3)
-    with col_t3a:
-        t3_resp_surf = st.number_input("Surface feed", value=0.0, format="%.4g",
-                                       key=_bk("t3_resp_surf"))
-    with col_t3b:
-        t3_resp_mid = st.number_input("Sub-surface (mid-tank)", value=0.0,
-                                      format="%.4g", key=_bk("t3_resp_mid"))
-    with col_t3c:
-        t3_resp_imp = st.number_input("Impeller zone", value=0.0, format="%.4g",
-                                      key=_bk("t3_resp_imp"))
+    _t3_kpi_defs = _kpi_defs_from_t1(_t1a)
+    if len(_t3_kpi_defs) > 1:
+        st.caption(
+            f"Recording the **same {len(_t3_kpi_defs)} KPIs** (and capture "
+            f"modes) defined in Test 1."
+        )
+    else:
+        st.caption("Recording the same response KPI defined in Test 1.")
+
+    _t3_labels = ["Surface feed", "Sub-surface (mid-tank)", "Impeller zone"]
+    _t3_kpi_inputs = _render_kpi_responses("t3", _t3_kpi_defs, _t3_labels)
 
     # Button-triggered assessment
     if st.button("📊 Assess Test 3 Responses", key=_bk("t3_assess")):
-        if t3_resp_mid == 0.0 and t3_resp_surf == 0.0 and t3_resp_imp == 0.0:
-            st.warning("Enter all three response values before assessing.")
+        if not _kpi_inputs_have_data(_t3_kpi_inputs):
+            st.warning("Enter response values before assessing.")
         else:
-            t3_max_pct, t3_sensitive, t3_pct_detail = _assess_sensitivity(
-                [t3_resp_surf, t3_resp_mid, t3_resp_imp], t3_resp_mid
-            )
-            st.session_state[_bk("t3_assessed")] = {
-                "max_pct": t3_max_pct, "sensitive": t3_sensitive,
-                "pct_detail": t3_pct_detail,
-                "resp": [t3_resp_surf, t3_resp_mid, t3_resp_imp],
-                "resp_name": _t3_resp_name,
-            }
+            st.session_state[_bk("t3_assessed")] = _assess_kpi_inputs(
+                _t3_kpi_inputs, _t3_labels)
             # Rerun so the top-of-page input export captures the new assessment.
             st.rerun()
 
     if _bk("t3_assessed") not in st.session_state:
-        st.info("Enter all three response values, then click **Assess Test 3 Responses**.")
+        st.info("Enter response values, then click **Assess Test 3 Responses**.")
         st.stop()
 
     _t3a = st.session_state[_bk("t3_assessed")]
     t3_max_pct = _t3a["max_pct"]
     t3_sensitive = _t3a["sensitive"]
-    t3_pct_detail = _t3a["pct_detail"]
+    t3_status = _t3a.get("status", "sensitive" if t3_sensitive else "not_sensitive")
 
-    if isinstance(t3_pct_detail, list):
-        _t3_res_df = pd.DataFrame({
-            "Feed Location": ["Surface", "Sub-surface (mid)", "Impeller zone"],
-            _t3a["resp_name"]: _t3a["resp"],
-            "Δ from mid-tank (%)": [f"{p:.1f}%" for p in t3_pct_detail],
-        })
+    if _t3a.get("kpi_results"):
+        _display_kpi_assessment(_t3a, "mid-tank")
     else:
-        _t3_res_df = pd.DataFrame({
-            "Feed Location": ["Surface", "Sub-surface (mid)", "Impeller zone"],
-            _t3a["resp_name"]: _t3a["resp"],
-        })
-    st.dataframe(_t3_res_df, width='stretch', hide_index=True)
-    st.caption(f"Maximum relative change from mid-tank = **{t3_max_pct:.1f}%**  •  "
-               f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**")
+        # Legacy single-KPI assessment (from an older session)
+        _t3_pct_detail = _t3a.get("pct_detail")
+        if isinstance(_t3_pct_detail, list):
+            _t3_res_df = pd.DataFrame({
+                "Feed Location": ["Surface", "Sub-surface (mid)", "Impeller zone"],
+                _t3a["resp_name"]: _t3a["resp"],
+                "Δ from mid-tank (%)": [f"{p:.1f}%" for p in _t3_pct_detail],
+            })
+        else:
+            _t3_res_df = pd.DataFrame({
+                "Feed Location": ["Surface", "Sub-surface (mid)", "Impeller zone"],
+                _t3a["resp_name"]: _t3a["resp"],
+            })
+        st.dataframe(_t3_res_df, width='stretch', hide_index=True)
+        st.caption(f"Maximum relative change from mid-tank = **{t3_max_pct:.1f}%**  •  "
+                   f"Sensitivity threshold = **{_SENSITIVITY_THRESHOLD:.0f}%**")
 
-    if not t3_sensitive:
-        st.info(
-            f"🌀 **Macromixing controls.** {t3_max_pct:.1f}% change "
-            f"(< {_SENSITIVITY_THRESHOLD:.0f}%). Bulk blending is rate-limiting."
-        )
+    _t3_multi = _t3a.get("n_total", 1) > 1
+    if t3_status == "not_sensitive":
+        if _t3_multi:
+            st.info(
+                "🌀 **Macromixing controls.** No KPIs were sensitive to feed "
+                f"location (< {_SENSITIVITY_THRESHOLD:.0f}%). Bulk blending is "
+                f"rate-limiting."
+            )
+        else:
+            st.info(
+                f"🌀 **Macromixing controls.** {t3_max_pct:.1f}% change "
+                f"(< {_SENSITIVITY_THRESHOLD:.0f}%). Bulk blending is rate-limiting."
+            )
         st.caption("Scale-up: maintain short blend times (hydrofoils, static mixers, multiple impellers).")
         _macro_conclusion = True
         _meso_conclusion = False
-    else:
+    elif t3_status == "may_be_sensitive":
         st.success(
-            f"📐 **Mesomixing controls.** {t3_max_pct:.1f}% change "
-            f"(≥ {_SENSITIVITY_THRESHOLD:.0f}%). Feed-plume dispersion is rate-limiting."
+            f"📐 **Mesomixing likely controls.** "
+            f"{_t3a['n_sensitive']} of {_t3a['n_total']} KPIs were sensitive to "
+            f"feed location (fewer than half). Feed-plume dispersion is "
+            f"rate-limiting."
         )
-        st.caption("Scale-up: constant impeller speed, extended feed time, or multiple feed points.")
+        st.caption("Scale-up: hold local ε constant at the feed point (match "
+                   "P/V → a *lower* RPM at larger scale, not constant RPM) and "
+                   "cut the local feed rate — extend feed time, add feed points, "
+                   "and/or use a smaller feed-pipe diameter.")
+        _macro_conclusion = False
+        _meso_conclusion = True
+    else:
+        if _t3_multi:
+            st.success(
+                f"📐 **Mesomixing controls.** Majority of KPIs "
+                f"({_t3a['n_sensitive']} / {_t3a['n_total']}) were sensitive to "
+                f"feed location. Feed-plume dispersion is rate-limiting."
+            )
+        else:
+            st.success(
+                f"📐 **Mesomixing controls.** {t3_max_pct:.1f}% change "
+                f"(≥ {_SENSITIVITY_THRESHOLD:.0f}%). Feed-plume dispersion is rate-limiting."
+            )
+        st.caption("Scale-up: hold local ε constant at the feed point (match "
+                   "P/V → a *lower* RPM at larger scale, not constant RPM) and "
+                   "cut the local feed rate — extend feed time, add feed points, "
+                   "and/or use a smaller feed-pipe diameter.")
         _macro_conclusion = False
         _meso_conclusion = True
 
@@ -1577,7 +1792,11 @@ if t2_sensitive:  # only reached Test 3 if Test 2 was sensitive
     if t3_sensitive:
         conclusions.append(("Test 3 – Feed Location",
                             f"**Sensitive** ({t3_max_pct:.1f}% change) → Mesomixing-controlled", "📐"))
-        scaleup_notes.append("Control feed plume dispersion: constant impeller speed, extended feed time, or multiple feed points.")
+        scaleup_notes.append(
+            "Control feed-plume dispersion: hold **local ε** constant at the "
+            "feed point (match **P/V**, i.e. a *lower* RPM at larger scale — "
+            "not constant RPM), and reduce the local feed rate (extend feed "
+            "time, add feed points, and/or use a smaller feed-pipe diameter).")
     else:
         conclusions.append(("Test 3 – Feed Location",
                             f"**Insensitive** ({t3_max_pct:.1f}% change) → Macromixing-controlled", "🌀"))
@@ -1614,7 +1833,10 @@ elif dominant == "Mesomixing":
     st.warning(f"""
     {dominant_icon} **{dominant}** — Feed-plume disintegration is rate-limiting.
 
-    **Scale-up:** Constant impeller speed, extended feed time, or multiple feed points.
+    **Scale-up:** Hold local ε constant at the feed point — match **P/V**, which
+    means a *lower* RPM at larger scale (constant rotational speed is neither
+    achievable nor correct). Also reduce the local feed rate: extend the feed
+    time, add feed points, and/or use a smaller feed-pipe diameter (smaller plume).
     """)
 elif dominant == "Macromixing":
     st.error(f"""

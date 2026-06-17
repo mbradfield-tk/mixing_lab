@@ -377,21 +377,46 @@ reagents are **fed directly into the impeller discharge zone**.
 **Reference:** Baldyga, J. & Bourne, J.R. (1999). [*Turbulent Mixing and Chemical Reactions*](https://openlibrary.org/isbn/0471981710), Wiley.
 """)
 
-    # ── Mesomixing Time
-    st.header("Mesomixing Time (Turbulent Dispersion)")
-    st.latex(r"t_{\text{meso}} = 2 \left( \frac{d_{\text{feed}}^2}{\varepsilon} \right)^{1/3}")
-    st.markdown("""
+    # ── Mesomixing Time Scales
+    st.header("Mesomixing Time Scales")
+    st.markdown(r"""
+Mesomixing acts at the scale of the feed plume / feed-pipe diameter and has
+**two** characteristic time scales (Baldyga & Bourne, 1999; Myerson 2019, Table 8.1).
+The slower of the two governs feed-plume dispersion.
+""")
+
+    st.subheader("Inertial-Convective Disintegration")
+    st.latex(r"\tau_S = A \left( \frac{\Lambda_C^{2}}{\varepsilon} \right)^{1/3}, \quad A \approx 1.2")
+    st.markdown(r"""
+Break-up of the feed plume by inertial-convective disintegration of the large
+eddies. $\Lambda_C$ is the integral scale of the velocity fluctuations, set by
+the feed-pipe / plume size. **Mixing Lab implements this scale** using the
+feed-pipe diameter $d_{\text{feed}}$ as the length scale with $A = 2$:
+
+$$t_{\text{meso}} = 2 \left( \frac{d_{\text{feed}}^2}{\varepsilon} \right)^{1/3}$$
+
 | Symbol | Description | Units |
 |--------|-------------|-------|
-| $d_{\\text{feed}}$ | Feed-pipe internal diameter | m |
-| $\\varepsilon$ | Local energy dissipation rate at the feed point | W/kg (m²/s³) |
+| $\Lambda_C$ | Integral scale of velocity fluctuations | m |
+| $d_{\text{feed}}$ | Feed-pipe internal diameter | m |
+| $\varepsilon$ | Local energy dissipation at the feed point | W/kg (= m²/s³) |
+""")
 
-The mesomixing time characterises the **turbulent dispersion** of
-a fed reagent plume at the scale of the feed-pipe diameter:
+    st.subheader("Turbulent Dispersion")
+    st.latex(r"\tau_D = \frac{Q_{\text{feed}}}{\bar{u}\, D_t}")
+    st.markdown(r"""
+Turbulent diffusion of the feed plume into the bulk. This scale **grows with
+feed rate** $Q_{\text{feed}}$ — the lever probed by Test 2 of the Bourne Protocol.
 
-$$t_{\\text{blend}} > t_{\\text{meso}} > t_E$$
+| Symbol | Description | Units |
+|--------|-------------|-------|
+| $Q_{\text{feed}}$ | Volumetric feed rate | m³/s |
+| $\bar{u}$ | Local mean velocity at the feed point | m/s |
+| $D_t$ | Turbulent diffusivity | m²/s |
 
-**Reference:** Baldyga, J. & Bourne, J.R. (1999). [*Turbulent Mixing and Chemical Reactions*](https://openlibrary.org/isbn/0471981710), Wiley, Ch. 3.
+Ordering of the mixing time scales: $\;t_{\text{blend}} > \tau_S,\;\tau_D > t_E$.
+
+**Reference:** Baldyga, J. & Bourne, J.R. (1999). [*Turbulent Mixing and Chemical Reactions*](https://openlibrary.org/isbn/0471981710), Wiley, Ch. 3; Myerson, A.S. *et al.* (Eds.) (2019). [*Handbook of Industrial Crystallization*](https://doi.org/10.1017/9781139026949), 3rd ed., Cambridge Univ. Press, Ch. 8 (Table 8.1).
 """)
 
 

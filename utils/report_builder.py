@@ -8,6 +8,7 @@ Pages 5, 7 and 10 to generate downloadable PDF reports.
 import pathlib
 import io
 import datetime
+import re
 import numpy as np
 
 from fpdf import FPDF
@@ -1048,6 +1049,68 @@ def build_protocol_pdf(snap: dict) -> bytes:
     return report_bytes(pdf)
 
 
+def _bourne_later_test_responses(pdf, responses, short_labels,
+                                 sensitive_text, insensitive_text, may_text):
+    """Render a later Bourne test's responses (multi-KPI aware) + verdict box.
+
+    Mirrors the Test 1 KPI rendering so Tests 2 & 3 show the same set of KPIs.
+    Falls back to the legacy single-KPI layout for older snapshots.
+    """
+    kpi_results = responses.get("kpi_results", [])
+    if kpi_results:
+        pdf.sub_title("Responses")
+        _hdr = ["KPI", "Mode"] + list(short_labels) + ["Max change", "Sensitive?"]
+        _rows = []
+        for r in kpi_results:
+            _is_qual = r.get("qualitative", False)
+            if _is_qual:
+                _vals = [(str(v) if str(v).strip() else "--") for v in r.get("resp", [])]
+                _delta = "--"
+            else:
+                _vals = [f"{v:.4g}" for v in r.get("resp", [])]
+                _delta = f"{r.get('max_pct', 0):.1f}%"
+            _rows.append(
+                [r.get("name", ""), "Qual" if _is_qual else "Quant"]
+                + _vals + [_delta, "Yes" if r.get("sensitive") else "No"]
+            )
+        pdf.data_table(_hdr, _rows, col_widths=[40, 14, 22, 22, 22, 20, 18], wrap=True)
+        n_sensitive = responses.get("n_sensitive", 0)
+        n_total = responses.get("n_total", len(kpi_results))
+        _status = responses.get(
+            "status", "sensitive" if n_sensitive > 0 else "not_sensitive")
+        if _status == "not_sensitive":
+            colour, verdict = "GREEN", insensitive_text
+        elif _status == "may_be_sensitive":
+            colour, verdict = "AMBER", may_text
+        else:
+            colour, verdict = "RED", sensitive_text
+        pdf.assessment_box(
+            f"{verdict}  ({n_sensitive} / {n_total} KPIs sensitive)", colour)
+    else:
+        # Legacy single-KPI snapshot (older sessions)
+        pdf.sub_title(f"Responses ({responses.get('resp_name', '')})")
+        resp = responses.get("resp", [])
+        _qualitative = responses.get("qualitative", False)
+        if _qualitative:
+            _rows = [[lbl, (str(val) if val else "--")]
+                     for lbl, val in zip(short_labels, resp)]
+        else:
+            _rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(short_labels, resp)]
+        pdf.data_table(["Condition", "Response"], _rows, col_widths=[80, 60], wrap=True)
+        sensitive = responses.get("sensitive", False)
+        colour = "RED" if sensitive else "GREEN"
+        if _qualitative:
+            pdf.assessment_box(
+                f"{sensitive_text if sensitive else insensitive_text}  (qualitative)",
+                colour)
+        else:
+            max_pct = responses.get("max_pct", 0)
+            pdf.assessment_box(
+                f"{sensitive_text if sensitive else insensitive_text}"
+                f"  (max change = {max_pct:.1f}%)",
+                colour)
+
+
 def build_bourne_protocol_pdf(snap: dict) -> bytes:
     """Build PDF report for Page 6 – Bourne Protocol."""
     reactor_name = snap.get("reactor", "Manual entry")
@@ -1196,18 +1259,12 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
             pdf.ln(1)
             pdf.body_text(f"Total feed volume: {t2_conds.get('feed_vol_mL', 0):.1f} mL.")
         pdf.ln(2)
-        pdf.sub_title(f"Responses ({t2_responses.get('resp_name', '')})")
-        t2_labels = ["Fast (1/3x)", "Center (1x)", "Slow (3x)"]
-        t2_resp = t2_responses.get("resp", [])
-        _t2_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(t2_labels, t2_resp)]
-        pdf.data_table(["Condition", "Response"], _t2_resp_rows,
-                       col_widths=[80, 60], wrap=True)
-        t2_pct = t2_responses.get("max_pct", 0)
-        t2_sens = t2_responses.get("sensitive", False)
-        colour = "RED" if t2_sens else "GREEN"
-        pdf.assessment_box(
-            f"Max change = {t2_pct:.1f}% -- {'Sensitive (mesomixing involved)' if t2_sens else 'Not sensitive (micromixing controls)'}",
-            colour,
+        _bourne_later_test_responses(
+            pdf, t2_responses,
+            ["Fast (1/3x)", "Center (1x)", "Slow (3x)"],
+            "Sensitive (mesomixing involved)",
+            "Not sensitive (micromixing controls)",
+            "May be sensitive (mesomixing involved)",
         )
 
     # ── Test 3 ───────────────────────────────────────────────────────────
@@ -1233,18 +1290,12 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
             if _t3_cond_rows:
                 pdf.data_table(_t3_cond_headers, _t3_cond_rows, col_widths=[65, 40, 40])
         pdf.ln(2)
-        pdf.sub_title(f"Responses ({t3_responses.get('resp_name', '')})")
-        t3_labels = ["Surface", "Sub-surface (mid)", "Impeller zone"]
-        t3_resp = t3_responses.get("resp", [])
-        _t3_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(t3_labels, t3_resp)]
-        pdf.data_table(["Feed Location", "Response"], _t3_resp_rows,
-                       col_widths=[80, 60], wrap=True)
-        t3_pct = t3_responses.get("max_pct", 0)
-        t3_sens = t3_responses.get("sensitive", False)
-        colour = "RED" if t3_sens else "GREEN"
-        pdf.assessment_box(
-            f"Max change = {t3_pct:.1f}% -- {'Sensitive (mesomixing controls)' if t3_sens else 'Not sensitive (macromixing controls)'}",
-            colour,
+        _bourne_later_test_responses(
+            pdf, t3_responses,
+            ["Surface", "Sub-surface (mid)", "Impeller zone"],
+            "Sensitive (mesomixing controls)",
+            "Not sensitive (macromixing controls)",
+            "May be sensitive (mesomixing controls)",
         )
 
     # ── Conclusion & Recommendations ─────────────────────────────────────
@@ -1252,9 +1303,23 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     pdf.section_title("Conclusion")
 
     if conclusions:
-        _concl_rows = [[test_name, icon, result] for test_name, result, icon in conclusions]
+        _concl_rows = []
+        for test_name, result, icon in conclusions:
+            # ``result`` looks like "**Sensitive** (max 88.9% change) -> Mixing matters".
+            # Split the bold verdict into the Result column and keep the rest as Detail.
+            _m = re.match(r"\s*\*\*(.+?)\*\*\s*(.*)", result)
+            if _m:
+                _verdict = _m.group(1).strip()
+                _detail = _m.group(2).strip()
+            else:
+                _verdict = ""
+                _detail = result
+            # Strip any remaining markdown emphasis markers.
+            _verdict = _verdict.replace("**", "")
+            _detail = _detail.replace("**", "")
+            _concl_rows.append([test_name, _verdict, _detail])
         pdf.data_table(["Test", "Result", "Detail"], _concl_rows,
-                       col_widths=[55, 15, 100])
+                       col_widths=[45, 38, 87])
         pdf.ln(4)
 
     if dominant == "Micromixing":
@@ -1276,8 +1341,11 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     elif dominant == "Mesomixing":
         pdf.body_text(
             "Feed-plume disintegration is rate-limiting. "
-            "Keep impeller speed constant on scale-up, extend the feed time to reduce local feed rate, "
-            "or use multiple feed points to reduce local feed velocity at each point."
+            "Hold the local energy dissipation (eps_loc) constant at the feed point on scale-up "
+            "by matching power per unit volume (P/V) -- this means a LOWER rotational speed at larger "
+            "scale (constant RPM is neither achievable nor correct). Also reduce the local feed rate: "
+            "extend the feed time, use multiple feed points, and/or reduce the feed-pipe diameter to "
+            "shrink the feed plume."
         )
     elif dominant == "Macromixing":
         pdf.body_text(
@@ -1456,17 +1524,12 @@ def build_bourne_step_pdf(snap: dict) -> bytes:
             pdf.body_text(f"Total feed volume: {t2_conds.get('feed_vol_mL', 0):.1f} mL.")
         if t2_responses:
             pdf.ln(2)
-            pdf.sub_title(f"Responses ({t2_responses.get('resp_name', '')})")
-            t2_labels = ["Fast (1/3x)", "Center (1x)", "Slow (3x)"]
-            t2_resp = t2_responses.get("resp", [])
-            _t2_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(t2_labels, t2_resp)]
-            pdf.data_table(["Condition", "Response"], _t2_resp_rows, col_widths=[80, 60], wrap=True)
-            t2_pct = t2_responses.get("max_pct", 0)
-            t2_sens = t2_responses.get("sensitive", False)
-            colour = "RED" if t2_sens else "GREEN"
-            pdf.assessment_box(
-                f"Max change = {t2_pct:.1f}% -- {'Sensitive (mesomixing involved)' if t2_sens else 'Not sensitive (micromixing controls)'}",
-                colour,
+            _bourne_later_test_responses(
+                pdf, t2_responses,
+                ["Fast (1/3x)", "Center (1x)", "Slow (3x)"],
+                "Sensitive (mesomixing involved)",
+                "Not sensitive (micromixing controls)",
+                "May be sensitive (mesomixing involved)",
             )
 
     # ── Step 3 ───────────────────────────────────────────────────────────
@@ -1494,17 +1557,12 @@ def build_bourne_step_pdf(snap: dict) -> bytes:
                 pdf.data_table(_t3_cond_headers, _t3_cond_rows, col_widths=[65, 40, 40])
         if t3_responses:
             pdf.ln(2)
-            pdf.sub_title(f"Responses ({t3_responses.get('resp_name', '')})")
-            t3_labels = ["Surface", "Sub-surface (mid)", "Impeller zone"]
-            t3_resp = t3_responses.get("resp", [])
-            _t3_resp_rows = [[lbl, f"{val:.4g}"] for lbl, val in zip(t3_labels, t3_resp)]
-            pdf.data_table(["Feed Location", "Response"], _t3_resp_rows, col_widths=[80, 60], wrap=True)
-            t3_pct = t3_responses.get("max_pct", 0)
-            t3_sens = t3_responses.get("sensitive", False)
-            colour = "RED" if t3_sens else "GREEN"
-            pdf.assessment_box(
-                f"Max change = {t3_pct:.1f}% -- {'Sensitive (mesomixing controls)' if t3_sens else 'Not sensitive (macromixing controls)'}",
-                colour,
+            _bourne_later_test_responses(
+                pdf, t3_responses,
+                ["Surface", "Sub-surface (mid)", "Impeller zone"],
+                "Sensitive (mesomixing controls)",
+                "Not sensitive (macromixing controls)",
+                "May be sensitive (mesomixing controls)",
             )
 
     return report_bytes(pdf)
