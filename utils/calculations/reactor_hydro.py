@@ -1,4 +1,15 @@
-"""Convenience functions: compute full reactor hydrodynamic parameter set."""
+"""Convenience functions: compute full reactor hydrodynamic parameter set.
+
+This module only orchestrates the primitives defined in hydrodynamics.py,
+mixing_times.py, gas_liquid.py and damkohler.py - see those modules for the
+per-correlation references and unit conventions.
+
+UNIT NOTE
+---------
+``eps`` (P/V) is computed in W/m^3 and ``eps_kg`` in W/kg.  van 't Riet kLa is
+correctly fed ``eps`` (W/m^3) while all turbulence length/time scales are fed
+``eps_kg`` (W/kg).  Do not swap these when extending this function.
+"""
 
 import numpy as np
 

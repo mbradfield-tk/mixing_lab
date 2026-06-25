@@ -1,4 +1,33 @@
-"""Solid-particle hydrodynamics: settling, suspension, mass transfer."""
+"""Solid-particle hydrodynamics: settling, suspension, mass transfer.
+
+UNIT CONVENTION
+---------------
+Particle diameter d_p in m, densities in kg/m^3, mu in Pa.s, nu in m^2/s,
+impeller diameter D_imp in m; just-suspended speed N_js returned in rev/s.
+NOTE: the Zwietering solids loading X is the percent mass ratio (g solid /
+100 g liquid) as in the original correlation; gmb_njs uses volume fraction X_v.
+
+REFERENCES (per function)
+-------------------------
+    settling_velocity (Schiller-Naumann drag)
+        Ref: Schiller & Naumann (1933), VDI Z. 77, 318.  [NOT in context/ - verify]
+    particle_reynolds, archimedes_number
+        Standard dimensionless groups.  [definition]
+    zwietering_njs (N_js = S nu^0.1 d_p^0.2 (g dRho/rho)^0.45 X^0.13 D^-0.85)
+        Ref: Zwietering (1958), Chem. Eng. Sci. 8, 244-253.
+        Cited in context: Myerson (2019) Ch. 10 (Crystallizer Mixing /
+        Suspension Criterion).  [in context/]
+    gmb_njs (Grenville, Mak & Brown)
+        Ref: Grenville, Mak & Brown (2015), Chem. Eng. Res. Des. 100, 282.
+        [NOT in context/ - verify]
+    solid_liquid_mass_transfer (Sh = 2 + 0.6 Re_p^0.5 Sc^(1/3))
+        Ref: Ranz & Marshall (1952), Chem. Eng. Prog. 48, 141.
+        [NOT in context/ - verify]
+    solid_liquid_kla (a_s = 6 phi_s / d_p)
+        Specific-area definition for monodisperse spheres.  [definition]
+    particle_suspension_criterion
+        Qualitative N/N_js bands are heuristic.  [SOURCE MISSING - heuristic]
+"""
 
 import numpy as np
 

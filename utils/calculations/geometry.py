@@ -1,4 +1,20 @@
-"""Bottom-dish geometry helpers and liquid height estimation."""
+"""Bottom-dish geometry helpers and liquid height estimation.
+
+UNIT CONVENTION
+---------------
+D_tank, H, heights in m; dish volume in m^3; fill volume input in litres
+(converted internally to m^3).
+
+REFERENCES (per function)
+-------------------------
+    dish_geometry, estimate jacket dish factors
+        Torispherical coefficients (h = 0.1935 D, V = 0.0847 D^3) and conical/
+        hemispherical forms are standard dished-head geometry.
+        Ref: DIN 28011 (torispherical) / DIN 28013 (semi-ellipsoidal) heads;
+        ASME F&D head geometry.  [NOT in context/ - verify]
+    liquid_height_from_volume
+        Geometric volume-to-height inversion.  [definition]
+"""
 
 import numpy as np
 

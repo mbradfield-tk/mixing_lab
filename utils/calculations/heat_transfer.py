@@ -1,4 +1,42 @@
-"""Heat generation, heat transfer, and batch temperature simulation."""
+"""Heat generation, heat transfer, and batch temperature simulation.
+
+UNIT CONVENTION
+---------------
+Reaction: delta_H in kJ/mol, k in 1/s (1st order) or L/(mol.s) (2nd order),
+C0 in mol/L, V_L in litres -> reaction_rate_mol_per_s returns mol/s and
+heat_generation_rate returns W.  Heat transfer: U in W/(m^2.K), A in m^2,
+h in W/(m^2.K), k_fluid in W/(m.K), Cp in J/(kg.K); batch energy balances use
+V_L in m^3 (V_L_m3).  N_rps is in rev/s.
+
+REFERENCES (per function / table)
+---------------------------------
+None of the heat-transfer correlations below appear in the context source
+(Myerson 2019); canonical references are given but MUST be verified.
+
+    reaction_rate_mol_per_s, heat_generation_rate (Q = |dH| r)
+        First-principles kinetics + energy balance.  [definition]
+    estimate_jacket_area (dished-head area factors)
+        Ref: DIN 28011 / ASME F&D head geometry.  [NOT in context/ - verify]
+    estimate_U (material-based band)
+        Heuristic U ranges by wall/lining material.  [SOURCE MISSING - heuristic]
+    estimate_U_detailed, process_side_htc, _compute_hi, nusselt_jacket,
+    NUSSELT_CORRELATIONS table
+        Jacketed-vessel process-side Nu = C Re^(2/3) Pr^(1/3) (mu/mu_w)^0.14.
+        Refs (also in the table 'ref' keys): DIN 28131:1979; Chilton, Drew &
+        Jebens (1944), Ind. Eng. Chem. 36, 510; Lehrer (1970); Nagata (1975);
+        Brooks & Su (1959); Stein & Schmidt (1993).  [NOT in context/ - verify]
+    jacket_side_htc (laminar Hausen; turbulent Dittus-Boelter 0.023 Re^0.8 Pr^0.4)
+        Ref: Dittus & Boelter (1930); Hausen (1943).  [NOT in context/ - verify]
+    estimate_U_from_resistances, heat_removal_capacity, cooling_rate,
+    time_to_cool_or_heat (log-mean), batch_temperature_profile[_tdep],
+    batch_temp_profile_variable_jacket[_tdep]
+        Series-resistance / lumped-capacitance energy balances.
+        Ref: standard process heat-transfer texts (e.g. Coulson & Richardson
+        vol. 1; Perry's Handbook).  [NOT in context/ - verify]
+    WALL_CONDUCTIVITY, LINING_CONDUCTIVITY, *_THICKNESS, JACKET_HTC, FOULING
+        Tabulated material/typical values.  [SOURCE MISSING - verify against
+        material datasheets / Perry's]
+"""
 
 import re as _re
 import warnings as _warnings

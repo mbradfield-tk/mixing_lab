@@ -1,4 +1,29 @@
-"""Liquid-liquid dispersion: Weber number, drop size, phase separation, mass transfer."""
+"""Liquid-liquid dispersion: Weber number, drop size, phase separation, mass transfer.
+
+UNIT CONVENTION
+---------------
+N in rev/s, lengths in m, densities in kg/m^3, mu in Pa.s, interfacial tension
+sigma_LL in N/m, dissipation epsilon_kg in W/kg.  Drop sizes returned in m,
+velocities in m/s, times in s.
+
+REFERENCES (per function)
+-------------------------
+None of these correlations are in the context source (Myerson 2019).
+
+    weber_number (We = rho_c N^2 D^3 / sigma)
+        Standard impeller Weber number.  [definition]
+    sauter_drop_diameter (d32/D = 0.053 We^-0.6 (1 + 3 phi_d))
+        Ref: Hinze (1955), AIChE J. 1, 289; Chen & Middleman (1967),
+        AIChE J. 13, 989.  [NOT in context/ - verify]
+    phase_separation_check (Stokes drop settling -> separation time)
+        Ref: Stokes' law; standard sedimentation.  [textbook - verify H_est=D_tank assumption]
+    minimum_dispersion_speed
+        Ref: Skelland & Seksaria (1978), Ind. Eng. Chem. Process Des. Dev.
+        17, 56.  [NOT in context/ - verify]
+    liquid_liquid_mass_transfer (Sh = 2 + 0.6 Re^0.5 Sc^(1/3))
+        Ref: Calderbank & Moo-Young (1961), Chem. Eng. Sci. 16, 39;
+        Ranz & Marshall (1952).  [NOT in context/ - verify]
+"""
 
 import numpy as np
 

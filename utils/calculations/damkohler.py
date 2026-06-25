@@ -1,4 +1,26 @@
-"""Damköhler numbers and reaction time helpers."""
+"""Damkohler numbers and reaction time helpers.
+
+UNIT CONVENTION
+---------------
+All characteristic times (t_blend, t_micro, t_rxn) in seconds; mass-transfer
+coefficients kLa in 1/s.  All Damkohler numbers are dimensionless.
+
+REFERENCES (per function)
+-------------------------
+    damkohler_macro (Da = theta_blend / t_rxn),
+    damkohler_micro (Da = t_E / t_rxn)
+        Ref: Baldyga & Bourne, *Turbulent Mixing and Chemical Reactions*
+        (1999); Myerson (2019) Ch. 8 (Baldyga).  [in context/]
+    damkohler_gl, damkohler_sl (Da = 1/(kLa t_rxn))
+        Two-film mass-transfer vs reaction timescale ratio.
+        Ref: standard two-film theory (e.g. Levenspiel, *Chemical Reaction
+        Engineering*, 1999).  [NOT in context/ - verify]
+    mixing_sensitivity_assessment
+        Qualitative Da thresholds (0.01/0.1/1/10) are heuristic interpretation
+        bands, not a published classification.  [SOURCE MISSING - heuristic]
+    half_life_first_order, reaction_time_second_order
+        Standard chemical-kinetics definitions.  [textbook]
+"""
 
 import numpy as np
 

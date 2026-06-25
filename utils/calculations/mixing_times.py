@@ -1,4 +1,41 @@
-"""Mixing time calculations: blend time, micromixing, mesomixing, length scales."""
+"""Mixing time calculations: blend time, micromixing, mesomixing, length scales.
+
+UNIT CONVENTION
+---------------
+The turbulence dissipation rate ``epsilon`` MUST be supplied in W/kg (= m^2/s^3),
+i.e. epsilon = (P/V)/rho, NOT the volumetric P/V in W/m^3.  All length scales
+return metres, all times return seconds.
+
+REFERENCES (per function)
+-------------------------
+The micromixing / mesomixing / turbulence-length-scale relations are due to
+Baldyga & Bourne and are summarised in the context source:
+    Myerson (ed.), *Handbook of Industrial Crystallization*, 3rd ed. (2019),
+    Ch. 8 "Mixing and Crystallization" (J. Baldyga).  [in context/]
+Primary source: Baldyga & Bourne, *Turbulent Mixing and Chemical Reactions*,
+Wiley (1999).
+
+    micromixing_time_engulfment, micromixing_time_local (t_E = 17.3 (nu/eps)^0.5)
+        Ref: Baldyga & Bourne (1999); Myerson (2019) Ch. 8.  [in context/]
+    mesomixing_time (t_meso = 2 (d_feed^2/eps)^(1/3))
+        Ref: Baldyga & Bourne (1999); Myerson (2019) Ch. 8.  [in context/]
+    kolmogorov_length (eta = (nu^3/eps)^(1/4)),
+    batchelor_length (lambda_B = eta Sc^(-1/2))
+        Ref: Myerson (2019) Ch. 8 (Baldyga).  [in context/]
+    blend_time_turbulent
+        The coefficient 5.2 is the Grenville-Nienow turbulent blend-time
+        constant, but the published form is N*theta_95 = 5.2 Po^(-1/3)(T/D)^2;
+        the V/Q circulation form used here is an approximation.  Ref:
+        Grenville (1992); Handbook of Industrial Mixing (2004), Ch. 9.
+        [NOT in context/ - verify; formula form differs from published]
+    epsilon_max_estimate (eps_max ~ C P/(rho D^3), C~3)
+        Ref: Kresta & Wood (1993), Chem. Eng. Sci. 48, 1761.
+        [NOT in context/ - verify]
+    average_shear_rate (Camp-Stein G = sqrt(P/(mu V))),
+    maximum_shear_rate, shear_stress
+        Ref: Camp & Stein (1943), J. Boston Soc. Civ. Eng. 30, 219.
+        [NOT in context/ - verify]
+"""
 
 import numpy as np
 
