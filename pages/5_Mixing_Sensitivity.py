@@ -72,7 +72,7 @@ from utils.corr_widgets import (
     build_mode_dict_for,
     MODE_COLORS,
 )
-from utils.data_helpers import load_db, safe_float as _safe, all_fluid_names, safe_iloc, find_reactor_image, reactor_search_name
+from utils.data_helpers import load_db, safe_float as _safe, all_fluid_names, safe_iloc, find_reactor_image, reactor_search_name, find_reactor_model_3d, render_reactor_3d
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
@@ -440,14 +440,21 @@ if st.session_state["_p5_step"] < 1:
 
 # ── Show iso image of selected reactor ───────────────────────────────────
 
+_model_path = find_reactor_model_3d(reactors, reactor_name)
 _iso_path = find_reactor_image(reactors, reactor_name, "iso")
 _side_path = find_reactor_image(reactors, reactor_name, "side")
-if _iso_path or _side_path:
-    _imgs = [(p, lbl) for p, lbl in [(_iso_path, "Iso view"), (_side_path, "Side view")] if p]
-    _cols = st.columns([1] * len(_imgs) + [4 - len(_imgs)])
-    for _i, (_path, _lbl) in enumerate(_imgs):
-        with _cols[_i]:
-            st.image(str(_path), caption=_lbl, width=200)
+if _model_path or _iso_path or _side_path:
+    with st.container(border=True):
+        st.markdown(f"**{reactor_name}**")
+        if _model_path:
+            render_reactor_3d(_model_path, height=360)
+            st.caption("3D model — drag to rotate · scroll to zoom · right-drag to pan")
+        else:
+            _imgs = [(p, lbl) for p, lbl in [(_iso_path, "Iso view"), (_side_path, "Side view")] if p]
+            _cols = st.columns(len(_imgs))
+            for _i, (_path, _lbl) in enumerate(_imgs):
+                with _cols[_i]:
+                    st.image(str(_path), caption=_lbl, width='stretch')
 
 # ── Step 2: Allow overrides ──────────────────────────────────────────────
 st.divider()

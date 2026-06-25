@@ -10,7 +10,10 @@ import matplotlib.patches as patches
 from matplotlib.patches import Arc
 import plotly.graph_objects as go
 
-from utils.data_helpers import build_search_names, reactor_search_name
+from utils.data_helpers import (
+    build_search_names, reactor_search_name,
+    find_reactor_model_3d, render_reactor_3d,
+)
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 REACTOR_CSV = DATA_DIR / "reactors.csv"
@@ -627,6 +630,14 @@ with tab_browse:
                         )
                         _fig3d = go.Figure(data=_traces, layout=_layout)
                         st.plotly_chart(_fig3d, width='stretch')
+
+            # ── Navigable 3D Model (shown automatically when a GLB exists) ─
+            _model_path = find_reactor_model_3d(df_display, selected_reactor)
+            if _model_path is not None:
+                st.markdown("#### Interactive 3D Model")
+                with st.container(border=True):
+                    render_reactor_3d(_model_path, height=420)
+                    st.caption("Drag to rotate · scroll to zoom · right-drag to pan")
 
             # ── Reactor Images (shown automatically) ─────────────────────
             if reactor_imgs:

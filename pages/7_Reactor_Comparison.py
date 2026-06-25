@@ -35,7 +35,7 @@ from utils.rom_registry import (
     PARAM_DISPLAY,
 )
 from utils.corr_widgets import render_correlation_matrix
-from utils.data_helpers import safe_iloc, load_db, safe_float, find_reactor_image, reactor_search_name, build_search_names
+from utils.data_helpers import safe_iloc, load_db, safe_float, find_reactor_image, reactor_search_name, build_search_names, find_reactor_model_3d, render_reactor_3d
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
@@ -218,18 +218,27 @@ if st.session_state["_p7_step"] < 1:
         st.rerun()
     st.stop()
 
-# ── Show iso images of selected reactors ─────────────────────────────────
-
-_iso_imgs = [(rname, find_reactor_image(reactors, rname, "iso")) for rname in selected_names]
-_iso_imgs = [(rname, p) for rname, p in _iso_imgs if p is not None]
-if _iso_imgs:
-    _MAX_PER_ROW = 3
-    for _row_start in range(0, len(_iso_imgs), _MAX_PER_ROW):
-        _row_slice = _iso_imgs[_row_start : _row_start + _MAX_PER_ROW]
-        cols = st.columns(_MAX_PER_ROW)
-        for idx, (rname, img_path) in enumerate(_row_slice):
-            with cols[idx]:
-                st.image(str(img_path), caption=rname, width=300)
+# ── Show iso images / 3D models of selected reactors ─────────────────────
+# Each reactor gets its own bordered frame; equal-width columns keep the
+# frames evenly spaced, with a navigable 3D model when a GLB is available.
+_MAX_PER_ROW = 3
+for _row_start in range(0, len(selected_names), _MAX_PER_ROW):
+    _row_slice = selected_names[_row_start : _row_start + _MAX_PER_ROW]
+    cols = st.columns(_MAX_PER_ROW)
+    for idx, rname in enumerate(_row_slice):
+        with cols[idx]:
+            with st.container(border=True):
+                st.markdown(f"**{rname}**")
+                _model_path = find_reactor_model_3d(reactors, rname)
+                if _model_path:
+                    render_reactor_3d(_model_path, height=260)
+                    st.caption("3D · drag to rotate · scroll to zoom")
+                else:
+                    _img_path = find_reactor_image(reactors, rname, "iso")
+                    if _img_path is not None:
+                        st.image(str(_img_path), width='stretch')
+                    else:
+                        st.caption("No image available")
 
 st.divider()
 

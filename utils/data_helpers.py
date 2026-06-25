@@ -1,15 +1,24 @@
 """Shared data-access helpers used across multiple pages."""
 
+import base64
 import pathlib
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from utils.solvent_properties import SOLVENT_DB, get_properties, is_known_solvent
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 _IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "reactors"
 _IMG_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+# 3D model formats (binary/embedded glTF) navigable via the <model-viewer> web component.
+_MODEL_SUFFIXES = {".glb", ".gltf"}
+# Vendored <model-viewer> build (inlined into the iframe so it works offline / behind
+# a corporate proxy where the sandboxed component iframe can't reach a CDN).
+_MODEL_VIEWER_JS = pathlib.Path(__file__).resolve().parent / "vendor" / "model-viewer-umd.min.js"
+# CDN fallback (module build) used only if the vendored file is missing.
+_MODEL_VIEWER_SRC = "https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"
 
 
 def build_search_names(df: pd.DataFrame) -> pd.DataFrame:
@@ -153,7 +162,7 @@ def _build_reactor_image_index(dir_mtime: float) -> dict[str, str]:
     if not _IMG_DIR.exists():
         return index
     for p in _IMG_DIR.iterdir():
-        if p.is_file() and p.suffix.lower() in _IMG_SUFFIXES:
+        if p.is_file() and p.suffix.lower() in (_IMG_SUFFIXES | _MODEL_SUFFIXES):
             index[p.stem] = str(p)
     return index
 
@@ -178,3 +187,86 @@ def find_reactor_image(reactors_df: pd.DataFrame, reactor_name: str,
     if not prefix or prefix == "nan":
         return None
     return _reactor_image_index().get(prefix + "_" + suffix)
+
+
+def find_reactor_model_3d(reactors_df: pd.DataFrame,
+                          reactor_name: str) -> pathlib.Path | None:
+    """Find a navigable 3D model (``RX-XXX_3d.glb`` / ``.gltf``) for a reactor.
+
+    Prefers self-contained ``.glb`` over ``.gltf``: a ``.gltf`` typically
+    references an external ``.bin`` buffer that cannot be resolved once the
+    model is embedded as a base64 data URI, so it would render empty.
+    """
+    row = reactors_df[reactors_df["reactor_name"] == reactor_name]
+    if row.empty:
+        return None
+    prefix = str(row.iloc[0].get("reactor_id", ""))
+    if not prefix or prefix == "nan":
+        return None
+    stem = prefix + "_3d"
+    # Prefer .glb (binary, self-contained) before .gltf (may need external .bin).
+    for ext in (".glb", ".gltf"):
+        candidate = _IMG_DIR / (stem + ext)
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+@st.cache_data(show_spinner=False)
+def _encode_model_data_uri(path: str, mtime: float) -> str:
+    """Base64-encode a glTF model as a data URI (cached on path + mtime)."""
+    raw = pathlib.Path(path).read_bytes()
+    mime = "model/gltf-binary" if path.lower().endswith(".glb") else "model/gltf+json"
+    return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+
+
+@st.cache_data(show_spinner=False)
+def _model_viewer_script_tag(mtime: float | None) -> str:
+    """Return the <script> tag that defines the <model-viewer> element.
+
+    Prefers the vendored UMD build inlined directly into the iframe (works
+    offline and inside the sandboxed Streamlit component iframe). Falls back
+    to the CDN module build only when the vendored file is unavailable.
+    """
+    if mtime is not None:
+        js = _MODEL_VIEWER_JS.read_text(encoding="utf-8")
+        # Prevent a literal </script> inside the bundle from closing the tag early.
+        js = js.replace("</script>", "<\\/script>")
+        return f"<script>{js}</script>"
+    return f'<script type="module" src="{_MODEL_VIEWER_SRC}"></script>'
+
+
+def render_reactor_3d(model_path, *, height: int = 320,
+                      auto_rotate: bool = True) -> None:
+    """Render a navigable 3D reactor model inside the current container.
+
+    Uses Google's ``<model-viewer>`` web component (vendored locally and
+    inlined into the iframe) and embeds the model as a base64 data URI so it
+    works without a static file server or internet access. Supports
+    drag-to-rotate, scroll-to-zoom and pan.
+    """
+    p = pathlib.Path(model_path)
+    try:
+        src = _encode_model_data_uri(str(p), p.stat().st_mtime)
+    except OSError:
+        st.caption("3D model unavailable")
+        return
+    try:
+        script_tag = _model_viewer_script_tag(_MODEL_VIEWER_JS.stat().st_mtime)
+    except OSError:
+        script_tag = _model_viewer_script_tag(None)
+    _auto = "auto-rotate" if auto_rotate else ""
+    html = f"""
+    {script_tag}
+    <model-viewer
+        src="{src}"
+        camera-controls
+        {_auto}
+        rotation-per-second="20deg"
+        interaction-prompt="none"
+        shadow-intensity="1"
+        exposure="1"
+        style="width:100%;height:{height}px;background:#f5f5f5;border-radius:4px;">
+    </model-viewer>
+    """
+    components.html(html, height=height + 4)
