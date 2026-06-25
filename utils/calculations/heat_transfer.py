@@ -1,6 +1,7 @@
 """Heat generation, heat transfer, and batch temperature simulation."""
 
 import re as _re
+import warnings as _warnings
 
 import numpy as np
 import pandas as pd
@@ -346,22 +347,38 @@ _HTM_CSV = _pathlib.Path(__file__).resolve().parent.parent.parent / "data" / "HT
 
 
 def load_htm_db(csv_path=_HTM_CSV) -> dict[str, dict]:
-    """Load heat-transfer media from CSV."""
-    df = pd.read_csv(csv_path)
+    """Load heat-transfer media from CSV.
+
+    Resilient to a missing or malformed file: returns an empty dict if the
+    file cannot be read, and skips (with a warning) any individual row that
+    fails to parse, so a single bad cell never crashes the whole app.
+    """
     db: dict[str, dict] = {}
+    try:
+        df = pd.read_csv(csv_path)
+    except (FileNotFoundError, OSError, pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
+        _warnings.warn(f"Could not load HTM database from {csv_path}: {exc}")
+        return db
+
     for _, row in df.iterrows():
-        entry: dict = {
-            "T_min_C": float(row["T_min_C"]),
-            "T_max_C": float(row["T_max_C"]),
-            "rho_kg_m3": float(row["rho_kg_m3"]),
-            "Cp_J_kgK": float(row["Cp_J_kgK"]),
-            "mu_Pa_s": float(row["mu_Pa_s"]),
-            "k_W_mK": float(row["k_W_mK"]),
-            "notes": str(row.get("notes", "")),
-        }
-        if pd.notna(row.get("h_jacket_override")):
-            entry["h_jacket_override"] = float(row["h_jacket_override"])
-        db[str(row["htm_name"])] = entry
+        try:
+            entry: dict = {
+                "T_min_C": float(row["T_min_C"]),
+                "T_max_C": float(row["T_max_C"]),
+                "rho_kg_m3": float(row["rho_kg_m3"]),
+                "Cp_J_kgK": float(row["Cp_J_kgK"]),
+                "mu_Pa_s": float(row["mu_Pa_s"]),
+                "k_W_mK": float(row["k_W_mK"]),
+                "notes": str(row.get("notes", "")),
+            }
+            if pd.notna(row.get("h_jacket_override")):
+                entry["h_jacket_override"] = float(row["h_jacket_override"])
+            db[str(row["htm_name"])] = entry
+        except (KeyError, ValueError, TypeError) as exc:
+            _warnings.warn(
+                f"Skipping malformed HTM row '{row.get('htm_name', '?')}': {exc}"
+            )
+            continue
     return db
 
 

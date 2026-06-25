@@ -50,7 +50,11 @@ def load_db(key: str, filename: str, columns: list[str] | None = None) -> pd.Dat
     if key not in st.session_state:
         p = DATA_DIR / filename
         if p.exists():
-            df = pd.read_csv(p)
+            try:
+                df = pd.read_csv(p)
+            except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
+                st.error(f"Could not read '{filename}': {exc}. Starting with an empty table.")
+                df = pd.DataFrame(columns=columns or [])
         else:
             df = pd.DataFrame(columns=columns or [])
         # Add search_name for reactor databases
@@ -126,6 +130,32 @@ def safe_iloc(df: pd.DataFrame, column: str, value, label: str = "record"):
     return filtered.iloc[0]
 
 
+@st.cache_data(show_spinner=False)
+def _build_reactor_image_index(dir_mtime: float) -> dict[str, str]:
+    """Map image stem -> file path for all images in the reactors dir.
+
+    Cached on the directory mtime so the (potentially network-backed)
+    directory is only scanned when its contents change, not every rerun.
+    """
+    index: dict[str, str] = {}
+    if not _IMG_DIR.exists():
+        return index
+    for p in _IMG_DIR.iterdir():
+        if p.is_file() and p.suffix.lower() in _IMG_SUFFIXES:
+            index[p.stem] = str(p)
+    return index
+
+
+def _reactor_image_index() -> dict[str, pathlib.Path]:
+    """Return the reactor image index, refreshed when the directory changes."""
+    try:
+        mtime = _IMG_DIR.stat().st_mtime
+    except OSError:
+        return {}
+    return {stem: pathlib.Path(path)
+            for stem, path in _build_reactor_image_index(mtime).items()}
+
+
 def find_reactor_image(reactors_df: pd.DataFrame, reactor_name: str,
                        suffix: str) -> pathlib.Path | None:
     """Find a reactor image (iso, side, etc.) by reactor_id prefix."""
@@ -133,10 +163,6 @@ def find_reactor_image(reactors_df: pd.DataFrame, reactor_name: str,
     if row.empty:
         return None
     prefix = str(row.iloc[0].get("reactor_id", ""))
-    if not prefix or prefix == "nan" or not _IMG_DIR.exists():
+    if not prefix or prefix == "nan":
         return None
-    for p in _IMG_DIR.iterdir():
-        if p.is_file() and p.suffix.lower() in _IMG_SUFFIXES:
-            if p.stem == prefix + "_" + suffix:
-                return p
-    return None
+    return _reactor_image_index().get(prefix + "_" + suffix)

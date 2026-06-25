@@ -33,6 +33,27 @@ def _save_custom_fluids(df: pd.DataFrame):
     df.to_csv(FLUID_CSV, index=False)
 
 
+@st.cache_data(show_spinner=False)
+def _property_curves(solvent_name: str, T_lo: float, T_hi: float, n: int = 200):
+    """Compute property-vs-temperature arrays for a solvent.
+
+    Cached on (solvent, T range) so the 6 × n correlation evaluations are
+    only recomputed when the solvent or its liquid range changes, not on
+    every unrelated widget interaction.
+    """
+    sd = SOLVENT_DB[solvent_name]
+    T_arr = np.linspace(T_lo, T_hi, n)
+    return (
+        T_arr,
+        [density(T, sd) for T in T_arr],
+        [viscosity(T, sd) for T in T_arr],
+        [surface_tension(T, sd) for T in T_arr],
+        [diffusivity(T, sd) for T in T_arr],
+        [specific_heat(T, sd) for T in T_arr],
+        [thermal_conductivity(T, sd) for T in T_arr],
+    )
+
+
 if "fluid_db" not in st.session_state:
     st.session_state.fluid_db = _load_custom_fluids()
 
@@ -129,7 +150,6 @@ with tab_solvent:
     st.subheader("Property vs Temperature")
     T_lo = sd.mp_C
     T_hi = bp_at_P
-    T_arr = np.linspace(T_lo, T_hi, 200)
 
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
@@ -140,12 +160,8 @@ with tab_solvent:
         "Specific heat Cp (J/kg·K)", "Thermal conductivity k (W/m·K)",
     ], vertical_spacing=0.14, horizontal_spacing=0.10)
 
-    rho_arr = [density(T, sd) for T in T_arr]
-    mu_arr = [viscosity(T, sd) for T in T_arr]
-    sig_arr = [surface_tension(T, sd) for T in T_arr]
-    D_arr = [diffusivity(T, sd) for T in T_arr]
-    Cp_arr = [specific_heat(T, sd) for T in T_arr]
-    k_arr = [thermal_conductivity(T, sd) for T in T_arr]
+    T_arr, rho_arr, mu_arr, sig_arr, D_arr, Cp_arr, k_arr = _property_curves(
+        solvent_name, T_lo, T_hi)
 
     for r, c, y_arr, name in [
         (1, 1, rho_arr, "ρ"), (1, 2, mu_arr, "μ"),
