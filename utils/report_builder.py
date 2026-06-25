@@ -9,6 +9,7 @@ import pathlib
 import io
 import datetime
 import re
+import warnings
 import numpy as np
 
 from fpdf import FPDF
@@ -477,9 +478,11 @@ def add_envelope_charts(pdf: MixingReport, envelope: dict, V_L: float,
             continue
         try:
             png = fig_to_png_bytes(fig)
-        except Exception:
+        except Exception as exc:
+            warnings.warn(f"Skipping '{param}' chart in report: {exc}")
             continue
         if not png or png[:4] != b"\x89PNG":
+            warnings.warn(f"Skipping '{param}' chart in report: invalid PNG output.")
             continue
         if _chart_count_on_page >= 2:
             pdf.add_page()
@@ -760,9 +763,11 @@ def add_comparison_charts(pdf: MixingReport, curve_data: dict,
             continue
         try:
             png = fig_to_png_bytes(fig)
-        except Exception:
+        except Exception as exc:
+            warnings.warn(f"Skipping '{param}' comparison chart in report: {exc}")
             continue
         if not png or png[:4] != b"\x89PNG":
+            warnings.warn(f"Skipping '{param}' comparison chart in report: invalid PNG output.")
             continue
         if _chart_count_on_page >= 2:
             pdf.add_page()

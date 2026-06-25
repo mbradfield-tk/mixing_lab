@@ -48,6 +48,60 @@ DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 # ── Load databases ───────────────────────────────────────────────────────
 from utils.data_helpers import load_db, safe_float as _safe, all_fluid_names, safe_iloc, reactor_search_name
 
+
+@st.cache_data(show_spinner=False)
+def _simulate_batch_profiles(
+    fluid_name: str, fluid_P_atm: float, is_solvent: bool,
+    rho: float, mu: float, Cp: float, k_fluid: float,
+    V_L_m3: float, N_rps: float, D_imp: float, D_tank: float, h_o: float,
+    wall_k: float, wall_m: float, lining_k: float, lining_m: float,
+    fouling_R: float, A_ht: float,
+    T_start: float, T_target: float, T_jacket_in: float,
+    mu_wall: float, nu_corr: str,
+    P_agitator_W: float, Q_rxn: float,
+    dt: float, t_max: float,
+    m_dot_jacket: float, htm_Cp: float,
+):
+    """Run both temperature-dependent batch simulations, cached on inputs.
+
+    The expensive ODE solves only re-run when an input that actually affects
+    them changes — unrelated reruns (e.g. toggling the time-axis unit) reuse
+    the cached arrays. The ``props_fn`` closure is rebuilt here from hashable
+    arguments so the result stays cacheable.
+    """
+    if is_solvent:
+        def _props_fn(T_C):
+            p = get_properties(fluid_name, T_C, fluid_P_atm)
+            return (p["rho_kg_m3"], p["mu_Pa_s"],
+                    p["Cp_J_per_kgK"], p["k_W_per_mK"])
+    else:
+        def _props_fn(T_C):
+            return (rho, mu, Cp, k_fluid)
+
+    t1, T1, U1 = batch_temperature_profile_tdep(
+        props_fn=_props_fn, V_L_m3=V_L_m3,
+        N_rps=N_rps, D_imp=D_imp, D_tank=D_tank, h_o=h_o,
+        wall_k=wall_k, wall_m=wall_m, lining_k=lining_k, lining_m=lining_m,
+        fouling_R=fouling_R, A=A_ht,
+        T_start=T_start, T_target=T_target, T_jacket=T_jacket_in,
+        mu_wall=mu_wall, nu_corr=nu_corr,
+        P_agitator_fn=P_agitator_W, Q_rxn=Q_rxn,
+        dt=dt, t_max=t_max,
+    )
+    t2, T2, Tj2, U2 = batch_temp_profile_variable_jacket_tdep(
+        props_fn=_props_fn, V_L_m3=V_L_m3,
+        N_rps=N_rps, D_imp=D_imp, D_tank=D_tank, h_o=h_o,
+        wall_k=wall_k, wall_m=wall_m, lining_k=lining_k, lining_m=lining_m,
+        fouling_R=fouling_R, A=A_ht,
+        T_start=T_start, T_target=T_target, T_jacket_in=T_jacket_in,
+        m_dot_jacket=m_dot_jacket, Cp_jacket=htm_Cp,
+        mu_wall=mu_wall, nu_corr=nu_corr,
+        P_agitator=P_agitator_W, Q_rxn=Q_rxn,
+        dt=dt, t_max=t_max,
+    )
+    return t1, T1, U1, t2, T2, Tj2, U2
+
+
 reactors = load_db("reactor_db", "reactors.csv", ["reactor_name"])
 custom_fluids = load_db("fluid_db", "fluids.csv", ["fluid_name"])
 
@@ -625,39 +679,19 @@ if st.session_state.get("_ht_computed"):
     _dt_sim = max(0.5, t_log / 2000) if t_log < np.inf else 1.0
     _t_max_sim = min(t_log * 2.0 if t_log < np.inf else 36000.0, 86400.0)
 
-    # Model 1: Constant jacket temperature (isothermal utility)
-    t1, T1, U1 = batch_temperature_profile_tdep(
-        props_fn=_props_fn,
-        V_L_m3=V_L_m3,
-        N_rps=N_rps, D_imp=D_imp, D_tank=D_tank,
-        h_o=h_o,
-        wall_k=wall_k, wall_m=wall_m,
-        lining_k=lining_k, lining_m=lining_m,
-        fouling_R=fouling_R,
-        A=A_ht,
-        T_start=T_start, T_target=T_target, T_jacket=T_jacket_in,
+    # Model 1 (const. jacket) + Model 2 (variable jacket), cached on inputs so
+    # unrelated reruns don't re-solve the ODEs.
+    t1, T1, U1, t2, T2, Tj2, U2 = _simulate_batch_profiles(
+        fluid_name=fluid_name, fluid_P_atm=fluid_P_atm, is_solvent=bool(_is_solvent),
+        rho=rho, mu=mu, Cp=Cp, k_fluid=k_fluid,
+        V_L_m3=V_L_m3, N_rps=N_rps, D_imp=D_imp, D_tank=D_tank, h_o=h_o,
+        wall_k=wall_k, wall_m=wall_m, lining_k=lining_k, lining_m=lining_m,
+        fouling_R=fouling_R, A_ht=A_ht,
+        T_start=T_start, T_target=T_target, T_jacket_in=T_jacket_in,
         mu_wall=mu_wall, nu_corr=nu_corr,
-        P_agitator_fn=P_agitator_W, Q_rxn=Q_rxn,
+        P_agitator_W=P_agitator_W, Q_rxn=Q_rxn,
         dt=_dt_sim, t_max=_t_max_sim,
-    )
-
-    # Model 2: Variable jacket (finite flow rate)
-    t2, T2, Tj2, U2 = batch_temp_profile_variable_jacket_tdep(
-        props_fn=_props_fn,
-        V_L_m3=V_L_m3,
-        N_rps=N_rps, D_imp=D_imp, D_tank=D_tank,
-        h_o=h_o,
-        wall_k=wall_k, wall_m=wall_m,
-        lining_k=lining_k, lining_m=lining_m,
-        fouling_R=fouling_R,
-        A=A_ht,
-        T_start=T_start, T_target=T_target,
-        T_jacket_in=T_jacket_in,
-        m_dot_jacket=m_dot_jacket,
-        Cp_jacket=htm_Cp,
-        mu_wall=mu_wall, nu_corr=nu_corr,
-        P_agitator=P_agitator_W, Q_rxn=Q_rxn,
-        dt=_dt_sim, t_max=_t_max_sim,
+        m_dot_jacket=m_dot_jacket, htm_Cp=htm_Cp,
     )
 
     # Time to target from simulations

@@ -225,6 +225,7 @@ def _collect_bourne_inputs():
     _skip = {"reactor", "fluid", "project", "step_no", "uop",
              "t1_assess", "t2_assess", "t3_assess", "export_pdf", "save"}
     rows = []
+    _dropped: list[str] = []
     for k, v in list(st.session_state.items()):
         if k.startswith(prefix):
             logical = k[len(prefix):]
@@ -235,14 +236,21 @@ def _collect_bourne_inputs():
             try:
                 vj = json.dumps(v, default=_json_default)
             except (TypeError, ValueError):
+                _dropped.append(logical)
                 continue
             rows.append({"key": logical, "scope": "gen", "value": vj})
         elif k.startswith("_sel_bp_"):
             try:
                 vj = json.dumps(v, default=_json_default)
             except (TypeError, ValueError):
+                _dropped.append(k)
                 continue
             rows.append({"key": k, "scope": "raw", "value": vj})
+    if _dropped:
+        st.warning(
+            "Some inputs could not be saved to the export and were omitted: "
+            + ", ".join(sorted(_dropped))
+        )
     df = pd.DataFrame(rows, columns=["key", "scope", "value"])
     if not df.empty:
         df = df.sort_values(["scope", "key"]).reset_index(drop=True)

@@ -46,9 +46,20 @@ def reactor_search_name(reactors_df: pd.DataFrame, reactor_name: str) -> str:
 
 
 def load_db(key: str, filename: str, columns: list[str] | None = None) -> pd.DataFrame:
-    """Load a CSV from data/ into session state (once), returning the DataFrame."""
-    if key not in st.session_state:
-        p = DATA_DIR / filename
+    """Load a CSV from data/ into session state, returning the DataFrame.
+
+    The cached copy is automatically refreshed when the underlying CSV file
+    changes on disk (detected via modification time), so read-only consumer
+    pages always reflect edits saved elsewhere without an app restart.
+    """
+    p = DATA_DIR / filename
+    try:
+        mtime = p.stat().st_mtime
+    except OSError:
+        mtime = None
+
+    cached_mtime = st.session_state.get(f"{key}__mtime")
+    if key not in st.session_state or cached_mtime != mtime:
         if p.exists():
             try:
                 df = pd.read_csv(p)
@@ -61,6 +72,7 @@ def load_db(key: str, filename: str, columns: list[str] | None = None) -> pd.Dat
         if "reactor_name" in df.columns:
             df = build_search_names(df)
         st.session_state[key] = df
+        st.session_state[f"{key}__mtime"] = mtime
     return st.session_state[key]
 
 
