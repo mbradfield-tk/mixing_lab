@@ -231,7 +231,7 @@ for _row_start in range(0, len(selected_names), _MAX_PER_ROW):
                 st.markdown(f"**{rname}**")
                 _model_path = find_reactor_model_3d(reactors, rname)
                 if _model_path:
-                    render_reactor_3d(_model_path, height=260)
+                    render_reactor_3d(_model_path, height=260, auto_rotate=False)
                     st.caption("3D · drag to rotate · scroll to zoom")
                 else:
                     _img_path = find_reactor_image(reactors, rname, "iso")

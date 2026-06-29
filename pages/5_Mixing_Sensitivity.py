@@ -447,7 +447,7 @@ if _model_path or _iso_path or _side_path:
     with st.container(border=True):
         st.markdown(f"**{reactor_name}**")
         if _model_path:
-            render_reactor_3d(_model_path, height=360)
+            render_reactor_3d(_model_path, height=360, auto_rotate=False)
             st.caption("3D model — drag to rotate · scroll to zoom · right-drag to pan")
         else:
             _imgs = [(p, lbl) for p, lbl in [(_iso_path, "Iso view"), (_side_path, "Side view")] if p]

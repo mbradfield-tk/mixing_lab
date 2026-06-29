@@ -636,17 +636,17 @@ with tab_browse:
             if _model_path is not None:
                 st.markdown("#### Interactive 3D Model")
                 with st.container(border=True):
-                    render_reactor_3d(_model_path, height=420)
+                    render_reactor_3d(_model_path, height=420, auto_rotate=False)
                     st.caption("Drag to rotate · scroll to zoom · right-drag to pan")
 
             # ── Reactor Images (shown automatically) ─────────────────────
             if reactor_imgs:
                 st.markdown("#### Reactor Photos")
-                cols = st.columns(min(len(reactor_imgs), 4))
-                for idx, img_path in enumerate(reactor_imgs):
-                    with cols[idx % len(cols)]:
-                        label = img_path.stem.removeprefix(prefix).lstrip("_") or img_path.stem
-                        with st.container(border=True):
+                with st.container(border=True):
+                    cols = st.columns(min(len(reactor_imgs), 4))
+                    for idx, img_path in enumerate(reactor_imgs):
+                        with cols[idx % len(cols)]:
+                            label = img_path.stem.removeprefix(prefix).lstrip("_") or img_path.stem
                             st.image(str(img_path), caption=label, width='stretch')
             elif not cfd_imgs:
                 st.info(
