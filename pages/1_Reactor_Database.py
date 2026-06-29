@@ -646,7 +646,8 @@ with tab_browse:
                 for idx, img_path in enumerate(reactor_imgs):
                     with cols[idx % len(cols)]:
                         label = img_path.stem.removeprefix(prefix).lstrip("_") or img_path.stem
-                        st.image(str(img_path), caption=label, width=250)
+                        with st.container(border=True):
+                            st.image(str(img_path), caption=label, width='stretch')
             elif not cfd_imgs:
                 st.info(
                     f"No images found for **{selected_reactor}** (ID: `{prefix}`). "
@@ -674,7 +675,7 @@ with tab_browse:
                                 st.image(
                                     str(img_path),
                                     caption=img_path.stem.split("_CFD_")[-1],
-                                    width=200,
+                                    width='stretch',
                                 )
                 else:
                     st.info(
