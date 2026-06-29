@@ -112,8 +112,17 @@ def _idx(lst, key, default=0):
 
 col_r, col_rx, col_f = st.columns(3)
 
+# Default the reactor selection to RX-027 when no prior selection exists
+_default_reactor_idx = 0
+if "reactor_id" in reactors.columns:
+    _rx_default = reactors[reactors["reactor_id"] == "RX-027"]
+    if not _rx_default.empty:
+        _rx_default_name = _rx_default.iloc[0]["reactor_name"]
+        if _rx_default_name in _reactor_list:
+            _default_reactor_idx = _reactor_list.index(_rx_default_name)
+
 with col_r:
-    reactor_name = st.selectbox("Reactor", _reactor_list, index=_idx(_reactor_list, "_sel_reactor"), key="ms_reactor", on_change=_reset_p5,
+    reactor_name = st.selectbox("Reactor", _reactor_list, index=_idx(_reactor_list, "_sel_reactor", default=_default_reactor_idx), key="ms_reactor", on_change=_reset_p5,
                                 format_func=lambda n: reactor_search_name(reactors, n))
     st.session_state["_sel_reactor"] = reactor_name
 with col_rx:
@@ -163,6 +172,23 @@ else:
 
 reactor = safe_iloc(reactors, "reactor_name", reactor_name, "Reactor")
 reaction = safe_iloc(reactions, "reaction_name", reaction_name, "Reaction")
+
+# ── Reactor visualization (3D model or iso/side images) ──────────────────
+_model_path = find_reactor_model_3d(reactors, reactor_name)
+_iso_path = find_reactor_image(reactors, reactor_name, "iso")
+_side_path = find_reactor_image(reactors, reactor_name, "side")
+if _model_path or _iso_path or _side_path:
+    with st.container(border=True):
+        st.markdown(f"**{reactor_name}**")
+        if _model_path:
+            render_reactor_3d(_model_path, height=360, auto_rotate=False)
+            st.caption("3D model — drag to rotate · scroll to zoom · right-drag to pan")
+        else:
+            _imgs = [(p, lbl) for p, lbl in [(_iso_path, "Iso view"), (_side_path, "Side view")] if p]
+            _cols = st.columns(len(_imgs))
+            for _i, (_path, _lbl) in enumerate(_imgs):
+                with _cols[_i]:
+                    st.image(str(_path), caption=_lbl, width='stretch')
 
 # Use selection names in widget keys so they reset automatically on change
 _rk = reactor_name   # reactor key fragment
@@ -437,24 +463,6 @@ if st.session_state["_p5_step"] < 1:
         st.session_state["_p5_step"] = 1
         st.rerun()
     st.stop()
-
-# ── Show iso image of selected reactor ───────────────────────────────────
-
-_model_path = find_reactor_model_3d(reactors, reactor_name)
-_iso_path = find_reactor_image(reactors, reactor_name, "iso")
-_side_path = find_reactor_image(reactors, reactor_name, "side")
-if _model_path or _iso_path or _side_path:
-    with st.container(border=True):
-        st.markdown(f"**{reactor_name}**")
-        if _model_path:
-            render_reactor_3d(_model_path, height=360, auto_rotate=False)
-            st.caption("3D model — drag to rotate · scroll to zoom · right-drag to pan")
-        else:
-            _imgs = [(p, lbl) for p, lbl in [(_iso_path, "Iso view"), (_side_path, "Side view")] if p]
-            _cols = st.columns(len(_imgs))
-            for _i, (_path, _lbl) in enumerate(_imgs):
-                with _cols[_i]:
-                    st.image(str(_path), caption=_lbl, width='stretch')
 
 # ── Step 2: Allow overrides ──────────────────────────────────────────────
 st.divider()

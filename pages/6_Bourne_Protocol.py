@@ -47,7 +47,10 @@ from utils.calculations import (
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
-from utils.data_helpers import load_db, safe_float, all_fluid_names, safe_iloc, reactor_search_name
+from utils.data_helpers import (
+    load_db, safe_float, all_fluid_names, safe_iloc, reactor_search_name,
+    find_reactor_image, find_reactor_model_3d, render_reactor_3d,
+)
 
 reactors = load_db("reactor_db", "reactors.csv")
 custom_fluids = load_db("fluid_db", "fluids.csv")
@@ -383,7 +386,15 @@ col_r, col_f = st.columns(2)
 
 with col_r:
     if not reactors.empty:
-        reactor_name = st.selectbox("Reactor", _reactor_list, index=_sel_idx(_reactor_list, "_sel_bp_reactor"), key=_bk("reactor"),
+        # Default the dropdown to RX-027 (by reactor_id) when no prior selection.
+        _default_reactor_idx = 0
+        if "reactor_id" in reactors.columns:
+            _rx_default = reactors[reactors["reactor_id"] == "RX-027"]
+            if not _rx_default.empty:
+                _rx_default_name = _rx_default.iloc[0]["reactor_name"]
+                if _rx_default_name in _reactor_list:
+                    _default_reactor_idx = _reactor_list.index(_rx_default_name)
+        reactor_name = st.selectbox("Reactor", _reactor_list, index=_sel_idx(_reactor_list, "_sel_bp_reactor", default=_default_reactor_idx), key=_bk("reactor"),
                                     format_func=lambda n: reactor_search_name(reactors, n))
         st.session_state["_sel_bp_reactor"] = reactor_name
         r = safe_iloc(reactors, "reactor_name", reactor_name, "Reactor")
@@ -452,6 +463,24 @@ with col_f:
         mu = float(_cust["mu_Pa_s"])
 
 nu = mu / rho if rho > 0 else 0.0
+
+# ── Reactor visualization (3D model or iso/side images) ──────────────────
+if not reactors.empty:
+    _model_path = find_reactor_model_3d(reactors, reactor_name)
+    _iso_path = find_reactor_image(reactors, reactor_name, "iso")
+    _side_path = find_reactor_image(reactors, reactor_name, "side")
+    if _model_path or _iso_path or _side_path:
+        with st.container(border=True):
+            st.markdown(f"**{reactor_name}**")
+            if _model_path:
+                render_reactor_3d(_model_path, height=360, auto_rotate=False)
+                st.caption("3D model — drag to rotate · scroll to zoom · right-drag to pan")
+            else:
+                _imgs = [(p, lbl) for p, lbl in [(_iso_path, "Iso view"), (_side_path, "Side view")] if p]
+                _cols = st.columns(len(_imgs))
+                for _i, (_path, _lbl) in enumerate(_imgs):
+                    with _cols[_i]:
+                        st.image(str(_path), caption=_lbl, width='stretch')
 
 # ── Volume selection ──────────────────────────────────────────────────────
 st.subheader("Working Volume")
