@@ -4,7 +4,7 @@ import streamlit as st
 
 st.title("🔬 Mixing Lab")
 st.badge("v1.0.0", color="blue")
-st.badge("Updated: June 17, 2026", color="green")
+st.badge("Updated: June 30, 2026", color="green")
 st.subheader("Hydrodynamics & Mixing-Sensitivity Assessment Tool")
 
 st.markdown("""

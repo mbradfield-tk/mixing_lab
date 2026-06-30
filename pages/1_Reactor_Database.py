@@ -330,59 +330,210 @@ with tab_browse:
                     _top = str(_r.get("top_dish", "")).strip() if pd.notna(_r.get("top_dish")) else ""
                     _n_imp = int(_r["impeller_count"]) if pd.notna(_r.get("impeller_count")) else 1
 
-                    # Dish depth heuristics (fraction of R)
+                    # ── Dish geometry heuristics ──────────────────────────
+                    # Approximate the head depth & profile shape from its
+                    # description. Depths follow standard pressure-vessel heads,
+                    # expressed as a fraction of the tank radius R (= D/2):
+                    #   Hemispherical / round       depth = R       (0.50 D)
+                    #   DIN 28013 Korbbogen         depth ≈ 0.51 R  (0.255 D)
+                    #   Semi-ellipsoidal / 2:1      depth = 0.50 R  (0.25 D)
+                    #   DIN 28011 Klöpper           depth ≈ 0.39 R  (0.194 D)
+                    #   ASME F&D / torispherical    depth ≈ 0.34 R  (0.17 D)
+                    #   Conical                     depth = R       (~45° cone)
+                    #   Shallow / standard dished   depth ≈ 0.20 R
+                    #   Flat                        depth = 0
                     def _dish_depth(dish_type: str, radius: float) -> float:
-                        dt = dish_type.lower()
-                        if "round" in dt or "hemi" in dt:
-                            return radius  # full hemisphere: depth = R
-                        elif "elliptical" in dt or "2:1" in dt:
-                            return radius / 2.0
-                        elif "torispherical" in dt or "din" in dt:
-                            return radius * 0.25
-                        elif "conical" in dt:
-                            return radius * 0.6
-                        elif "dished" in dt:
-                            return radius * 0.2
-                        elif "flat" in dt:
+                        dt = dish_type.lower().strip()
+                        if not dt or "flat" in dt or "none" in dt:
                             return 0.0
-                        return 0.0
+                        if "cone" in dt or "conical" in dt:
+                            return radius
+                        if "hemi" in dt or "round" in dt:
+                            return radius
+                        if "korbbogen" in dt or "28013" in dt:
+                            return radius * 0.51
+                        if ("klopper" in dt or "kloepper" in dt or "klöpper" in dt
+                                or "28011" in dt or ("din" in dt and "tori" in dt)):
+                            return radius * 0.39
+                        if ("tori" in dt or "asme" in dt or "f&d" in dt
+                                or "f & d" in dt or "flanged" in dt):
+                            return radius * 0.34
+                        if "ellip" in dt or "2:1" in dt:
+                            return radius * 0.50
+                        if "dish" in dt:
+                            return radius * 0.20
+                        return radius * 0.20  # unknown but non-flat → shallow dish
+
+                    def _dish_shape(dish_type: str) -> str:
+                        """Classify the dish profile: 'flat', 'cone' or 'curved'."""
+                        dt = dish_type.lower().strip()
+                        if not dt or "flat" in dt or "none" in dt:
+                            return "flat"
+                        if "cone" in dt or "conical" in dt:
+                            return "cone"
+                        return "curved"
 
                     _bot_depth = _dish_depth(_bottom, _R)
                     _top_depth = _dish_depth(_top, _R)
+                    _bot_shape = _dish_shape(_bottom)
+                    _top_shape = _dish_shape(_top)
 
                     # Impeller geometry (shared between 2D & 3D)
                     _imp_data = [
-                        ("D_imp_m", "imp1_clearance_m", "imp1_height_m"),
-                        ("D_imp2_m", "imp2_clearance_m", "imp2_height_m"),
-                        ("D_imp3_m", "imp3_clearance_m", "imp3_height_m"),
+                        ("D_imp_m", "imp1_clearance_m", "imp1_height_m", "impeller_type"),
+                        ("D_imp2_m", "imp2_clearance_m", "imp2_height_m", "impeller_type2"),
+                        ("D_imp3_m", "imp3_clearance_m", "imp3_height_m", "impeller_type3"),
                     ]
                     _imp_colors_hex = ["#1976D2", "#F57C00", "#388E3C"]
 
-                    _impellers = []  # list of (d_imp, clr_y, h_imp, color)
+                    # Clearance (off-bottom) is measured from the LOWEST interior
+                    # point of the vessel – i.e. the bottom of the dish at
+                    # y = -_bot_depth – not from the tangent line at y = 0.
+                    # Each tuple stores the absolute centre height ``cy``.
+                    _impellers = []  # (d_imp, cy, h_imp, color, itype)
                     for i in range(_n_imp):
-                        d_col, c_col, h_col = _imp_data[i]
+                        d_col, c_col, h_col, t_col = _imp_data[i]
                         _d_imp = float(_r[d_col]) if pd.notna(_r.get(d_col)) else None
                         _clr = float(_r[c_col]) if pd.notna(_r.get(c_col)) else None
                         _h_imp = float(_r[h_col]) if pd.notna(_r.get(h_col)) else None
+                        _itype = str(_r.get(t_col, "")) if pd.notna(_r.get(t_col)) else ""
                         if _d_imp is None or _d_imp <= 0:
                             continue
                         if _clr is None or _clr <= 0:
-                            _clr = _H * (i + 1) / (_n_imp + 1)
+                            # Default: spread over the full interior height
+                            # (dish bottom → top tangent).
+                            _clr = (_bot_depth + _H) * (i + 1) / (_n_imp + 1)
                         if _h_imp is None or _h_imp <= 0:
                             _h_imp = _d_imp * 0.15
-                        _impellers.append((_d_imp, _clr, _h_imp, _imp_colors_hex[i % len(_imp_colors_hex)]))
+                        _cy = -_bot_depth + _clr  # absolute centre height
+                        _impellers.append((_d_imp, _cy, _h_imp, _imp_colors_hex[i % len(_imp_colors_hex)], _itype))
 
                     _lowest_imp_y = min((c[1] for c in _impellers), default=None)
+
+                    # ── Liquid fill level (shared between 2D & 3D) ────────
+                    # Interior radius as a function of absolute height z, where
+                    # z = 0 is the bottom tangent line and z = -_bot_depth is
+                    # the lowest interior point of the bottom dish.
+                    def _radius_at(z: float) -> float:
+                        if z >= 0.0:
+                            return _R  # straight wall (and beyond)
+                        if _bot_depth <= 0:
+                            return _R  # flat bottom
+                        d = -z  # depth below the bottom tangent line
+                        if d >= _bot_depth:
+                            return 0.0
+                        if _bot_shape == "cone":
+                            return _R * (z + _bot_depth) / _bot_depth
+                        # curved heads approximated as a half-ellipse
+                        return _R * float(np.sqrt(max(0.0, 1.0 - (d / _bot_depth) ** 2)))
+
+                    # ── Impeller fit validation ───────────────────────────
+                    # Warn if an impeller block intersects the vessel wall
+                    # (radially wider than the local interior radius) or spills
+                    # past the dish / top boundaries – usually a sign that the
+                    # impeller diameter, height or clearance is mis-entered.
+                    _imp_warnings: list[str] = []
+                    _tol = _R * 1e-3
+                    for _wi, (_d_w, _cy_w, _h_w, _c_w, _t_w) in enumerate(_impellers, 1):
+                        _r_w = _d_w / 2.0
+                        _zb_w = _cy_w - _h_w / 2.0
+                        _zt_w = _cy_w + _h_w / 2.0
+                        # Narrowest interior radius spanned by the impeller height
+                        _local_r = min(_radius_at(z) for z in np.linspace(_zb_w, _zt_w, 12))
+                        if _r_w > _R + _tol:
+                            _imp_warnings.append(
+                                f"Impeller {_wi}: diameter ⌀{_d_w*1000:.0f} mm exceeds the "
+                                f"tank ID ⌀{_D*1000:.0f} mm."
+                            )
+                        elif _r_w > _local_r + _tol:
+                            _imp_warnings.append(
+                                f"Impeller {_wi}: the blade (⌀{_d_w*1000:.0f} mm) overlaps the "
+                                f"dish wall at this height – check the diameter, height or clearance."
+                            )
+                        if _zb_w < -_bot_depth - _tol:
+                            _imp_warnings.append(
+                                f"Impeller {_wi}: the block extends below the bottom of the "
+                                f"vessel – check the clearance or height."
+                            )
+                        if _zt_w > _H + _top_depth + _tol:
+                            _imp_warnings.append(
+                                f"Impeller {_wi}: the block extends above the top of the "
+                                f"vessel – check the clearance or height."
+                            )
+                    if _imp_warnings:
+                        st.error(
+                            "⚠️ The impeller size or offset might be incorrect — the "
+                            "drawn impeller overlaps the vessel walls:\n\n"
+                            + "\n".join(f"- {_m}" for _m in _imp_warnings)
+                        )
+
+                    # Cumulative interior volume vs. height, less an estimated
+                    # impeller metal displacement (bounding swept disc × solidity).
+                    _IMP_SOLIDITY = 0.20
+                    _z_grid = np.linspace(-_bot_depth, _H, 400)
+                    _rad_grid = np.array([_radius_at(z) for z in _z_grid])
+                    _area_grid = np.pi * _rad_grid ** 2
+                    _dz = (_H + _bot_depth) / (len(_z_grid) - 1) if len(_z_grid) > 1 else 0.0
+                    _cum_vessel = np.concatenate(
+                        [[0.0], np.cumsum((_area_grid[:-1] + _area_grid[1:]) / 2.0 * _dz)]
+                    )
+                    _disp_below = np.zeros_like(_z_grid)
+                    for (_d_i, _cy_i, _h_i, _c_i, _t_i) in _impellers:
+                        _ri = _d_i / 2.0
+                        _vdisp = np.pi * _ri ** 2 * _h_i * _IMP_SOLIDITY
+                        _z0 = _cy_i - _h_i / 2.0
+                        _z1 = _cy_i + _h_i / 2.0
+                        if _z1 > _z0:
+                            _disp_below += _vdisp * np.clip((_z_grid - _z0) / (_z1 - _z0), 0.0, 1.0)
+                    _cap_grid = np.clip(_cum_vessel - _disp_below, 0.0, None)
+                    _total_vol_L = float(_cap_grid[-1]) * 1000.0
+
+                    _liquid_level = None  # absolute height of liquid surface (z)
+                    _liquid_fill_L = None
+                    _show_liquid = st.checkbox(
+                        "💧 Show liquid level", key="reactor_show_liquid",
+                        help="Display the liquid surface for a given fill volume. "
+                             "The level accounts for the dish and straight-wall "
+                             "volumes and an estimated impeller displacement.",
+                    )
+                    if _show_liquid and _total_vol_L > 0:
+                        _liquid_fill_L = st.number_input(
+                            "Liquid fill volume (L)", min_value=0.0,
+                            max_value=float(round(_total_vol_L, 2)),
+                            value=float(round(_total_vol_L * 0.7, 2)),
+                            step=float(max(round(_total_vol_L / 100.0, 2), 0.01)),
+                            key="reactor_liquid_fill_L",
+                            help=f"Working volume to full brim ≈ {_total_vol_L:,.1f} L",
+                        )
+                        # Invert the capacity curve to find the surface height.
+                        _liquid_level = float(np.interp(
+                            _liquid_fill_L / 1000.0, _cap_grid, _z_grid))
+                        _fill_pct = (_liquid_fill_L / _total_vol_L * 100.0
+                                     if _total_vol_L > 0 else 0.0)
+                        st.caption(
+                            f"Liquid surface at **{_liquid_level * 1000:+.0f} mm** "
+                            f"relative to the bottom tangent line "
+                            f"({_fill_pct:.0f}% of brim-full volume)."
+                        )
 
                     if _render_mode == "2D":
                         # ── 2-D matplotlib schematic ──────────────────
                         _total_h = _bot_depth + _H + _top_depth
-                        _margin = max(_total_h * 0.1, 0.02)
 
-                        fig, ax = plt.subplots(1, 1, figsize=(2.5, 4.5))
+                        # Size-aware padding so dimension labels never crowd or
+                        # overlap the vessel. Height dimension lives on the LEFT,
+                        # impeller labels on the RIGHT, diameter BELOW the dish.
+                        _ref = max(_R, _total_h)        # characteristic size
+                        _gap = _ref * 0.10              # offset of dim lines from vessel
+                        _left_pad = _R * 0.95           # room for height dimension (left)
+                        _right_pad = _R * 1.05          # room for impeller labels (right)
+                        _bot_pad = _gap + _ref * 0.16   # room for diameter dimension (below)
+                        _top_pad = _ref * 0.06
+
+                        fig, ax = plt.subplots(1, 1, figsize=(3.4, 4.8))
                         ax.set_aspect("equal")
-                        ax.set_xlim(-_R - _margin, _R + _margin)
-                        ax.set_ylim(-_bot_depth - _margin, _H + _top_depth + _margin)
+                        ax.set_xlim(-_R - _left_pad, _R + _right_pad)
+                        ax.set_ylim(-_bot_depth - _bot_pad, _H + _top_depth + _top_pad)
                         ax.set_axis_off()
 
                         _wall_lw = 2.0
@@ -392,36 +543,85 @@ with tab_browse:
                         ax.plot([-_R, -_R], [0, _H], color=_wall_color, lw=_wall_lw)
                         ax.plot([_R, _R], [0, _H], color=_wall_color, lw=_wall_lw)
 
-                        # Bottom dish
-                        if _bot_depth > 0:
+                        # Bottom dish (shape-aware)
+                        if _bot_depth <= 0 or _bot_shape == "flat":
+                            ax.plot([-_R, _R], [0, 0], color=_wall_color, lw=_wall_lw)
+                        elif _bot_shape == "cone":
+                            ax.plot([-_R, 0], [0, -_bot_depth], color=_wall_color, lw=_wall_lw)
+                            ax.plot([_R, 0], [0, -_bot_depth], color=_wall_color, lw=_wall_lw)
+                        else:
                             ax.add_patch(Arc((0, 0), _D, _bot_depth * 2,
                                              theta1=180, theta2=360,
                                              color=_wall_color, lw=_wall_lw))
-                        else:
-                            ax.plot([-_R, _R], [0, 0], color=_wall_color, lw=_wall_lw)
 
-                        # Top dish
-                        if _top_depth > 0:
+                        # Top dish (shape-aware)
+                        if _top_depth <= 0 or _top_shape == "flat":
+                            ax.plot([-_R, _R], [_H, _H], color=_wall_color, lw=_wall_lw)
+                        elif _top_shape == "cone":
+                            ax.plot([-_R, 0], [_H, _H + _top_depth], color=_wall_color, lw=_wall_lw)
+                            ax.plot([_R, 0], [_H, _H + _top_depth], color=_wall_color, lw=_wall_lw)
+                        else:
                             ax.add_patch(Arc((0, _H), _D, _top_depth * 2,
                                              theta1=0, theta2=180,
                                              color=_wall_color, lw=_wall_lw))
-                        else:
-                            ax.plot([-_R, _R], [_H, _H], color=_wall_color, lw=_wall_lw)
 
-                        # Impellers
-                        for idx_imp, (_d_imp, _clr, _h_imp, _color) in enumerate(_impellers):
+                        # Liquid fill (drawn behind the impellers)
+                        if _liquid_level is not None:
+                            _z_liq = np.linspace(-_bot_depth, _liquid_level, 80)
+                            _r_liq = np.array([_radius_at(z) for z in _z_liq])
+                            _xs_liq = np.concatenate([_r_liq, -_r_liq[::-1]])
+                            _ys_liq = np.concatenate([_z_liq, _z_liq[::-1]])
+                            ax.fill(_xs_liq, _ys_liq, color="#4FC3F7",
+                                    alpha=0.30, lw=0, zorder=1)
+                            _r_surf = _radius_at(_liquid_level)
+                            ax.plot([-_r_surf, _r_surf], [_liquid_level, _liquid_level],
+                                    color="#0288D1", lw=1.4, zorder=2)
+                            ax.text(0, _liquid_level + max(_R, _total_h) * 0.015,
+                                    f"{_liquid_fill_L:,.1f} L",
+                                    ha="center", va="bottom", fontsize=7,
+                                    color="#0277BD", zorder=2)
+
+                        # Impellers (clearance measured from dish bottom)
+                        for idx_imp, (_d_imp, _cy, _h_imp, _color, _itype) in enumerate(_impellers):
                             _r_imp = _d_imp / 2.0
-                            rect = patches.FancyBboxPatch(
-                                (-_r_imp, _clr - _h_imp / 2.0),
-                                _d_imp, _h_imp,
-                                boxstyle="round,pad=0.002",
-                                facecolor=_color, edgecolor=_color,
-                                alpha=0.7, lw=1.5, zorder=4,
-                            )
-                            ax.add_patch(rect)
-                            ax.text(_r_imp + _R * 0.08, _clr,
-                                    f"Imp {idx_imp+1}\n⌀{_d_imp*1000:.0f} mm",
-                                    fontsize=7, va="center", color=_color)
+                            if "chevron" in _itype.lower():
+                                # Draw a downward chevron (V-band) instead of a
+                                # plain rectangle to convey the blade geometry.
+                                # Chevron impellers run in conical-bottom
+                                # vessels, so the blade V follows the same angle
+                                # as the cone (drop/run = _bot_depth / _R).
+                                if _bot_shape == "cone" and _R > 0:
+                                    _v_drop = _r_imp * (_bot_depth / _R)
+                                else:
+                                    _v_drop = max(_h_imp, _r_imp * 0.5)
+                                _half_v = (_v_drop + _h_imp) / 2.0
+                                _pts = [
+                                    (-_r_imp, _cy + _half_v),
+                                    (0.0,     _cy + _half_v - _v_drop),
+                                    (_r_imp,  _cy + _half_v),
+                                    (_r_imp,  _cy + _half_v - _h_imp),
+                                    (0.0,     _cy - _half_v),
+                                    (-_r_imp, _cy + _half_v - _h_imp),
+                                ]
+                                ax.add_patch(patches.Polygon(
+                                    _pts, closed=True,
+                                    facecolor=_color, edgecolor=_color,
+                                    alpha=0.7, lw=1.5, zorder=4,
+                                ))
+                            else:
+                                ax.add_patch(patches.FancyBboxPatch(
+                                    (-_r_imp, _cy - _h_imp / 2.0),
+                                    _d_imp, _h_imp,
+                                    boxstyle="round,pad=0.002",
+                                    facecolor=_color, edgecolor=_color,
+                                    alpha=0.7, lw=1.5, zorder=4,
+                                ))
+                            # Leader line from the impeller tip to its label
+                            ax.plot([_r_imp, _R + _right_pad * 0.12], [_cy, _cy],
+                                    color=_color, lw=0.6, alpha=0.5, zorder=3)
+                            ax.text(_R + _right_pad * 0.15, _cy,
+                                    f"Imp {idx_imp+1}  ⌀{_d_imp*1000:.0f} mm",
+                                    fontsize=7, va="center", ha="left", color=_color)
 
                         # Shaft
                         _shaft_top = _H + _top_depth * 0.9
@@ -429,22 +629,32 @@ with tab_browse:
                         ax.plot([0, 0], [_shaft_bot, _shaft_top],
                                 color="#555555", lw=1.5, zorder=3)
 
-                        # Dimension annotations
+                        # ── Dimension annotations ─────────────────────
                         _dim_color = "#888888"
                         _dim_fs = 7
-                        _arr_y = -_bot_depth * 0.6 if _bot_depth > 0 else -_margin * 0.6
+                        _wit_lw = 0.6  # witness (extension) line weight
+
+                        # Diameter: dimension line fully BELOW the bottom dish
+                        _arr_y = -_bot_depth - _gap
+                        for _sx in (-_R, _R):
+                            ax.plot([_sx, _sx], [0, _arr_y],
+                                    color=_dim_color, lw=_wit_lw, zorder=2)
                         ax.annotate("", xy=(_R, _arr_y), xytext=(-_R, _arr_y),
                                     arrowprops=dict(arrowstyle="<->", color=_dim_color, lw=1))
-                        ax.text(0, _arr_y - _margin * 0.25,
+                        ax.text(0, _arr_y - _ref * 0.04,
                                 f"⌀ {_D*1000:.0f} mm",
                                 ha="center", va="top", fontsize=_dim_fs, color=_dim_color)
 
-                        _hx = _R + _margin * 0.4
+                        # Height: dimension line to the LEFT of the vessel
+                        _hx = -_R - _left_pad * 0.5
+                        for _sy in (0.0, _H):
+                            ax.plot([-_R, _hx], [_sy, _sy],
+                                    color=_dim_color, lw=_wit_lw, zorder=2)
                         ax.annotate("", xy=(_hx, _H), xytext=(_hx, 0),
                                     arrowprops=dict(arrowstyle="<->", color=_dim_color, lw=1))
-                        ax.text(_hx + _margin * 0.15, _H / 2,
+                        ax.text(_hx - _R * 0.06, _H / 2,
                                 f"H {_H*1000:.0f} mm",
-                                ha="left", va="center", fontsize=_dim_fs,
+                                ha="right", va="center", fontsize=_dim_fs,
                                 color=_dim_color, rotation=90)
 
                         ax.set_title(selected_reactor, fontsize=10, fontweight="bold", pad=10)
@@ -472,32 +682,20 @@ with tab_browse:
                             dt = dish_type.lower()
                             t_param = np.linspace(0, 1, _n_d)  # 0=rim, 1=centre
 
-                            if "conical" in dt:
+                            if "cone" in dt or "conical" in dt:
                                 # Linear cone: r shrinks linearly, z deepens linearly
                                 r_profile = radius * (1 - t_param)
                                 z_profile = depth * t_param
-                            elif "round" in dt or "hemi" in dt:
+                            elif "hemi" in dt or "round" in dt:
                                 # Hemisphere: r² + z² = R² (depth = radius)
                                 phi = np.linspace(0, np.pi / 2, _n_d)
                                 r_profile = radius * np.cos(phi)
                                 z_profile = radius * np.sin(phi)
-                            elif "elliptical" in dt or "2:1" in dt:
-                                # True 2:1 ellipse: r² / R² + z² / depth² = 1
-                                phi = np.linspace(0, np.pi / 2, _n_d)
-                                r_profile = radius * np.cos(phi)
-                                z_profile = depth * np.sin(phi)
-                            elif "torispherical" in dt or "din" in dt:
-                                # Approximate torispherical as a flatter ellipse
-                                phi = np.linspace(0, np.pi / 2, _n_d)
-                                r_profile = radius * np.cos(phi)
-                                z_profile = depth * np.sin(phi)
-                            elif "dished" in dt:
-                                # Shallow spherical segment
-                                phi = np.linspace(0, np.pi / 2, _n_d)
-                                r_profile = radius * np.cos(phi)
-                                z_profile = depth * np.sin(phi)
                             else:
-                                # Default ellipsoidal
+                                # All other curved heads (2:1 ellipsoidal,
+                                # torispherical, Klöpper, Korbbogen, dished, …)
+                                # are approximated by an ellipse of the matching
+                                # depth so 2-D and 3-D views stay consistent.
                                 phi = np.linspace(0, np.pi / 2, _n_d)
                                 r_profile = radius * np.cos(phi)
                                 z_profile = depth * np.sin(phi)
@@ -557,6 +755,23 @@ with tab_browse:
                                 showlegend=False, hoverinfo="skip",
                             ))
 
+                        # -- Liquid surface (translucent disc at the fill level)
+                        if _liquid_level is not None:
+                            _r_surf = _radius_at(_liquid_level)
+                            if _r_surf > 0:
+                                _n_rs = 12
+                                _rr_s = np.linspace(0, _r_surf, _n_rs)
+                                _xs_s = np.outer(_rr_s, _cos)
+                                _ys_s = np.outer(_rr_s, _sin)
+                                _zs_s = np.full_like(_xs_s, _liquid_level)
+                                _traces.append(go.Surface(
+                                    x=_xs_s, y=_ys_s, z=_zs_s,
+                                    colorscale=[[0, "#4FC3F7"], [1, "#4FC3F7"]],
+                                    showscale=False, opacity=0.45,
+                                    hoverinfo="skip",
+                                    name=f"Liquid {_liquid_fill_L:,.1f} L",
+                                ))
+
                         # -- Shaft
                         _shaft_top = _H + _top_depth * 0.9
                         _shaft_bot = min(_lowest_imp_y - _H * 0.05, 0.0) if _lowest_imp_y is not None else 0.0
@@ -570,9 +785,47 @@ with tab_browse:
                                 showlegend=False, hoverinfo="skip",
                             ))
 
-                        # -- Impellers (3-D cylinders)
-                        for idx_imp, (_d_imp, _clr, _h_imp, _color) in enumerate(_impellers):
+                        # -- Impellers (3-D)
+                        for idx_imp, (_d_imp, _clr, _h_imp, _color, _itype) in enumerate(_impellers):
                             _r_imp = _d_imp / 2.0
+
+                            if "chevron" in _itype.lower():
+                                # Chevron: two coaxial cones (rim high, apex low).
+                                # The blade V follows the conical-bottom angle
+                                # (drop/run = _bot_depth / _R).
+                                if _bot_shape == "cone" and _R > 0:
+                                    _v_drop = _r_imp * (_bot_depth / _R)
+                                else:
+                                    _v_drop = max(_h_imp, _r_imp * 0.5)
+                                _half_v = (_v_drop + _h_imp) / 2.0
+                                _n_r = 12
+                                _rr = np.linspace(0, _r_imp, _n_r)
+                                _frac = _rr / _r_imp if _r_imp > 0 else _rr
+                                _z_top_prof = (_clr + _half_v - _v_drop) + _v_drop * _frac
+                                _z_bot_prof = (_clr - _half_v) + _v_drop * _frac
+                                for _zp in (_z_top_prof, _z_bot_prof):
+                                    _xi = np.outer(_rr, _cos)
+                                    _yi = np.outer(_rr, _sin)
+                                    _zi = np.outer(_zp, np.ones(_n_circ))
+                                    _traces.append(go.Surface(
+                                        x=_xi, y=_yi, z=_zi,
+                                        colorscale=[[0, _color], [1, _color]],
+                                        showscale=False, opacity=0.7,
+                                        hoverinfo="skip",
+                                        name=f"Imp {idx_imp+1} chevron (⌀{_d_imp*1000:.0f} mm)",
+                                    ))
+                                # Outer rim band joining the two cones
+                                _zz_rim = np.linspace(_clr + _half_v - _h_imp, _clr + _half_v, 4)
+                                _x_rim = np.outer(np.ones(4), _r_imp * _cos)
+                                _y_rim = np.outer(np.ones(4), _r_imp * _sin)
+                                _z_rim = np.outer(_zz_rim, np.ones(_n_circ))
+                                _traces.append(go.Surface(
+                                    x=_x_rim, y=_y_rim, z=_z_rim,
+                                    colorscale=[[0, _color], [1, _color]],
+                                    showscale=False, opacity=0.7, hoverinfo="skip",
+                                ))
+                                continue
+
                             _z_bot = _clr - _h_imp / 2.0
                             _z_top = _clr + _h_imp / 2.0
 
