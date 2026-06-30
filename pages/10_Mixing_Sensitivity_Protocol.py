@@ -48,6 +48,39 @@ def _set(name: str, value):
     st.session_state[_key(name)] = value
 
 
+# ── Consistent section-outcome helpers ───────────────────────────────────
+# Every step closes with the same colour-coded, three-part layout so the user
+# reads each section the same way:
+#   1. Assessment      — the section's conclusion (colour encodes severity)
+#   2. Warning         — a specific risk to act on (amber), only when needed
+#   3. Recommendation  — a concrete next action (blue), only when needed
+_ASSESS_ICON = {"critical": "🔴", "warning": "🟡", "caution": "🟡", "ok": "🟢"}
+
+
+def _assessment(kind: str, text: str) -> None:
+    """Render a section's assessment conclusion using a traffic-light colour.
+
+    🔴 critical (red) · 🟡 warning / caution (amber) · 🟢 ok (green).
+    """
+    msg = f"{_ASSESS_ICON.get(kind, '🟡')} **Assessment:** {text}"
+    if kind == "critical":
+        st.error(msg)
+    elif kind == "ok":
+        st.success(msg)
+    else:  # "warning" and "caution" → traffic-light amber
+        st.warning(msg)
+
+
+def _section_warning(text: str) -> None:
+    """Render a specific risk callout (consistent amber styling)."""
+    st.warning(f"⚠️ **Warning:** {text}")
+
+
+def _recommendation(text: str) -> None:
+    """Render a recommended action (consistent blue styling)."""
+    st.info(f"👉 **Recommendation:** {text}")
+
+
 # ── Page header ──────────────────────────────────────────────────────────
 st.title("🧭 Reaction Sensitivity Protocol")
 st.caption(
@@ -110,11 +143,6 @@ if bourne_screen is None:
     st.stop()
 
 if bourne_screen == "Already done – results show mixing sensitivity":
-    st.warning(
-        "**Mixing sensitivity confirmed experimentally.**  "
-        "The remaining steps will help identify *which* mechanisms "
-        "(micro-, meso-, macromixing, heat transfer) are responsible."
-    )
     _bourne_sensitive = True
 
     _bourne_mech_opts = [
@@ -140,25 +168,35 @@ if bourne_screen == "Already done – results show mixing sensitivity":
             "**. These are carried into the summary as experimentally confirmed "
             "sensitivities and drive the conclusions and recommendations below."
         )
-    else:
-        st.caption(
-            "No specific scale selected — run the full Bourne Protocol (Tests 1–3) "
-            "to pinpoint micro-, meso-, or macromixing control."
+
+    # ── Section outcome: assessment → recommendation ──
+    _assessment(
+        "critical",
+        "Mixing sensitivity confirmed experimentally. The remaining steps help "
+        "identify *which* mechanisms (micro-, meso-, macromixing, heat transfer) "
+        "are responsible.",
+    )
+    if not _bourne_mechanisms:
+        _recommendation(
+            "Run the full Bourne Protocol (Tests 1–3) to pinpoint micro-, meso-, "
+            "or macromixing control."
         )
 elif bourne_screen == "Already done – no mixing sensitivity observed":
-    st.success(
-        "✅ **No mixing sensitivity observed** in the pre-screen.  "
-        "Proceed through the remaining steps to confirm and identify "
-        "any latent risks at larger scale."
+    _assessment(
+        "ok",
+        "No mixing sensitivity observed in the pre-screen. Proceed through the "
+        "remaining steps to confirm and identify any latent risks at larger scale.",
     )
     _bourne_sensitive = False
     _bourne_mechanisms = []
 else:
-    st.info(
-        "💡 **Recommendation:** Performing Bourne Part 1 before this "
-        "protocol provides a direct experimental answer.  You can run it "
-        "from the **🅱️ Bourne Protocol** page.\n\n"
-        "Proceeding with the theoretical assessment for now."
+    _assessment(
+        "caution",
+        "Pre-screen skipped — proceeding with the theoretical assessment for now.",
+    )
+    _recommendation(
+        "Performing Bourne Part 1 before this protocol provides a direct "
+        "experimental answer. You can run it from the **🅱️ Bourne Protocol** page."
     )
     _bourne_sensitive = None
     _bourne_mechanisms = []
@@ -197,19 +235,20 @@ if kinetics_choice is None:
     st.stop()
 
 if kinetics_choice == "No – I need to measure them":
-    st.warning(
-        "**Action required before proceeding:**\n\n"
-        "1. Conduct **time-course experiments** (e.g. in-situ FTIR / ReactIR, "
-        "sampling + HPLC) to determine the rate constant *k* and reaction order.\n"
-        "2. Perform **reaction calorimetry** (e.g. RC1, µRC, or Simular) to "
-        "measure the heat of reaction *ΔH*.\n"
-        "3. Add the results to the **🧪 Reaction Database** page.\n"
-        "4. Return here and **select the reaction from the database** to continue."
+    _assessment(
+        "warning",
+        "Kinetics are not yet available — they must be measured before this "
+        "assessment can be completed.",
     )
-    st.info(
-        "💡 **Tip:** If exact kinetics are unavailable but a structurally "
-        "similar reaction is in the database, choose **\"Approximate\"** above "
-        "to select it as a proxy and proceed with the assessment."
+    _recommendation(
+        "1. Conduct **time-course experiments** (e.g. in-situ FTIR / ReactIR, "
+        "sampling + HPLC) to determine the rate constant *k* and reaction order.\n\n"
+        "2. Perform **reaction calorimetry** (e.g. RC1, µRC, or Simular) to "
+        "measure the heat of reaction *ΔH*.\n\n"
+        "3. Add the results to the **🧪 Reaction Database** page.\n\n"
+        "4. Return here and **select the reaction from the database** to continue.\n\n"
+        "If exact kinetics are unavailable but a structurally similar reaction is "
+        "in the database, choose **\"Approximate\"** above to use it as a proxy."
     )
     st.stop()
 
@@ -275,7 +314,19 @@ if t_rxn <= 0:
     )
     st.stop()
 
-st.success(f"✅ Kinetics available — characteristic reaction time **t_rxn = {t_rxn:.4g} s**.")
+if _using_approximate:
+    _assessment(
+        "warning",
+        f"Approximate kinetics — characteristic reaction time **t_rxn = {t_rxn:.4g} s** "
+        "is based on a proxy reaction, not measured data. All downstream conclusions "
+        "(including whether the reaction is slow or fast) are only valid if the proxy "
+        "kinetics match the true reaction.",
+    )
+else:
+    _assessment(
+        "ok",
+        f"Kinetics available — characteristic reaction time **t_rxn = {t_rxn:.4g} s**.",
+    )
 st.caption(
     "Convention: t_rxn is the reaction time constant — 1/k (first order) or "
     "1/(k·C₀) (second order) — i.e. the e-folding time used in the Damköhler "
@@ -324,8 +375,6 @@ _has_solid = "Solid" in phases
 _has_gas = "Gas" in phases
 
 if _multiphase:
-    st.warning("**Multi-phase system detected**")
-
     _mass_transfer_notes = []
     if _has_gas and not _has_solid:
         _mass_transfer_notes = [
@@ -435,17 +484,24 @@ if _multiphase:
             f"Da_GL ≈ {_da_gl:.3g}.  {'Transport likely fast enough.' if _da_gl < 1 else 'Mass transfer may limit — measure kLa for your vessel.'}"
         )
 
-    st.info(
-        "📌 **Proceed with caution** — mass-transfer limitations are system-dependent. "
-        "The remaining steps of this protocol will still assess micro/meso/macromixing "
-        "and heat transfer, but keep in mind that interphase transport may dominate.\n\n"
-        "👉 Compute Da_GL and/or Da_LS for your specific reactor on the "
-        "**🌀 Mixing Assessment** or **📈 Reactor Comparison** pages."
+    # ── Section outcome: assessment → recommendation ──
+    _assessment(
+        "warning",
+        "Multi-phase system detected — interphase mass transfer may limit the "
+        "observed rate.",
+    )
+    _recommendation(
+        "Mass-transfer limitations are system-dependent — the remaining steps still "
+        "assess micro/meso/macromixing and heat transfer, but keep in mind that "
+        "interphase transport may dominate. Compute Da_GL and/or Da_LS for your "
+        "specific reactor on the **🌀 Mixing Assessment** or **📈 Reactor Comparison** "
+        "pages."
     )
 else:
-    st.success(
-        "✅ **Single liquid phase** — interphase mass transfer is not a factor.  "
-        "Micro-, meso-, and macromixing may still affect the reaction."
+    _assessment(
+        "ok",
+        "Single liquid phase — interphase mass transfer is not a factor. Micro-, "
+        "meso-, and macromixing may still affect the reaction.",
     )
 
 st.divider()
@@ -487,21 +543,22 @@ if competing is None:
     st.stop()
 
 if competing == "Yes":
-    st.warning(
-        "**Micro- and/or mesomixing sensitivity likely.**\n\n"
-        "When competing reactions exist, both molecular-level and "
-        "feed-point mixing can influence selectivity."
-    )
-
     # Micromixing sub-section
     with st.expander("🔬 Micromixing effects — theory & details", expanded=False):
         st.markdown(
             "At the smallest scales, the Engulfment rate *E* determines how "
             "fast reactant and surrounding fluid reach molecular homogeneity.  "
             "Key points:\n\n"
-            "- The **micromixing time** $t_{micro}$ ≈ 17.3 √(*ν* / *ε*) "
-            "(Baldyga & Bourne, 1999) depends on kinematic viscosity *ν* and "
-            "local energy dissipation *ε* at the feed point.\n"
+            "- Baldyga & Bourne (1999) distinguish **two** micromixing time "
+            "scales (handbook Table 8.1):\n"
+            "  - *Viscous-convective* engulfment: "
+            r"$t_{E} \approx 17.3\,\sqrt{\nu/\varepsilon}$"
+            " — the engulfment time that usually controls micromixing.\n"
+            "  - *Viscous-diffusive* deformation/diffusion: "
+            r"$t_{DS} \approx 0.5\,\sqrt{\nu/\varepsilon}\,\ln(Sc)$, "
+            r"with Schmidt number $Sc = \nu/D$ — this becomes relevant for "
+            "viscous or high-$Sc$ liquids, where molecular diffusion is slow.\n"
+            "  The **larger** of the two scales controls the micromixing rate.\n"
             "- When $Da_{micro}$ = $t_{micro}$ / $t_{rxn}$ > 1, the reaction "
             "is faster than micromixing — **selectivity is micromixing-controlled**.\n"
             "- In stirred vessels, *ε* varies by 1–2 orders of magnitude "
@@ -529,8 +586,11 @@ if competing == "Yes":
             "- Baldyga & Bourne (1999) describe **two** mesomixing time scales:\n"
             "  - *Inertial-convective disintegration* of the feed plume: "
             r"$\tau_S = A\,(\Lambda_C^{2}/\varepsilon)^{1/3}$, "
-            "where $\\Lambda_C$ is the feed-plume (or feed-pipe) scale and "
-            "$A\\approx 1{-}2$ (this app uses $\\tau_S = 2\\,(d_{feed}^2/\\varepsilon)^{1/3}$).\n"
+            "with $A \\approx 1.2$ (handbook Table 8.1).  Here $\\Lambda_C$ is the "
+            "**integral scale of turbulence** at the feed point, which in practice "
+            "is approximated by the feed-pipe diameter $d_{feed}$, so this app "
+            r"evaluates $\tau_S = 1.2\,(d_{feed}^2/\varepsilon)^{1/3}$ on the "
+            "🌀 Mixing Assessment and 📈 Reactor Comparison pages.\n"
             "  - *Turbulent dispersion* of the plume by the mean flow: "
             r"$\tau_D = Q_{feed}/(\bar{u}\,D_t)$, "
             "where $Q_{feed}$ is the feed flow rate, $\\bar{u}$ the local mean "
@@ -538,32 +598,43 @@ if competing == "Yes":
             "  The larger of the two scales controls the mesomixing rate."
         )
 
-    st.info(
-        "👉 **Recommendation:** Use the **� Bourne Protocol** page to "
-        "experimentally screen for micro- and mesomixing sensitivity by varying "
-        "impeller speed (changes *ε*), feed time, and feed location.  "
-        "The Villermaux–Dushman (iodide–iodate) test reaction is a classic "
-        "tool to decouple micro- and mesomixing effects (Bourne, 2003)."
+    # ── Section outcome: assessment → recommendation ──
+    _assessment(
+        "warning",
+        "Competing reactions present — micro- and/or mesomixing sensitivity is "
+        "likely, as both molecular-level and feed-point mixing can influence "
+        "selectivity.",
+    )
+    _recommendation(
+        "Use the **🅱️ Bourne Protocol** page to experimentally screen for micro- "
+        "and mesomixing sensitivity by varying impeller speed (changes *ε*), feed "
+        "time, and feed location. The Villermaux–Dushman (iodide–iodate) test "
+        "reaction is a classic tool to decouple micro- and mesomixing effects "
+        "(Bourne, 2003)."
     )
     _meso_sensitive = True
 elif competing == "Not sure":
-    st.info(
-        "If you are unsure whether side-reactions occur, consider:\n\n"
-        "- Run the reaction at two different impeller speeds **and** two "
-        "different addition rates.  If yield or impurity profile changes "
-        "with speed, micromixing is involved; if it changes with feed time, "
-        "mesomixing is involved.\n"
-        "- Check the literature or process-chemistry knowledge for known "
-        "by-products or degradation pathways.\n"
-        "- If in doubt, treat the system as potentially sensitive and "
-        "use the **� Bourne Protocol** to screen."
+    _assessment(
+        "caution",
+        "Competing reactions uncertain — treat the system as potentially "
+        "sensitive until confirmed.",
+    )
+    _recommendation(
+        "Resolve the uncertainty by:\n\n"
+        "- Running the reaction at two different impeller speeds **and** two "
+        "different addition rates. A change in yield or impurity profile with "
+        "speed implies micromixing; a change with feed time implies mesomixing.\n\n"
+        "- Checking the literature or process-chemistry knowledge for known "
+        "by-products or degradation pathways.\n\n"
+        "- When in doubt, use the **🅱️ Bourne Protocol** to screen."
     )
     _meso_sensitive = True
 else:
-    st.success(
-        "✅ **No competing reactions identified** — micro- and mesomixing "
-        "(selectivity-related) are unlikely to be a factor.  "
-        "Macromixing (blend time) may still matter at scale."
+    _assessment(
+        "ok",
+        "No competing reactions identified — micro- and mesomixing "
+        "(selectivity-related) are unlikely to be a factor. Macromixing (blend "
+        "time) may still matter at scale.",
     )
     _meso_sensitive = False
 
@@ -572,11 +643,11 @@ else:
 # the reagent reacts (Baldyga & Bourne, 1999; Paul et al., 2004).
 if is_semi_batch and not _meso_sensitive:
     _meso_sensitive = True
-    st.info(
-        "\u26a0\ufe0f **Semi-batch process** \u2014 even without competing reactions, "
-        "**mesomixing** (feed-plume dispersion) controls local concentration at the "
-        "feed point. Selectivity, local heat release, and supersaturation can all be "
-        "affected by feed rate, feed location, and local turbulence."
+    _section_warning(
+        "Semi-batch process — even without competing reactions, **mesomixing** "
+        "(feed-plume dispersion) controls local concentration at the feed point. "
+        "Selectivity, local heat release, and supersaturation can all be affected "
+        "by feed rate, feed location, and local turbulence."
     )
 
 st.divider()
@@ -590,7 +661,7 @@ _has_enthalpy = rxn_delta_H != 0.0
 _dT_ad = None  # adiabatic temperature rise (K), computed below when data allow
 
 if not _has_enthalpy:
-    st.warning(
+    _section_warning(
         "The selected reaction has **no enthalpy (ΔH) data** in the database."
     )
 
@@ -609,11 +680,15 @@ if not _has_enthalpy:
         st.stop()
 
     if dh_action == "Perform calorimetry – measure ΔH experimentally (recommended)":
-        st.info(
-            "**Action required:**\n\n"
-            "1. Perform **reaction calorimetry** (e.g. RC1, µRC, or Simular) "
-            "to measure the heat of reaction *ΔH*.\n"
-            "2. Update the reaction entry in the **🧪 Reaction Database**.\n"
+        _assessment(
+            "caution",
+            "Heat-transfer risk cannot be evaluated without ΔH — calorimetry is "
+            "required to complete this section.",
+        )
+        _recommendation(
+            "1. Perform **reaction calorimetry** (e.g. RC1, µRC, or Simular) to "
+            "measure the heat of reaction *ΔH*.\n\n"
+            "2. Update the reaction entry in the **🧪 Reaction Database**.\n\n"
             "3. Return here — the protocol will pick up the new value automatically."
         )
         _heat_sensitive = False
@@ -664,9 +739,9 @@ if _has_enthalpy:
     # ── Adiabatic temperature rise (ΔT_ad) — the proper thermal criterion ──
     # ΔH per mole alone does not determine thermal-runaway risk: a large ΔH at
     # low concentration may be benign, while a modest ΔH at high concentration
-    # can be hazardous. ΔT_ad = |ΔH|·C0 / (ρ·Cp) is the temperature the batch
-    # would reach with no cooling, and is the basis of the Stoessel
-    # criticality classification.
+    # can be hazardous. ΔT_ad = |ΔH|·C0 / (ρ·Cp) is the temperature *rise* the
+    # batch would undergo with no cooling (final temperature ≈ T0 + ΔT_ad), and
+    # is a key input to the Stoessel criticality classification.
     _rho_cp_auto = None  # volumetric heat capacity, kJ/(m³·K)
     if rxn_solvent and is_known_solvent(rxn_solvent):
         try:
@@ -677,8 +752,9 @@ if _has_enthalpy:
 
     with st.expander("🌡️ Adiabatic temperature rise (ΔT_ad) — refine the estimate", expanded=True):
         st.caption(
-            "ΔT_ad = |ΔH|·C₀ / (ρ·Cp) is the temperature the batch would reach if "
-            "all reaction heat were retained (no cooling). It — not ΔH per mole — "
+            "ΔT_ad = |ΔH|·C₀ / (ρ·Cp) is the temperature *rise* the batch would "
+            "undergo if all reaction heat were retained (no cooling); the final "
+            "temperature would be roughly T₀ + ΔT_ad. This rise — not ΔH per mole — "
             "is the proper measure of thermal-runaway potential (Stoessel)."
         )
         _rc1, _rc2 = st.columns(2)
@@ -701,7 +777,9 @@ if _has_enthalpy:
             if _dT_ad >= 200:
                 st.error(
                     f"🔴 **ΔT_ad ≈ {_dT_ad:.0f} K** — very high. Loss of cooling could "
-                    "drive a runaway; secondary decomposition (MTSR/MTT) must be assessed."
+                    "drive a runaway; the risk of triggering secondary (decomposition) "
+                    "reactions must be assessed (compare the MTSR against the "
+                    "decomposition onset T_D24, per the Stoessel criticality framework)."
                 )
             elif _dT_ad >= 50:
                 st.error(
@@ -721,34 +799,25 @@ if _has_enthalpy:
         else:
             st.caption("Enter C₀ and ρ·Cp to estimate ΔT_ad.")
 
-    # Heuristic classification
+    # Heuristic classification (traffic-light severity)
     if abs_dH >= 100:
         _heat_class = "highly exothermic"
-        _heat_color = "error"
+        _heat_kind = "critical"
     elif abs_dH >= 50:
         _heat_class = "moderately exothermic"
-        _heat_color = "warning"
+        _heat_kind = "warning"
     elif abs_dH >= 20:
         _heat_class = "mildly exothermic"
-        _heat_color = "info"
+        _heat_kind = "caution"
     else:
         _heat_class = "low exothermicity"
-        _heat_color = "success"
+        _heat_kind = "ok"
 
-    # Classification banner
-    _heat_msg = f"**{_heat_class.title()}** — |ΔH| = {abs_dH:.1f} kJ/mol"
-    if _heat_color == "error":
-        st.error(f"🔴 {_heat_msg}")
-    elif _heat_color == "warning":
-        st.warning(f"🟡 {_heat_msg}")
-    elif _heat_color == "info":
-        st.info(f"🔵 {_heat_msg}")
-    else:
-        st.success(f"🟢 {_heat_msg}")
-
-    # Detailed guidance — flag heat sensitivity on either a large molar
-    # enthalpy or (more rigorously) a significant adiabatic temperature rise.
+    # Heat sensitivity is flagged on either a large molar enthalpy or (more
+    # rigorously) a significant adiabatic temperature rise.
     _heat_flag = abs_dH >= 50 or (_dT_ad is not None and _dT_ad >= 50)
+
+    # Background detail (shown before the section outcome)
     if _heat_flag:
         with st.expander("ℹ️ Background — heat-transfer scale-up considerations", expanded=False):
             st.markdown(
@@ -767,12 +836,6 @@ if _has_enthalpy:
                 "- **Overall U** — wall material, fouling, and agitation intensity "
                 "all affect the heat-transfer coefficient."
             )
-        st.info(
-            "👉 **Recommendation:** Run the heat balance on the "
-            "**🌀 Mixing Assessment** or **📈 Reactor Comparison** page "
-            "to quantify Q_gen vs Q_cool for your specific reactor(s)."
-        )
-        _heat_sensitive = True
     else:
         st.markdown(
             "The reaction enthalpy is modest.  Heat transfer is **unlikely "
@@ -780,19 +843,27 @@ if _has_enthalpy:
             "relevant at very large scale or in poorly cooled vessels.  "
             "Consider running a heat balance if scaling beyond pilot scale."
         )
-        _heat_sensitive = False
 
     # Flag known highly-exothermic reaction types
     _rxn_type = str(rxn.get("type", "")).lower()
     _known_hot = ["grignard", "nitration", "sulfonation", "diazotization",
                    "polymerization", "hydrogenation", "oxidation"]
     _flagged = [t for t in _known_hot if t in _rxn_type]
+
+    # ── Section outcome: assessment → recommendation → warning ──
+    _assessment(_heat_kind, f"**{_heat_class.title()}** — |ΔH| = {abs_dH:.1f} kJ/mol.")
+    _heat_sensitive = _heat_flag
+    if _heat_flag:
+        _recommendation(
+            "Run the heat balance on the **🌀 Mixing Assessment** or "
+            "**📈 Reactor Comparison** page to quantify Q_gen vs Q_cool for your "
+            "specific reactor(s)."
+        )
     if _flagged:
-        st.warning(
-            f"⚠️ Reaction type **{rxn.get('type', '')}** is commonly "
-            f"associated with significant exothermicity.  "
-            f"Heat-transfer assessment is strongly recommended regardless "
-            f"of the reported ΔH magnitude."
+        _section_warning(
+            f"Reaction type **{rxn.get('type', '')}** is commonly associated with "
+            "significant exothermicity. Heat-transfer assessment is strongly "
+            "recommended regardless of the reported ΔH magnitude."
         )
         _heat_sensitive = True
 
@@ -823,40 +894,6 @@ with st.expander("ℹ️ Background — Damköhler number interpretation", expan
     )
 
 st.markdown(f"**Your reaction time: t_rxn = {t_rxn:.4g} s**")
-
-# Provide heuristic guidance based on t_rxn alone
-if t_rxn < 0.1:
-    st.error(
-        f"🔴 **Very fast reaction** (t_rxn = {t_rxn:.4g} s).  "
-        "**Micromixing-sensitive** in most reactor configurations.  "
-        "Local turbulent energy dissipation near the impeller determines "
-        "the effective mixing rate.  Feed location and impeller tip speed "
-        "are critical parameters."
-    )
-    _micro_likely = True
-elif t_rxn < 1.0:
-    st.warning(
-        f"🟡 **Fast reaction** (t_rxn = {t_rxn:.4g} s).  "
-        "Micromixing likely relevant in larger vessels where local ε "
-        "at the feed point decreases.  Confirm with Damköhler analysis "
-        "on the 🌀 Mixing Assessment page."
-    )
-    _micro_likely = True
-elif t_rxn < 10:
-    st.info(
-        f"🔵 **Moderate reaction** (t_rxn = {t_rxn:.4g} s).  "
-        "Micromixing is less likely to dominate, but macromixing "
-        "(blend time) could be relevant in larger vessels.  "
-        "Check blend time relative to t_rxn."
-    )
-    _micro_likely = False
-else:
-    st.success(
-        f"🟢 **Slow reaction** (t_rxn = {t_rxn:.4g} s).  "
-        "Mixing is unlikely to limit the reaction in well-agitated vessels.  "
-        "Only very large, poorly mixed tanks might approach Da ~ 1."
-    )
-    _micro_likely = False
 
 with st.expander("ℹ️ Background — macromixing (blend time) at scale", expanded=False):
     st.markdown(
@@ -905,24 +942,58 @@ st.markdown(
     "time is in that range, macromixing may matter at scale."
 )
 
+# ── Section outcome: assessment → recommendation → warning ──
+if t_rxn < 0.1:
+    _assessment(
+        "critical",
+        f"**Very fast reaction** (t_rxn = {t_rxn:.4g} s) — micromixing-sensitive in "
+        "most reactor configurations. Local turbulent energy dissipation near the "
+        "impeller determines the effective mixing rate; feed location and impeller "
+        "tip speed are critical parameters.",
+    )
+    _micro_likely = True
+elif t_rxn < 1.0:
+    _assessment(
+        "warning",
+        f"**Fast reaction** (t_rxn = {t_rxn:.4g} s) — micromixing likely relevant in "
+        "larger vessels where local ε at the feed point decreases. Confirm with "
+        "Damköhler analysis on the 🌀 Mixing Assessment page.",
+    )
+    _micro_likely = True
+elif t_rxn < 10:
+    _assessment(
+        "caution",
+        f"**Moderate reaction** (t_rxn = {t_rxn:.4g} s) — micromixing is less likely "
+        "to dominate, but macromixing (blend time) could be relevant in larger "
+        "vessels. Check blend time relative to t_rxn.",
+    )
+    _micro_likely = False
+else:
+    _assessment(
+        "ok",
+        f"**Slow reaction** (t_rxn = {t_rxn:.4g} s) — mixing is unlikely to limit the "
+        "reaction in well-agitated vessels. Only very large, poorly mixed tanks "
+        "might approach Da ~ 1.",
+    )
+    _micro_likely = False
+
 if t_rxn < 30:
-    st.info(
-        "👉 **Recommendation:** Compute Damköhler numbers for your specific "
-        "reactor(s) on the **🌀 Mixing Assessment** page or compare "
-        "multiple vessels on the **📈 Reactor Comparison** page."
+    _recommendation(
+        "Compute Damköhler numbers for your specific reactor(s) on the "
+        "**🌀 Mixing Assessment** page or compare multiple vessels on the "
+        "**📈 Reactor Comparison** page."
     )
 
 if is_semi_batch:
-    st.warning(
-        "⚠️ **Semi-batch process** — three mixing scales act in series at the feed point:\n\n"
-        "1. **Macromixing** (θ₉₅) — bulk blending of added reagent into the vessel\n"
+    _section_warning(
+        "Semi-batch process — three mixing scales act in series at the feed point:\n\n"
+        "1. **Macromixing** (θ₉₅) — bulk blending of added reagent into the vessel\n\n"
         "2. **Mesomixing** ($t_{meso}$) — turbulent dispersion of the feed plume; "
-        "controls local concentration before molecular homogenisation\n"
+        "controls local concentration before molecular homogenisation\n\n"
         "3. **Micromixing** ($t_E$) — engulfment at the Kolmogorov scale\n\n"
-        "To distinguish these experimentally, run the full **🅱️ Bourne Protocol**:\n"
-        "- Vary **impeller speed** → probes micromixing (ε changes)\n"
-        "- Vary **feed rate / addition time** → probes mesomixing\n"
-        "- Vary **feed location** → probes meso- and macromixing"
+        "To distinguish these experimentally, run the full **🅱️ Bourne Protocol**: "
+        "vary impeller speed (micromixing), feed rate / addition time (mesomixing), "
+        "and feed location (meso- and macromixing)."
     )
 
 st.divider()

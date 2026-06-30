@@ -17,7 +17,7 @@ Wiley (1999).
 
     micromixing_time_engulfment, micromixing_time_local (t_E = 17.3 (nu/eps)^0.5)
         Ref: Baldyga & Bourne (1999); Myerson (2019) Ch. 8.  [in context/]
-    mesomixing_time (t_meso = 2 (d_feed^2/eps)^(1/3))
+    mesomixing_time (t_meso = 1.2 (d_feed^2/eps)^(1/3))
         Ref: Baldyga & Bourne (1999); Myerson (2019) Ch. 8.  [in context/]
     kolmogorov_length (eta = (nu^3/eps)^(1/4)),
     batchelor_length (lambda_B = eta Sc^(-1/2))
@@ -44,6 +44,7 @@ from .hydrodynamics import pumping_rate
 # Named constants for literature correlations
 GRENVILLE_CONSTANT = 5.2        # Grenville (1992) blend-time coefficient
 ENGULFMENT_CONSTANT = 17.3      # Baldyga & Bourne engulfment model constant
+MESOMIXING_CONSTANT = 1.2       # Baldyga & Bourne mesomixing (inertial-convective) constant
 EPSILON_MAX_COEFF = 3.0         # Kresta & Wood ε_max / (P/ρD³) coefficient
 
 
@@ -83,11 +84,11 @@ def micromixing_time_local(epsilon_max: float, nu: float) -> float:
 
 def mesomixing_time(epsilon: float, d_feed: float) -> float:
     """Mesomixing (turbulent dispersion) time constant.
-    t_meso = 2 · (d_feed² / ε)^(1/3)
+    t_meso = 1.2 · (d_feed² / ε)^(1/3)
     """
     if epsilon <= 0 or d_feed <= 0:
         return np.inf
-    return 2.0 * (d_feed**2 / epsilon) ** (1.0 / 3.0)
+    return MESOMIXING_CONSTANT * (d_feed**2 / epsilon) ** (1.0 / 3.0)
 
 
 def kolmogorov_length(nu: float, epsilon: float) -> float:

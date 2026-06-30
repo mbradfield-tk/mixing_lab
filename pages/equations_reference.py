@@ -397,9 +397,9 @@ The slower of the two governs feed-plume dispersion.
 Break-up of the feed plume by inertial-convective disintegration of the large
 eddies. $\Lambda_C$ is the integral scale of the velocity fluctuations, set by
 the feed-pipe / plume size. **Mixing Lab implements this scale** using the
-feed-pipe diameter $d_{\text{feed}}$ as the length scale with $A = 2$:
+feed-pipe diameter $d_{\text{feed}}$ as the length scale with $A = 1.2$:
 
-$$t_{\text{meso}} = 2 \left( \frac{d_{\text{feed}}^2}{\varepsilon} \right)^{1/3}$$
+$$t_{\text{meso}} = 1.2 \left( \frac{d_{\text{feed}}^2}{\varepsilon} \right)^{1/3}$$
 
 | Symbol | Description | Units |
 |--------|-------------|-------|
