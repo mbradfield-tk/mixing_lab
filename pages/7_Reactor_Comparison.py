@@ -376,6 +376,8 @@ include_scaling = st.checkbox(
     "Perform scale-up matching", value=False, key="cmp_include_scaling",
     help="Find equivalent operating conditions across reactors to match a chosen parameter.",
 )
+if include_scaling:
+    st.markdown("➡️ [Jump to results (Section 7)](#7-scale-up-matching-results)")
 
 # Scaling parameter choices (params that are computable from hydro)
 SCALABLE_PARAMS = [
@@ -426,16 +428,26 @@ if include_scaling:
         _basis_rpm_mid = (_basis_rpm_min + _basis_rpm_max) / 2.0
         _basis_V_mid = (_basis_V_min + _basis_V_max) / 2.0
 
+        # When the basis reactor changes, refresh the basis RPM/volume inputs
+        # to the new reactor's midpoint. Streamlit otherwise keeps the previous
+        # widget value (the `value=` default is ignored once a keyed widget has
+        # state), so the matching would silently run on stale basis conditions.
+        if st.session_state.get("_p7_prev_basis_reactor") != scale_basis_reactor:
+            st.session_state["_p7_prev_basis_reactor"] = scale_basis_reactor
+            st.session_state["cmp_scale_basis_rpm"] = float(round(max(_basis_rpm_mid, 0.1), 1))
+            st.session_state["cmp_scale_basis_vol"] = float(round(max(_basis_V_mid, 0.001), 2))
+            st.rerun()
+
         st.markdown(f"**Basis reactor conditions** ({scale_basis_reactor})")
         bc1, bc2 = st.columns(2)
         with bc1:
             scale_basis_rpm = st.number_input(
-                "Basis RPM", value=_basis_rpm_mid,
+                "Basis RPM",
                 min_value=0.1, format="%.1f", key="cmp_scale_basis_rpm",
             )
         with bc2:
             scale_basis_vol = st.number_input(
-                "Basis volume (L)", value=_basis_V_mid,
+                "Basis volume (L)",
                 min_value=0.001, format="%.2f", key="cmp_scale_basis_vol",
             )
 
@@ -1264,6 +1276,7 @@ if include_scaling and scale_basis_reactor and scale_param and len(selected_name
 
     st.divider()
     st.header("7 · Scale-Up Matching Results")
+    st.markdown("⬅️ [Back to scaling basis (Section 4)](#4-scale-up-matching)")
 
     # 1. Compute target value from basis reactor
     _basis_info_r = safe_iloc(reactors, "reactor_name", scale_basis_reactor, "Reactor")
