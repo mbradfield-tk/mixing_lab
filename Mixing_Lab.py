@@ -14,8 +14,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Render branding first so the logo sits at the top of the sidebar,
+# above the navigation menu.
+render_sidebar()
+
 # ── Page navigation ───────────────────────────────────────────────────────
-home = st.Page("pages/home.py", title="Mixing Lab", icon="🔬", default=True)
+home = st.Page("pages/home.py", title="App Overview", default=True)
 
 databases = [
     st.Page("pages/1_Reactor_Database.py",  title="Reactor Database",  icon="⚗️"),
@@ -61,7 +65,5 @@ nav = st.navigation({
 },
 position="sidebar",
 expanded=False)
-
-render_sidebar()
 
 nav.run()
