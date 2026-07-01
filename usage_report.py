@@ -27,15 +27,35 @@ _DEFAULT_DB = Path(__file__).resolve().parent / "data" / "usage.db"
 def _connect(db_path: Path) -> sqlite3.Connection:
     if not db_path.exists():
         raise SystemExit(f"No usage database found at: {db_path}")
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    con.row_factory = sqlite3.Row
-    # Fail clearly if the schema is missing.
-    tables = {r[0] for r in con.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'"
-    )}
-    if "access_log" not in tables:
-        raise SystemExit(f"'access_log' table not found in {db_path}")
-    return con
+
+    # The app opens the DB in WAL mode. A plain ``mode=ro`` connection still
+    # needs to write the ``-shm``/``-wal`` shared-memory files, which fails when
+    # the report is run by a user without write access to the DB directory
+    # ("attempt to write a readonly database"). ``immutable=1`` reads the file
+    # with no locking or shm writes, so it works read-only in that case.
+    attempts = (
+        f"file:{db_path}?mode=ro",              # normal read-only (non-WAL / writable shm)
+        f"file:{db_path}?mode=ro&immutable=1",  # pure read, no shm/wal writes
+    )
+    last_err: Exception | None = None
+    for uri in attempts:
+        try:
+            con = sqlite3.connect(uri, uri=True)
+            con.row_factory = sqlite3.Row
+            tables = {r[0] for r in con.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )}
+            if "access_log" not in tables:
+                con.close()
+                raise SystemExit(f"'access_log' table not found in {db_path}")
+            return con
+        except sqlite3.OperationalError as exc:
+            last_err = exc
+            continue
+
+    raise SystemExit(
+        f"Could not open usage database read-only: {db_path}\n  ({last_err})"
+    )
 
 
 def _fmt_local(ts_utc: str | None) -> str:
