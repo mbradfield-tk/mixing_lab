@@ -21,6 +21,8 @@ import numpy as np
 import pathlib
 import graphviz
 
+from utils.usage import fetch_access_log
+
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 ALT_CSV = DATA_DIR / "reactors_alt.csv"
 REACTOR_CSV = DATA_DIR / "reactors.csv"
@@ -898,3 +900,71 @@ if st.session_state.get("_show_csp_tree"):
             file_name="crystallization_sensitivity_protocol.svg",
             mime="image/svg+xml",
         )
+
+# ─────────────────────────────────────────────────────────────────────────
+# 9. Usage Analytics
+# ─────────────────────────────────────────────────────────────────────────
+st.divider()
+st.header("7 · Usage Analytics")
+st.caption(
+    "App-access tracking: how often the app is used and which client IP "
+    "addresses connect. Behind a reverse proxy, real client IPs require the "
+    "`X-Forwarded-For` header to be set by the proxy."
+)
+
+_usage_df = fetch_access_log()
+
+if _usage_df.empty:
+    st.info("No usage has been recorded yet.")
+else:
+    # Local (display) timestamps for readability.
+    _df = _usage_df.copy()
+    _df["timestamp_local"] = _df["ts_utc"].dt.tz_convert(None)
+    _df["date"] = _df["ts_utc"].dt.date
+
+    _m1, _m2, _m3, _m4 = st.columns(4)
+    _m1.metric("Total accesses", f"{len(_df):,}")
+    _m2.metric("Unique IPs", f"{_df['client_ip'].nunique():,}")
+    _m3.metric("Unique sessions", f"{_df['session_id'].nunique():,}")
+    _m4.metric(
+        "Accesses (last 7 days)",
+        f"{int((_df['ts_utc'] >= (pd.Timestamp.now(tz='UTC') - pd.Timedelta(days=7))).sum()):,}",
+    )
+
+    st.subheader("Accesses per day")
+    _daily = (
+        _df.groupby("date").size().rename("accesses").reset_index()
+        .set_index("date")
+    )
+    st.bar_chart(_daily)
+
+    st.subheader("Top client IP addresses")
+    _by_ip = (
+        _df.groupby("client_ip")
+        .agg(
+            accesses=("id", "size"),
+            unique_sessions=("session_id", "nunique"),
+            last_seen=("timestamp_local", "max"),
+        )
+        .sort_values("accesses", ascending=False)
+        .reset_index()
+    )
+    st.dataframe(_by_ip, width="stretch", hide_index=True)
+
+    with st.expander("Raw access log", expanded=False):
+        _cols = [
+            "timestamp_local", "client_ip", "forwarded_for",
+            "session_id", "page", "user_agent",
+        ]
+        st.dataframe(
+            _df[_cols].rename(columns={"timestamp_local": "timestamp"}),
+            width="stretch",
+            hide_index=True,
+        )
+
+    st.download_button(
+        "⬇️ Download usage log (CSV)",
+        data=_usage_df.to_csv(index=False).encode("utf-8"),
+        file_name="usage_log.csv",
+        mime="text/csv",
+    )

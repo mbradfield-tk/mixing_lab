@@ -6,6 +6,7 @@ Main entry point.  Run with:  streamlit run Mixing_Lab.py
 
 import streamlit as st
 from utils.sidebar import render_sidebar
+from utils.usage import log_access
 
 st.set_page_config(
     page_title="Mixing Lab",
@@ -13,6 +14,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Record one access event per browser session (client IP, timestamp, etc.).
+log_access()
 
 # Render branding first so the logo sits at the top of the sidebar,
 # above the navigation menu.
