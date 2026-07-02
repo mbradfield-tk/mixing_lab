@@ -490,6 +490,11 @@ with tab_browse:
 
                     _liquid_level = None  # absolute height of liquid surface (z)
                     _liquid_fill_L = None
+                    _show_dims = st.checkbox(
+                        "📏 Show dimensions", value=True, key="reactor_show_dims",
+                        help="Display the tank diameter and height dimension "
+                             "annotations on the 2D schematic.",
+                    )
                     _show_liquid = st.checkbox(
                         "💧 Show liquid level", key="reactor_show_liquid",
                         help="Display the liquid surface for a given fill volume. "
@@ -529,6 +534,8 @@ with tab_browse:
                         _right_pad = _R * 1.05          # room for impeller labels (right)
                         _bot_pad = _gap + _ref * 0.16   # room for diameter dimension (below)
                         _top_pad = _ref * 0.06
+                        if _liquid_level is not None:
+                            _top_pad += _ref * 0.10     # room for the volume label
 
                         fig, ax = plt.subplots(1, 1, figsize=(3.4, 4.8))
                         ax.set_aspect("equal")
@@ -576,7 +583,8 @@ with tab_browse:
                             _r_surf = _radius_at(_liquid_level)
                             ax.plot([-_r_surf, _r_surf], [_liquid_level, _liquid_level],
                                     color="#0288D1", lw=1.4, zorder=2)
-                            ax.text(0, _liquid_level + max(_R, _total_h) * 0.015,
+                            # Volume label placed just above the top of the vessel
+                            ax.text(0, _H + _top_depth + _ref * 0.02,
                                     f"{_liquid_fill_L:,.1f} L",
                                     ha="center", va="bottom", fontsize=7,
                                     color="#0277BD", zorder=2)
@@ -617,12 +625,12 @@ with tab_browse:
                                     alpha=0.7, lw=1.5, zorder=4,
                                 ))
                             # Leader line from the impeller tip to its label
-                            ax.plot([_r_imp, _R + _right_pad * 0.12], [_cy, _cy],
-                                    color=_color, lw=0.6, alpha=0.5, zorder=3)
-                            ax.text(_R + _right_pad * 0.15, _cy,
-                                    f"Imp {idx_imp+1}  ⌀{_d_imp*1000:.0f} mm",
-                                    fontsize=7, va="center", ha="left", color=_color)
-
+                            if _show_dims:
+                                ax.plot([_r_imp, _R + _right_pad * 0.12], [_cy, _cy],
+                                        color=_color, lw=0.6, alpha=0.5, zorder=3)
+                                ax.text(_R + _right_pad * 0.15, _cy,
+                                        f"Imp {idx_imp+1}  ⌀{_d_imp*1000:.0f} mm",
+                                        fontsize=7, va="center", ha="left", color=_color)
                         # Shaft
                         _shaft_top = _H + _top_depth * 0.9
                         _shaft_bot = min(_lowest_imp_y - _H * 0.05, 0.0) if _lowest_imp_y is not None else 0.0
@@ -630,32 +638,33 @@ with tab_browse:
                                 color="#555555", lw=1.5, zorder=3)
 
                         # ── Dimension annotations ─────────────────────
-                        _dim_color = "#888888"
-                        _dim_fs = 7
-                        _wit_lw = 0.6  # witness (extension) line weight
+                        if _show_dims:
+                            _dim_color = "#888888"
+                            _dim_fs = 7
+                            _wit_lw = 0.6  # witness (extension) line weight
 
-                        # Diameter: dimension line fully BELOW the bottom dish
-                        _arr_y = -_bot_depth - _gap
-                        for _sx in (-_R, _R):
-                            ax.plot([_sx, _sx], [0, _arr_y],
-                                    color=_dim_color, lw=_wit_lw, zorder=2)
-                        ax.annotate("", xy=(_R, _arr_y), xytext=(-_R, _arr_y),
-                                    arrowprops=dict(arrowstyle="<->", color=_dim_color, lw=1))
-                        ax.text(0, _arr_y - _ref * 0.04,
-                                f"⌀ {_D*1000:.0f} mm",
-                                ha="center", va="top", fontsize=_dim_fs, color=_dim_color)
+                            # Diameter: dimension line fully BELOW the bottom dish
+                            _arr_y = -_bot_depth - _gap
+                            for _sx in (-_R, _R):
+                                ax.plot([_sx, _sx], [0, _arr_y],
+                                        color=_dim_color, lw=_wit_lw, zorder=2)
+                            ax.annotate("", xy=(_R, _arr_y), xytext=(-_R, _arr_y),
+                                        arrowprops=dict(arrowstyle="<->", color=_dim_color, lw=1))
+                            ax.text(0, _arr_y - _ref * 0.04,
+                                    f"⌀ {_D*1000:.0f} mm",
+                                    ha="center", va="top", fontsize=_dim_fs, color=_dim_color)
 
-                        # Height: dimension line to the LEFT of the vessel
-                        _hx = -_R - _left_pad * 0.5
-                        for _sy in (0.0, _H):
-                            ax.plot([-_R, _hx], [_sy, _sy],
-                                    color=_dim_color, lw=_wit_lw, zorder=2)
-                        ax.annotate("", xy=(_hx, _H), xytext=(_hx, 0),
-                                    arrowprops=dict(arrowstyle="<->", color=_dim_color, lw=1))
-                        ax.text(_hx - _R * 0.06, _H / 2,
-                                f"H {_H*1000:.0f} mm",
-                                ha="right", va="center", fontsize=_dim_fs,
-                                color=_dim_color, rotation=90)
+                            # Height: dimension line to the LEFT of the vessel
+                            _hx = -_R - _left_pad * 0.5
+                            for _sy in (0.0, _H):
+                                ax.plot([-_R, _hx], [_sy, _sy],
+                                        color=_dim_color, lw=_wit_lw, zorder=2)
+                            ax.annotate("", xy=(_hx, _H), xytext=(_hx, 0),
+                                        arrowprops=dict(arrowstyle="<->", color=_dim_color, lw=1))
+                            ax.text(_hx - _R * 0.06, _H / 2,
+                                    f"H {_H*1000:.0f} mm",
+                                    ha="right", va="center", fontsize=_dim_fs,
+                                    color=_dim_color, rotation=90)
 
                         ax.set_title(selected_reactor, fontsize=10, fontweight="bold", pad=10)
                         fig.tight_layout()
