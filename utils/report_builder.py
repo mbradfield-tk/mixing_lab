@@ -55,6 +55,30 @@ def _safe_text(text: str, is_unicode_font: bool) -> str:
     return text.translate(_UNICODE_MAP).encode("latin-1", errors="replace").decode("latin-1")
 
 
+def _fmt_sig(value, sig: int = 4) -> str:
+    """Format a number to ``sig`` significant figures without scientific
+    notation, stripping trailing zeros.
+
+    Fixed-decimal formats (e.g. ``:.2f``) silently drop precision for small
+    magnitudes — 0.014 renders as "0.01". This keeps the significant digits
+    regardless of magnitude: 0.014 -> "0.014", 1500 -> "1500", 250.5 -> "250.5".
+    """
+    import math
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if not math.isfinite(v):
+        return str(value)
+    if v == 0:
+        return "0"
+    digits = max(sig - 1 - int(math.floor(math.log10(abs(v)))), 0)
+    s = f"{v:.{digits}f}"
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s
+
+
 DISPLAY_NAMES = {
     "Da_macro": "Macromixing (Da_macro)",
     "Da_micro": "Micromixing (Da_micro)",
@@ -198,51 +222,33 @@ class MixingReport(FPDF):
         self.set_fill_color(br, bg, bb)
         self.set_text_color(r, g, b)
         self.set_font(self._FONT, "B", 10)
-        self.cell(0, 8, f"  {self._s(text)}", fill=True)
-        self.ln(9)
+        # Use multi_cell so long text wraps onto multiple lines instead of
+        # being clipped; a small left indent keeps the original look.
+        indent = 2.0
+        x0 = self.get_x()
+        self.set_x(x0 + indent)
+        self.multi_cell(self.w - self.l_margin - self.r_margin - indent, 6,
+                        self._s(text), fill=True)
+        self.set_x(x0)
+        self.ln(1)
         self.set_text_color(0, 0, 0)
 
     def data_table(self, headers: list[str], rows: list[list[str]],
                    col_widths: list[float] | None = None,
-                   wrap: bool = False):
+                   wrap: bool = True):
         """Render a bordered table with a header row and data rows.
 
-        When *wrap* is True, cell text that is wider than its column is
-        wrapped onto multiple lines and the row grows in height to fit,
-        so no content is clipped by the column border.
+        Cell text that is wider than its column is always wrapped onto
+        multiple lines and the row grows in height to fit, so no content is
+        ever clipped by the column border. The *wrap* argument is retained
+        for backward compatibility but wrapping is now always applied.
         """
         usable = self.w - 20
         n = len(headers)
         if col_widths is None:
             col_widths = [usable / n] * n
-        row_h = 6
 
-        if not wrap:
-            # Header
-            self.set_font(self._FONT, "B", 8)
-            self.set_fill_color(230, 230, 240)
-            self.set_text_color(30, 30, 80)
-            for i, h in enumerate(headers):
-                self.cell(col_widths[i], row_h, self._s(h), border=1, fill=True)
-            self.ln(row_h)
-            # Data rows
-            self.set_font(self._FONT, "", 8)
-            self.set_text_color(40, 40, 40)
-            _alt = False
-            for row in rows:
-                if _alt:
-                    self.set_fill_color(245, 245, 250)
-                else:
-                    self.set_fill_color(255, 255, 255)
-                for i, val in enumerate(row):
-                    self.cell(col_widths[i], row_h, self._s(str(val)),
-                              border=1, fill=True)
-                self.ln(row_h)
-                _alt = not _alt
-            self.ln(4)
-            return
-
-        # ── Wrapped variant ───────────────────────────────────────────
+        # ── Wrapped rendering (always applied) ─────────────────────────
         line_h = 4.5
         pad = 1.0
 
@@ -526,7 +532,7 @@ def build_mixing_assessment_pdf(snap: dict) -> bytes:
     pdf.kv("Reaction", reaction_name, bold_val=True)
     pdf.kv("Fluid", f"{fluid_name}  ({fluid_T_C:.1f} deg C)", bold_val=True)
     pdf.kv("Stir speed", f"{N_rpm:.0f} RPM")
-    pdf.kv("Liquid volume", f"{V_L:.2f} L")
+    pdf.kv("Liquid volume", f"{_fmt_sig(V_L)} L")
     pdf.kv("Reaction time (t_rxn)", f"{t_rxn:.4g} s")
     pdf.ln(4)
 
@@ -979,7 +985,7 @@ def build_reactor_comparison_pdf(snap: dict) -> bytes:
 def build_protocol_pdf(snap: dict) -> bytes:
     """Build PDF report for Page 10 – Mixing Sensitivity Protocol."""
     rxn_name = snap["reaction"]
-    t_rxn = snap["t_rxn"]
+    t_rxn = snap.get("t_rxn")
     rxn_delta_H = snap.get("rxn_delta_H", 0.0)
     phases = snap.get("phases", [])
     findings = snap.get("findings", [])  # list of (mechanism, status, detail)
@@ -988,6 +994,11 @@ def build_protocol_pdf(snap: dict) -> bytes:
     competing = snap.get("competing", "Not assessed")
     overall_verdict = snap.get("overall_verdict", "")
     using_approximate = snap.get("using_approximate", False)
+    bourne_meta = snap.get("bourne_meta", {})
+    bourne_tests = snap.get("bourne_tests", [])
+    bourne_mechanism = snap.get("bourne_mechanism", "")
+    bourne_only = snap.get("bourne_only", False)
+    caveat = snap.get("caveat", "")
 
     title = f"Sensitivity Protocol \u2014 {rxn_name}"
     pdf = new_report(title)
@@ -996,16 +1007,26 @@ def build_protocol_pdf(snap: dict) -> bytes:
     pdf.add_page()
     pdf.set_font(pdf._FONT, "B", 20)
     pdf.set_text_color(30, 30, 80)
-    pdf.cell(0, 14, pdf._s("Reaction Sensitivity Protocol Report"), align="C")
+    _title_text = (
+        "Bourne Protocol Result Report" if bourne_only
+        else "Reaction Sensitivity Protocol Report"
+    )
+    pdf.cell(0, 14, pdf._s(_title_text), align="C")
     pdf.ln(18)
 
     pdf.section_title("Reaction Input")
     pdf.kv("Reaction", rxn_name, bold_val=True)
-    pdf.kv("Reaction time (t_rxn)", f"{t_rxn:.4g} s")
+    if t_rxn is not None:
+        pdf.kv("Reaction time (t_rxn)", f"{t_rxn:.4g} s")
+    else:
+        pdf.kv("Reaction time (t_rxn)", "Not assessed (no kinetics data)")
     pdf.kv("Delta H (kJ/mol)", f"{rxn_delta_H:.1f}" if rxn_delta_H != 0 else "N/A")
-    pdf.kv("Phases", ", ".join(phases) if phases else "Liquid (single phase)")
+    pdf.kv("Phases", ", ".join(phases) if phases
+           else ("Not assessed" if bourne_only else "Liquid (single phase)"))
     if using_approximate:
         pdf.assessment_box("Approximate kinetics used -- results are indicative", "AMBER")
+    if caveat:
+        pdf.assessment_box("Caveat: " + caveat.replace("**", ""), "AMBER")
     pdf.ln(4)
 
     # ── Protocol findings ────────────────────────────────────────────────
@@ -1013,6 +1034,31 @@ def build_protocol_pdf(snap: dict) -> bytes:
     pdf.kv("Bourne pre-screen", bourne_result)
     pdf.kv("Competing reactions", competing)
     pdf.ln(4)
+
+    # ── Imported Bourne Protocol experimental findings ───────────────────
+    if bourne_tests:
+        pdf.sub_title("Bourne Protocol Experimental Findings")
+        if bourne_meta:
+            _meta_line = "  |  ".join(f"{_k}: {_v}" for _k, _v in bourne_meta.items())
+            pdf.body_text(_meta_line)
+            pdf.ln(1)
+        _b_rows = []
+        for _t in bourne_tests:
+            _b_rows.append([
+                str(_t.get("Test", "")),
+                str(_t.get("Finding", "")),
+                str(_t.get("Sensitive KPI(s)", "")),
+            ])
+        pdf.data_table(
+            ["Test", "Finding", "Sensitive KPI(s)"], _b_rows,
+            col_widths=[45, 70, 55], wrap=True,
+        )
+        if bourne_mechanism:
+            pdf.ln(1)
+            pdf.body_text(
+                f"Controlling scale identified by the Bourne Protocol: {bourne_mechanism}."
+            )
+        pdf.ln(4)
 
     # Overall verdict
     if overall_verdict:
@@ -1052,6 +1098,24 @@ def build_protocol_pdf(snap: dict) -> bytes:
         )
 
     return report_bytes(pdf)
+
+
+def _bourne_t2_short_labels(responses) -> list[str]:
+    """Return concise, basis-aware column labels for a Test 2 response table.
+
+    Uses the condition labels stored in the assessment snapshot (which reflect
+    the feed-rate/feed-time basis and the slow -> center -> fast ordering
+    chosen in the app), shortened for the narrow PDF columns. Falls back to a
+    generic slow/center/fast set for legacy snapshots without stored labels.
+    """
+    labels = responses.get("labels") if isinstance(responses, dict) else None
+    if not labels:
+        return ["Slow (3x)", "Center (1x)", "Fast (1/3x)"]
+    short = []
+    for lbl in labels:
+        s = str(lbl).replace("feed ", "").replace("  ", " ").strip()
+        short.append(s)
+    return short
 
 
 def _bourne_later_test_responses(pdf, responses, short_labels,
@@ -1175,7 +1239,7 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
         for cond in t1_conditions:
             _t1_cond_rows.append([
                 cond.get("Condition", ""),
-                f"{cond.get('Volume (L)', 0):.2f}",
+                _fmt_sig(cond.get('Volume (L)', 0)),
                 f"{cond.get('N (RPM)', 0):.0f}",
                 f"{cond.get('P/m (W/kg)', 0):.4g}",
                 f"{cond.get('P/V (W/L)', 0):.4g}",
@@ -1264,9 +1328,10 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
             pdf.ln(1)
             pdf.body_text(f"Total feed volume: {t2_conds.get('feed_vol_mL', 0):.1f} mL.")
         pdf.ln(2)
+        _t2_short = _bourne_t2_short_labels(t2_responses)
         _bourne_later_test_responses(
             pdf, t2_responses,
-            ["Fast (1/3x)", "Center (1x)", "Slow (3x)"],
+            _t2_short,
             "Sensitive (mesomixing involved)",
             "Not sensitive (micromixing controls)",
             "May be sensitive (mesomixing involved)",
@@ -1434,7 +1499,7 @@ def build_bourne_step_pdf(snap: dict) -> bytes:
             for cond in t1_conditions:
                 _t1_cond_rows.append([
                     cond.get("Condition", ""),
-                    f"{cond.get('Volume (L)', 0):.2f}",
+                    _fmt_sig(cond.get('Volume (L)', 0)),
                     f"{cond.get('N (RPM)', 0):.0f}",
                     f"{cond.get('P/m (W/kg)', 0):.4g}",
                     f"{cond.get('P/V (W/L)', 0):.4g}",
@@ -1529,9 +1594,10 @@ def build_bourne_step_pdf(snap: dict) -> bytes:
             pdf.body_text(f"Total feed volume: {t2_conds.get('feed_vol_mL', 0):.1f} mL.")
         if t2_responses:
             pdf.ln(2)
+            _t2_short = _bourne_t2_short_labels(t2_responses)
             _bourne_later_test_responses(
                 pdf, t2_responses,
-                ["Fast (1/3x)", "Center (1x)", "Slow (3x)"],
+                _t2_short,
                 "Sensitive (mesomixing involved)",
                 "Not sensitive (micromixing controls)",
                 "May be sensitive (mesomixing involved)",
@@ -1620,7 +1686,7 @@ def build_heat_transfer_pdf(snap: dict) -> bytes:
     pdf.kv("Reactor", reactor_name, bold_val=True)
     pdf.kv("Fluid", f"{fluid_name}  ({fluid_T_C:.1f} deg C)", bold_val=True)
     pdf.kv("Stir speed", f"{N_rpm:.0f} RPM")
-    pdf.kv("Liquid volume", f"{V_L:.2f} L")
+    pdf.kv("Liquid volume", f"{_fmt_sig(V_L)} L")
     pdf.kv("Heat transfer medium", htm_name, bold_val=True)
     pdf.kv("Nusselt correlation", nu_corr)
     pdf.kv("Mode", _mode_label)

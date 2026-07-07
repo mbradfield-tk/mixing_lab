@@ -62,6 +62,7 @@ _all_fluid_names = all_fluid_names(custom_fluids)
 # RESPONSE_UNITS) so the metric name stays unit-free.
 RESPONSE_METRICS = [
     "Yield",
+    "Purity",
     "Conversion",
     "Selectivity",
     "Concentration",
@@ -107,6 +108,7 @@ _CUSTOM_UNIT = "Custom…"
 # Sensible default unit for each metric (used to preselect the unit dropdown).
 _METRIC_DEFAULT_UNIT = {
     "Yield": "%",
+    "Purity": "%",
     "Conversion": "%",
     "Selectivity": "%",
     "Concentration": "g/L",
@@ -260,6 +262,35 @@ def _collect_bourne_inputs():
     return df
 
 
+def _coerce_import_value(raw):
+    """Parse a stored input value, tolerating spreadsheet-mangled types.
+
+    The export stores JSON, but opening the CSV in a spreadsheet can rewrite
+    booleans as ``TRUE``/``FALSE`` (which are not valid JSON). Fall back to
+    recognising those, then plain ints/floats, then the raw string, so no row
+    is silently dropped on import.
+    """
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        pass
+    _s = str(raw).strip()
+    _low = _s.lower()
+    if _low == "true":
+        return True
+    if _low == "false":
+        return False
+    try:
+        return int(_s)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return float(_s)
+    except (TypeError, ValueError):
+        pass
+    return _s
+
+
 def _apply_bourne_inputs(df):
     """Restore inputs from an exported frame into a fresh widget generation."""
     old_gen = st.session_state.get("_bp_gen", 0)
@@ -268,16 +299,147 @@ def _apply_bourne_inputs(df):
             del st.session_state[k]
     new_gen = old_gen + 1
     for _, row in df.iterrows():
-        try:
-            val = json.loads(row["value"])
-        except (TypeError, ValueError):
-            continue
+        val = _coerce_import_value(row["value"])
         if row["scope"] == "gen":
             st.session_state[f"bp_{new_gen}_{row['key']}"] = val
         else:
             st.session_state[str(row["key"])] = val
     st.session_state["_bp_gen"] = new_gen
     st.session_state["_bp_started"] = True
+
+
+# ── Results export for the Reaction Sensitivity Protocol (Page 10) ────────
+# Human-readable per-test finding summaries keyed by assessment status. These
+# are written into the results CSV so Page 10 can display each test's outcome
+# without re-deriving it.
+_T1_RESULT_FINDINGS = {
+    "sensitive": "Response changed with impeller speed - mixing matters.",
+    "may_be_sensitive": "Some KPIs changed with impeller speed - possibly mixing-sensitive.",
+    "not_sensitive": "No response change with impeller speed - mixing not critical.",
+}
+_T2_RESULT_FINDINGS = {
+    "sensitive": "Sensitive to feed rate - mesomixing involved.",
+    "may_be_sensitive": "Partially sensitive to feed rate - mesomixing may be involved.",
+    "not_sensitive": "Insensitive to feed rate - micromixing-controlled.",
+}
+_T3_RESULT_FINDINGS = {
+    "sensitive": "Sensitive to feed location - mesomixing-controlled.",
+    "may_be_sensitive": "Partially sensitive to feed location - mesomixing likely.",
+    "not_sensitive": "Insensitive to feed location - macromixing-controlled.",
+}
+
+
+def _sensitive_kpi_summary(assessed) -> str:
+    """Semicolon-joined list of KPIs judged sensitive in an assessment.
+
+    Quantitative KPIs include their max relative change; qualitative KPIs are
+    tagged '(qualitative)'. Returns '' when no KPI was sensitive.
+    """
+    parts = []
+    for r in assessed.get("kpi_results", []):
+        if not r.get("sensitive"):
+            continue
+        _name = r.get("name", "")
+        if r.get("qualitative"):
+            parts.append(f"{_name} (qualitative)")
+        else:
+            parts.append(f"{_name} ({r.get('max_pct', 0):.1f}%)")
+    return "; ".join(parts)
+
+
+def _all_kpi_summary(assessed) -> str:
+    """Semicolon-joined list of every KPI name tracked in an assessment."""
+    return "; ".join(r.get("name", "") for r in assessed.get("kpi_results", []))
+
+
+def _bourne_results_ready() -> bool:
+    """True once Test 1 has been assessed (the minimum for a results export)."""
+    return _bk("t1_assessed") in st.session_state
+
+
+def _build_bourne_results_df() -> pd.DataFrame:
+    """Build a self-contained field/value results frame for the Sensitivity Protocol.
+
+    Captures which tests were completed, each test's finding, and the derived
+    dominant mixing mechanism so Page 10 can parse the outcome directly, without
+    re-running the Bourne decision logic.
+    """
+    import datetime
+    gen = st.session_state.get("_bp_gen", 0)
+    t1 = st.session_state.get(_bk("t1_assessed"))
+    t2 = st.session_state.get(_bk("t2_assessed"))
+    t3 = st.session_state.get(_bk("t3_assessed"))
+
+    _vol = ""
+    for k, v in st.session_state.items():
+        if k.startswith(f"bp_{gen}_vol_L_"):
+            _vol = v
+            break
+
+    def _sens(a):
+        return a is not None and a.get("status", "") != "not_sensitive"
+
+    t1_sensitive = _sens(t1)
+    t2_sensitive = _sens(t2)
+    t3_sensitive = _sens(t3)
+
+    # Derived dominant mechanism (mirrors the Section 5 decision tree). Only a
+    # mechanism that the *completed* tests can actually establish is emitted:
+    # when Test 2 is sensitive, the meso-vs-macro call requires Test 3, so if
+    # Test 3 was not assessed the mechanism is left undetermined (blank) rather
+    # than guessing a default.
+    dominant = ""
+    if t1 is not None and t1_sensitive:
+        if t2 is not None and not t2_sensitive:
+            dominant = "Micromixing"
+        elif t2 is not None and t2_sensitive and t3 is not None:
+            dominant = "Mesomixing" if t3_sensitive else "Macromixing"
+
+    if t1 is None:
+        overall = "unknown"
+    elif t1_sensitive:
+        overall = "yes"
+    else:
+        overall = "no"
+
+    rows = []
+
+    def add(field, value):
+        rows.append({"field": field, "value": value})
+
+    add("record_type", "bourne_results")
+    add("schema_version", "1")
+    add("exported_at", datetime.datetime.now().isoformat(timespec="seconds"))
+    add("project_name", st.session_state.get("_sel_bp_project", ""))
+    add("step_number", st.session_state.get("_sel_bp_step", ""))
+    add("unit_operation", st.session_state.get("_sel_bp_uop", ""))
+    add("reactor", st.session_state.get("_sel_bp_reactor", ""))
+    add("fluid", st.session_state.get("_sel_bp_fluid", ""))
+    add("working_volume_L", _vol)
+
+    # Only assessed tests contribute data. A test that was never assessed emits
+    # no fields at all, so on import it is absent entirely (not shown as a
+    # completed test and nothing inferred from default widget values).
+    for _n, _a, _find_map in (
+        (1, t1, _T1_RESULT_FINDINGS),
+        (2, t2, _T2_RESULT_FINDINGS),
+        (3, t3, _T3_RESULT_FINDINGS),
+    ):
+        if _a is None:
+            continue
+        _status = _a.get("status", "")
+        add(f"test{_n}_assessed", "yes")
+        add(f"test{_n}_status", _status)
+        add(f"test{_n}_finding", _find_map.get(_status, ""))
+        add(f"test{_n}_n_sensitive", _a.get("n_sensitive", ""))
+        add(f"test{_n}_n_total", _a.get("n_total", ""))
+        add(f"test{_n}_kpis", _all_kpi_summary(_a))
+        add(f"test{_n}_sensitive_kpis", _sensitive_kpi_summary(_a))
+
+    add("dominant_mechanism", dominant)
+    add("overall_sensitive", overall)
+
+    return pd.DataFrame(rows, columns=["field", "value"])
 
 
 st.button("🔄 Restart protocol", key="bp_restart", on_click=_reset_bourne)
@@ -323,6 +485,35 @@ with st.expander("💾 Save / Load Protocol Inputs", expanded=False):
                     st.rerun()
             except Exception as exc:
                 st.error(f"Failed to load inputs: {exc}")
+
+# ════════════════════════════════════════════════════════════════════════════
+# Export results for the 🧭 Reaction Sensitivity Protocol (Page 10).
+# ════════════════════════════════════════════════════════════════════════════
+with st.expander("📤 Export results for the Sensitivity Protocol", expanded=False):
+    st.caption(
+        "Export a compact results file capturing which tests you completed and "
+        "each test's finding. Import it on the 🧭 Reaction Sensitivity Protocol "
+        "page (Step 0) to drive that assessment directly from these results."
+    )
+    if _bourne_results_ready():
+        _res_df = _build_bourne_results_df()
+        _res_proj = (st.session_state.get("_sel_bp_project") or "protocol").strip().replace(" ", "_") or "protocol"
+        st.download_button(
+            "⬇️ Download results CSV",
+            data=_res_df.to_csv(index=False).encode("utf-8"),
+            file_name=f"Bourne_results_{_res_proj}.csv",
+            mime="text/csv",
+            key="bp_export_results",
+        )
+        _dom = _res_df.loc[_res_df["field"] == "dominant_mechanism", "value"]
+        _dom_val = _dom.iloc[0] if not _dom.empty else ""
+        if _dom_val:
+            st.caption(f"Current controlling mechanism: **{_dom_val}**.")
+    else:
+        st.info(
+            "Complete at least **Test 1** (assess its responses) to enable the "
+            "results export."
+        )
 
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 00 – Project & Step Metadata
@@ -682,6 +873,14 @@ st.markdown(
     "volume grows. Enable below to plan those setpoints for each of the "
     "three Test 1 conditions."
 )
+
+# When restoring an imported run, the "add discrete speed adjustments" flag may
+# be missing (e.g. a spreadsheet dropped the boolean). Infer it from the
+# presence of any restored adjustment-volume values so the section re-appears.
+if _bk("t1_use_adj") not in st.session_state:
+    _gen = st.session_state.get("_bp_gen", 0)
+    if any(k.startswith(f"bp_{_gen}_t1_adj_vol_") for k in st.session_state.keys()):
+        st.session_state[_bk("t1_use_adj")] = True
 
 _use_adj = st.checkbox(
     "Add discrete speed adjustments at higher volumes",
@@ -1056,6 +1255,20 @@ def _step_export_ui(step, snap_extra):
             key=_bk(f"dl_step{step}_pdf"),
         )
 
+# When restoring an imported run, the "track multiple KPIs" flag may be missing
+# (e.g. a spreadsheet dropped it). Infer it from the restored KPI count /
+# assessment so every KPI's input boxes re-appear instead of collapsing to one.
+if _bk("t1_multi") not in st.session_state:
+    try:
+        _imp_n_kpi = int(st.session_state.get(_bk("t1_n_kpi")))
+    except (TypeError, ValueError):
+        _imp_n_kpi = 1
+    _imp_assessed_n = len(
+        (st.session_state.get(_bk("t1_assessed")) or {}).get("kpi_results", [])
+    )
+    if _imp_n_kpi > 1 or _imp_assessed_n > 1:
+        st.session_state[_bk("t1_multi")] = True
+
 _t1_multi = st.checkbox(
     "Track multiple KPIs",
     key=_bk("t1_multi"),
@@ -1202,6 +1415,10 @@ if st.button("📊 Assess Test 1 Responses", key=_bk("t1_assess")):
             "resp": _kpi_results[0]["resp"],
             "pct_detail": _kpi_results[0]["pct_detail"],
         }
+        # A Test 1 change invalidates the later tests: drop any existing Test 2
+        # and Test 3 assessments so they must be re-run and cannot go stale.
+        for _dk in ("t2_assessed", "t3_assessed"):
+            st.session_state.pop(_bk(_dk), None)
         # Rerun so the top-of-page input export captures the new assessment.
         st.rerun()
 
@@ -1338,7 +1555,7 @@ st.divider()
 st.header("Test 2 - Feed Rate / Feed Time")
 st.markdown("""
 - Vary **feed time only** (hold speed & location at centerpoint)         
-- Test a **9× flow-rate range** (1/3× and 3× the centerpoint feed time)
+- Test a **9× flow-rate range** (spanning 1/3× to 3× the centerpoint)
 - Sensitive → mesomixing-controlled     
 - Insensitive → micromixing-controlled
 """)
@@ -1349,7 +1566,7 @@ feed_vol = st.number_input("Total feed volume (mL)", min_value=0.1, value=100.0,
 
 t2_center_mode = st.radio(
     "Define centerpoint by",
-    ["Feed time", "Feed rate"],
+    ["Feed rate", "Feed time"],
     horizontal=True, key=_bk("t2_ctr_mode"),
 )
 
@@ -1377,24 +1594,37 @@ else:
 t_feed_fast = t_feed_center / 3.0
 t_feed_slow = t_feed_center * 3.0
 
+# Frame the condition labels around whichever variable the user chose so the
+# "3×" case always refers to that variable. When the centerpoint is defined by
+# feed rate, the fast (3× rate) condition must read as 3× — not the 3× feed
+# *time* (which is actually the slow, 1/3× rate) case.
+if t2_center_mode == "Feed rate":
+    _t2_fast_label = "Fast  (3× feed rate)"
+    _t2_ctr_label = "Center (1× feed rate)"
+    _t2_slow_label = "Slow  (1/3× feed rate)"
+else:
+    _t2_fast_label = "Fast  (1/3× feed time)"
+    _t2_ctr_label = "Center (1× feed time)"
+    _t2_slow_label = "Slow  (3× feed time)"
+
 t2_conditions = pd.DataFrame([
     {
-        "Condition": "Fast  (1/3× feed time)",
-        "Feed time (min)": round(t_feed_fast, 2),
-        "Flow rate (mL/min)": round(feed_vol / t_feed_fast, 2),
-        "Notes": "Highest mesomixing stress — more 'bad stuff' if meso-controlled",
+        "Condition": _t2_slow_label,
+        "Feed time (min)": round(t_feed_slow, 2),
+        "Flow rate (mL/min)": round(feed_vol / t_feed_slow, 2),
+        "Notes": "Less mesomixing stress — better result if meso-controlled",
     },
     {
-        "Condition": "Center (1× feed time)",
+        "Condition": _t2_ctr_label,
         "Feed time (min)": round(t_feed_center, 2),
         "Flow rate (mL/min)": round(feed_vol / t_feed_center, 2),
         "Notes": "Baseline condition",
     },
     {
-        "Condition": "Slow  (3× feed time)",
-        "Feed time (min)": round(t_feed_slow, 2),
-        "Flow rate (mL/min)": round(feed_vol / t_feed_slow, 2),
-        "Notes": "Less mesomixing stress — better result if meso-controlled",
+        "Condition": _t2_fast_label,
+        "Feed time (min)": round(t_feed_fast, 2),
+        "Flow rate (mL/min)": round(feed_vol / t_feed_fast, 2),
+        "Notes": "Highest mesomixing stress — more 'bad stuff' if meso-controlled",
     },
 ])
 st.dataframe(t2_conditions, width='content', hide_index=True)
@@ -1430,7 +1660,7 @@ if len(_t2_kpi_defs) > 1:
 else:
     st.caption("Recording the same response KPI defined in Test 1.")
 
-_t2_labels = ["Fast (1/3× feed time)", "Center (1× feed time)", "Slow (3× feed time)"]
+_t2_labels = [_t2_slow_label.strip(), _t2_ctr_label.strip(), _t2_fast_label.strip()]
 _t2_kpi_inputs = _render_kpi_responses("t2", _t2_kpi_defs, _t2_labels)
 
 # Button-triggered assessment
@@ -1440,6 +1670,9 @@ if st.button("📊 Assess Test 2 Responses", key=_bk("t2_assess")):
     else:
         st.session_state[_bk("t2_assessed")] = _assess_kpi_inputs(
             _t2_kpi_inputs, _t2_labels)
+        # A Test 2 change invalidates Test 3: drop any existing Test 3
+        # assessment so it must be re-run and cannot go stale.
+        st.session_state.pop(_bk("t3_assessed"), None)
         # Rerun so the top-of-page input export captures the new assessment.
         st.rerun()
 
@@ -1525,9 +1758,9 @@ _step_export_ui(2, {
         "feed_vol_mL": feed_vol,
         "feed_location": "Held constant (centerpoint)",
         "rows": [
-            {"Condition": "Fast (1/3x feed time)", "Feed time (min)": round(t_feed_fast, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_fast, 2)},
-            {"Condition": "Center (1x feed time)", "Feed time (min)": round(t_feed_center, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_center, 2)},
-            {"Condition": "Slow (3x feed time)", "Feed time (min)": round(t_feed_slow, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_slow, 2)},
+            {"Condition": _t2_slow_label.strip(), "Feed time (min)": round(t_feed_slow, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_slow, 2)},
+            {"Condition": _t2_ctr_label.strip(), "Feed time (min)": round(t_feed_center, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_center, 2)},
+            {"Condition": _t2_fast_label.strip(), "Feed time (min)": round(t_feed_fast, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_fast, 2)},
         ],
     },
     "t2_responses": st.session_state.get(_bk("t2_assessed")),
@@ -1952,9 +2185,9 @@ if st.button("📥 Export PDF Report", type="primary", key=_bk("export_pdf")):
                     "feed_vol_mL": feed_vol,
                     "feed_location": "Held constant (centerpoint)",
                     "rows": [
-                        {"Condition": "Fast (1/3x feed time)", "Feed time (min)": round(t_feed_fast, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_fast, 2)},
-                        {"Condition": "Center (1x feed time)", "Feed time (min)": round(t_feed_center, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_center, 2)},
-                        {"Condition": "Slow (3x feed time)", "Feed time (min)": round(t_feed_slow, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_slow, 2)},
+                        {"Condition": _t2_slow_label.strip(), "Feed time (min)": round(t_feed_slow, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_slow, 2)},
+                        {"Condition": _t2_ctr_label.strip(), "Feed time (min)": round(t_feed_center, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_center, 2)},
+                        {"Condition": _t2_fast_label.strip(), "Feed time (min)": round(t_feed_fast, 2), "Flow rate (mL/min)": round(feed_vol / t_feed_fast, 2)},
                     ],
                 },
                 "t2_responses": st.session_state.get(_bk("t2_assessed")),
