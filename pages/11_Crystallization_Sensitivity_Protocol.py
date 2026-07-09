@@ -975,7 +975,7 @@ if _bourne_sensitive is None:
 
 if _micro_likely or _micro_meso_sensitive:
     _steps.append(
-        "Compute **Da numbers** for your reactor(s) (selector above or 🌀 Mixing Assessment page)."
+        "Compute **Da numbers** for your reactor(s) (selector above or 🌀 Vessel Assessment page)."
     )
 
 if _feed_sensitive:
@@ -993,7 +993,7 @@ if not is_seeded and _micro_meso_sensitive:
 
 if _heat_sensitive:
     _steps.append(
-        "Run **heat balance** on target vessel (🌀 Mixing Assessment or 📈 Reactor Comparison)."
+        "Run **heat balance** on target vessel (🌀 Vessel Assessment or 📈 Vessel Comparison)."
     )
 
 if not _steps:

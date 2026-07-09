@@ -88,7 +88,7 @@ _BOURNE_MECH_ACTIONS = {
     "Micromixing": (
         "Hold local energy dissipation ε (P/V) constant on scale-up and keep the "
         "feed point in the high-shear zone near the impeller. Confirm with Da_micro "
-        "on the 🌀 Mixing Assessment page."
+        "on the 🌀 Vessel Assessment page."
     ),
     "Mesomixing": (
         "Control feed-plume dispersion: hold local ε constant at the feed point "
@@ -784,7 +784,7 @@ if _multiphase:
 
     _mass_transfer_notes.extend([
         "It is **highly recommended** to characterise each vessel's "
-        "hydrodynamics (see 🌀 Mixing Assessment and 📈 Reactor Comparison pages) "
+        "hydrodynamics (see 🌀 Vessel Assessment and 📈 Vessel Comparison pages) "
         "to understand how each transport mechanism varies with scale.",
         "If the intrinsic reaction is fast relative to any mass-transfer step, "
         "the observed rate will be transport-limited and mixing-sensitive.",
@@ -870,7 +870,7 @@ if _multiphase:
         "Mass-transfer limitations are system-dependent — the remaining steps still "
         "assess micro/meso/macromixing and heat transfer, but keep in mind that "
         "interphase transport may dominate. Compute Da_GL and/or Da_LS for your "
-        "specific reactor on the **🌀 Mixing Assessment** or **📈 Reactor Comparison** "
+        "specific reactor on the **🌀 Vessel Assessment** or **📈 Vessel Comparison** "
         "pages."
     )
 else:
@@ -966,7 +966,7 @@ if competing == "Yes":
             "**integral scale of turbulence** at the feed point, which in practice "
             "is approximated by the feed-pipe diameter $d_{feed}$, so this app "
             r"evaluates $\tau_S = 1.2\,(d_{feed}^2/\varepsilon)^{1/3}$ on the "
-            "🌀 Mixing Assessment and 📈 Reactor Comparison pages.\n"
+            "🌀 Vessel Assessment and 📈 Vessel Comparison pages.\n"
             "  - *Turbulent dispersion* of the plume by the mean flow: "
             r"$\tau_D = Q_{feed}/(\bar{u}\,D_t)$, "
             "where $Q_{feed}$ is the feed flow rate, $\\bar{u}$ the local mean "
@@ -1237,8 +1237,8 @@ if _has_enthalpy:
     _heat_sensitive = _heat_flag
     if _heat_flag:
         _recommendation(
-            "Run the heat balance on the **🌀 Mixing Assessment** or "
-            "**📈 Reactor Comparison** page to quantify Q_gen vs Q_cool for your "
+            "Run the heat balance on the **🌀 Vessel Assessment** or "
+            "**📈 Vessel Comparison** page to quantify Q_gen vs Q_cool for your "
             "specific reactor(s)."
         )
     if _flagged:
@@ -1340,7 +1340,7 @@ elif t_rxn < 1.0:
         "warning",
         "**Fast reaction** — micromixing likely relevant in "
         "larger vessels where local ε at the feed point decreases. Confirm with "
-        "Damköhler analysis on the 🌀 Mixing Assessment page.",
+        "Damköhler analysis on the 🌀 Vessel Assessment page.",
     )
     _micro_likely = True
 elif t_rxn < 10:
@@ -1363,8 +1363,8 @@ else:
 if t_rxn < 30:
     _recommendation(
         "Compute Damköhler numbers for your specific reactor(s) on the "
-        "**🌀 Mixing Assessment** page or compare multiple vessels on the "
-        "**📈 Reactor Comparison** page."
+        "**🌀 Vessel Assessment** page or compare multiple vessels on the "
+        "**📈 Vessel Comparison** page."
     )
 
 if is_semi_batch:
@@ -1750,7 +1750,7 @@ if _bourne_sensitive is True and _bourne_mechanisms:
         "Micromixing": (
             "Hold local energy dissipation ε (P/V) constant on scale-up and keep the "
             "feed point in the high-shear zone near the impeller. Confirm with Da_micro "
-            "on the 🌀 Mixing Assessment page.",
+            "on the 🌀 Vessel Assessment page.",
         ),
         "Mesomixing": (
             "Control feed-plume dispersion: hold local ε constant at the feed point "
@@ -1791,7 +1791,7 @@ if _micro_likely or (t_rxn < 60):
     _steps.append({
         "Area": "Damköhler analysis",
         "Action": "Compute Damköhler numbers (Da_macro, Da_micro) for your specific "
-                  "reactor on the 🌀 Mixing Assessment page.",
+                  "reactor on the 🌀 Vessel Assessment page.",
     })
 
 if _meso_sensitive:
@@ -1806,14 +1806,14 @@ if _multiphase:
     _steps.append({
         "Area": "Mass transfer",
         "Action": "Assess interphase mass-transfer coefficients (kLa, k_SL) on "
-                  "the 🌀 Mixing Assessment or 📈 Reactor Comparison pages.",
+                  "the 🌀 Vessel Assessment or 📈 Vessel Comparison pages.",
     })
 
 if _has_enthalpy and _heat_sensitive:
     _steps.append({
         "Area": "Heat transfer",
-        "Action": "Run a full heat balance (🔥 button on 🌀 Mixing Assessment or "
-                  "📈 Reactor Comparison) to evaluate Q_gen vs Q_cool.",
+        "Action": "Run a full heat balance (🔥 button on 🌀 Vessel Assessment or "
+                  "📈 Vessel Comparison) to evaluate Q_gen vs Q_cool.",
     })
 
 if is_semi_batch:
@@ -1829,7 +1829,7 @@ if not _steps:
         "Area": "General",
         "Action": "The reaction appears low risk for mixing sensitivity. "
                   "Standard scale-up practices should be sufficient, but consider "
-                  "a quick check on the 🌀 Mixing Assessment page for completeness.",
+                  "a quick check on the 🌀 Vessel Assessment page for completeness.",
     })
 
 steps_df = pd.DataFrame(_steps)

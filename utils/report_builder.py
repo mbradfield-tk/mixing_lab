@@ -501,7 +501,7 @@ def add_envelope_charts(pdf: MixingReport, envelope: dict, V_L: float,
 # ── Page-specific report builders ────────────────────────────────────────
 
 def build_mixing_assessment_pdf(snap: dict) -> bytes:
-    """Build PDF report for Page 5 – Mixing Assessment."""
+    """Build PDF report for Page 5 – Vessel Assessment."""
     reactor_name = snap["reactor"]
     reaction_name = snap["reaction"]
     fluid_name = snap["fluid"]
@@ -517,14 +517,14 @@ def build_mixing_assessment_pdf(snap: dict) -> bytes:
     batchelor_um = snap.get("batchelor_um", 0.0)
     envelope = snap.get("envelope")
 
-    title = f"Mixing Assessment \u2014 {reactor_name}"
+    title = f"Vessel Assessment \u2014 {reactor_name}"
     pdf = new_report(title)
 
     # ── Page 1: Title & System Info ──────────────────────────────────────
     pdf.add_page()
     pdf.set_font(pdf._FONT, "B", 20)
     pdf.set_text_color(30, 30, 80)
-    pdf.cell(0, 14, pdf._s("Mixing Assessment Report"), align="C")
+    pdf.cell(0, 14, pdf._s("Vessel Assessment Report"), align="C")
     pdf.ln(18)
 
     pdf.section_title("System Configuration")
@@ -784,7 +784,7 @@ def add_comparison_charts(pdf: MixingReport, curve_data: dict,
 
 
 def build_reactor_comparison_pdf(snap: dict) -> bytes:
-    """Build PDF report for Page 7 – Reactor Comparison."""
+    """Build PDF report for Page 7 – Vessel Comparison."""
     selected_names = snap["selected_names"]
     fluid_name = snap["fluid"]
     fluid_T_C = snap["fluid_T_C"]
@@ -796,7 +796,7 @@ def build_reactor_comparison_pdf(snap: dict) -> bytes:
     include_heat = snap.get("include_heat", False)
     include_particles = snap.get("include_particles", False)
 
-    title = f"Reactor Comparison \u2014 {', '.join(selected_names[:3])}"
+    title = f"Vessel Comparison \u2014 {', '.join(selected_names[:3])}"
     if len(selected_names) > 3:
         title += f" + {len(selected_names) - 3} more"
     pdf = new_report(title)
@@ -805,7 +805,7 @@ def build_reactor_comparison_pdf(snap: dict) -> bytes:
     pdf.add_page()
     pdf.set_font(pdf._FONT, "B", 20)
     pdf.set_text_color(30, 30, 80)
-    pdf.cell(0, 14, pdf._s("Reactor Comparison Report"), align="C")
+    pdf.cell(0, 14, pdf._s("Vessel Comparison Report"), align="C")
     pdf.ln(18)
 
     pdf.section_title("System Configuration")

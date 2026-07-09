@@ -54,9 +54,9 @@ databases = [
 analysis = [
     st.Page("pages/10_Mixing_Sensitivity_Protocol.py", title="Reaction Sensitivity Protocol", icon="🧭"),
     st.Page("pages/11_Crystallization_Sensitivity_Protocol.py", title="Crystallization Sensitivity Protocol (WIP)", icon="🚧"),
-    st.Page("pages/5_Mixing_Sensitivity.py", title="Mixing Assessment", icon="🌀"),
+    st.Page("pages/5_Mixing_Sensitivity.py", title="Vessel Assessment", icon="🌀"),
     st.Page("pages/6_Bourne_Protocol.py",    title="Bourne Protocol",    icon="🅱️"),
-    st.Page("pages/7_Reactor_Comparison.py", title="Reactor Comparison", icon="📈"),
+    st.Page("pages/7_Reactor_Comparison.py", title="Vessel Comparison", icon="📈"),
 ]
 
 tools = [

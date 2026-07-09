@@ -1126,8 +1126,8 @@ Mixing Lab, reactor-specific correlations can be registered from:
   gassing-out experiments, blend time from PLIF/decolourisation).
 
 These override the literature correlation for a specific parameter when
-the corresponding mode is selected on the **Mixing Sensitivity** or
-**Reactor Comparison** pages.
+the corresponding mode is selected on the **Vessel Assessment** or
+**Vessel Comparison** pages.
 """)
 
     # ── Supported parameters

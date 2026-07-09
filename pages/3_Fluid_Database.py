@@ -74,8 +74,8 @@ tab_library, tab_solvent, tab_custom, tab_blend, tab_import = st.tabs([
 with tab_library:
     st.markdown(
         "Reference table of all built-in solvents with **properties at 25 °C and 1 atm**.  "
-        "These solvents are always available in the Mixing Assessment and "
-        "Reactor Comparison pages — select one and set any temperature to "
+        "These solvents are always available in the Vessel Assessment and "
+        "Vessel Comparison pages — select one and set any temperature to "
         "get properties from literature correlations."
     )
 

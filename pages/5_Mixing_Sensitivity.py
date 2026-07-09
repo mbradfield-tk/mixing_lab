@@ -84,7 +84,7 @@ particles = load_db("particle_db", "particles.csv", ["particle_name"])
 
 _all_fluid_names = all_fluid_names(custom_fluids)
 
-st.title("🌀 Mixing Assessment")
+st.title("🌀 Vessel Assessment")
 
 if reactors.empty or reactions.empty:
     st.warning("Please populate the Reactor and Reaction databases first.")
@@ -1560,7 +1560,7 @@ if st.button("📥 Export PDF Report", type="primary", key="p5_export_pdf"):
             _pdf_bytes = build_mixing_assessment_pdf(st.session_state["_ms_report_snapshot"])
             st.session_state["_p5_pdf_bytes"] = _pdf_bytes
             st.session_state["_p5_pdf_name"] = report_filename(
-                "Mixing_Assessment", reactor_name
+                "Vessel_Assessment", reactor_name
             )
         except Exception as exc:
             st.error(f"PDF generation failed: {exc}")

@@ -468,7 +468,7 @@ with tab_fit:
 
             st.markdown(
                 "Save the fitted correlation so it becomes available in the "
-                "**Mixing Sensitivity**, **Reactor Comparison**, and other "
+                "**Vessel Assessment**, **Vessel Comparison**, and other "
                 "analysis pages."
             )
 

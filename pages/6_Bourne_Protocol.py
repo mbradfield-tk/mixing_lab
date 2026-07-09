@@ -596,7 +596,7 @@ with col_r:
         D_imp = safe_float(r.get("D_imp_m"), 0.05)
         # NOTE: the Bourne protocol uses a single fixed power number (the reactor's
         # tabulated Np, or 1.27 if unset) for every speed. This differs from the
-        # Mixing Assessment / Reactor Comparison pages, which derive Np from a
+        # Vessel Assessment / Vessel Comparison pages, which derive Np from a
         # Reynolds-dependent correlation or ROM. For the same reactor the power
         # (and thus P/V) reported here can therefore differ from those pages.
         Np_val = safe_float(r.get("Np"), 1.27)
@@ -849,8 +849,8 @@ pv_ratio = t1_rows[2]["P/m (W/kg)"] / t1_rows[0]["P/m (W/kg)"] if t1_rows[0]["P/
 _speed_ratio = N_high / N_low if N_low > 0 else 0
 st.caption(f"P/m ratio (high/low) = **{pv_ratio:.1f}×**  •  Speed ratio (high/low) = **{_speed_ratio:.2f}×**")
 st.caption(f"Power is computed with a fixed power number Np = **{Np_val:.2f}** "
-           f"(from the reactor database, or 1.27 if unset). The Mixing Assessment "
-           f"and Reactor Comparison pages instead use a Reynolds-dependent / ROM "
+           f"(from the reactor database, or 1.27 if unset). The Vessel Assessment "
+           f"and Vessel Comparison pages instead use a Reynolds-dependent / ROM "
            f"power number, so their P/V values may differ for the same reactor.")
 
 if _low_clamped or _high_clamped:

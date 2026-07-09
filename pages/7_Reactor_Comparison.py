@@ -67,7 +67,7 @@ _solvent_names = sorted(SOLVENT_DB.keys())
 _custom_names = custom_fluids["fluid_name"].tolist() if not custom_fluids.empty else []
 _all_fluid_names = _solvent_names + _custom_names
 
-st.title("📈 Reactor Comparison")
+st.title("📈 Vessel Comparison")
 
 if reactors.empty:
     st.warning("Populate the Reactor Database first.")
@@ -1745,7 +1745,7 @@ if st.button("📥 Export PDF Report", type="primary", key="p7_export_pdf"):
             _pdf_bytes = build_reactor_comparison_pdf(_p7_snap)
             st.session_state["_p7_pdf_bytes"] = _pdf_bytes
             st.session_state["_p7_pdf_name"] = report_filename(
-                "Reactor_Comparison", selected_names[0] if selected_names else ""
+                "Vessel_Comparison", selected_names[0] if selected_names else ""
             )
         except Exception as exc:
             st.error(f"PDF generation failed: {exc}")
