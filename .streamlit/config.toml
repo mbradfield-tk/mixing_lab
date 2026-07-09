@@ -1,3 +1,14 @@
+[global]
+# The app deliberately persists widget state across page navigation by
+# re-assigning every session_state key to itself on each run (see the
+# persistence loop in Mixing_Lab.py). That marks every widget key as
+# "set via the Session State API", so any widget that also passes a default
+# value (index=/value=/default=) trips Streamlit's duplicate-default warning
+# ("...was created with a default value but also had its value set via the
+# Session State API."). In this app that warning is always a false positive,
+# so it is disabled globally.
+disableWidgetStateDuplicationWarning = true
+
 [theme]
 base = "light"
 font = "sans serif"

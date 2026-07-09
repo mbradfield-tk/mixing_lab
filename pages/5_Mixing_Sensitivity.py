@@ -107,8 +107,18 @@ _box1 = ui.begin_step("1", "Define System")
 _reactor_list = reactors["reactor_name"].tolist()
 _reaction_list = reactions["reaction_name"].tolist()
 
-def _idx(lst, key, default=0):
-    """Return list index of session_state[key] if present, else default."""
+def _idx(lst, key, default=0, widget_key=None):
+    """Return list index of session_state[key] if present, else default.
+
+    When ``widget_key`` already exists in ``st.session_state`` (its value is
+    persisted across page navigation by Mixing_Lab.py's self-assignment loop),
+    return ``None`` so the widget is created *without* a default ``index``.
+    Passing an ``index`` while the key is also set via the Session State API
+    triggers Streamlit's "created with a default value but also had its value
+    set via the Session State API" warning.
+    """
+    if widget_key is not None and widget_key in st.session_state:
+        return None
     val = st.session_state.get(key)
     if val in lst:
         return lst.index(val)
@@ -126,16 +136,16 @@ if "reactor_id" in reactors.columns:
             _default_reactor_idx = _reactor_list.index(_rx_default_name)
 
 with col_r:
-    reactor_name = st.selectbox("Reactor", _reactor_list, index=_idx(_reactor_list, "_sel_reactor", default=_default_reactor_idx), key="ms_reactor", on_change=_reset_p5,
+    reactor_name = st.selectbox("Reactor", _reactor_list, index=_idx(_reactor_list, "_sel_reactor", default=_default_reactor_idx, widget_key="ms_reactor"), key="ms_reactor", on_change=_reset_p5,
                                 format_func=lambda n: reactor_search_name(reactors, n))
     st.session_state["_sel_reactor"] = reactor_name
 with col_rx:
-    reaction_name = st.selectbox("Reaction", _reaction_list, index=_idx(_reaction_list, "_sel_reaction"), key="ms_reaction", on_change=_reset_p5)
+    reaction_name = st.selectbox("Reaction", _reaction_list, index=_idx(_reaction_list, "_sel_reaction", widget_key="ms_reaction"), key="ms_reaction", on_change=_reset_p5)
     st.session_state["_sel_reaction"] = reaction_name
 
 col_T, col_P, col_cw = st.columns(3)
 with col_f:
-    fluid_name = st.selectbox("Fluid (continuous phase)", _all_fluid_names, index=_idx(_all_fluid_names, "_sel_fluid"), key="ms_fluid", on_change=_reset_p5)
+    fluid_name = st.selectbox("Fluid (continuous phase)", _all_fluid_names, index=_idx(_all_fluid_names, "_sel_fluid", widget_key="ms_fluid"), key="ms_fluid", on_change=_reset_p5)
     st.session_state["_sel_fluid"] = fluid_name
 with col_T:
     _is_solvent = is_known_solvent(fluid_name)

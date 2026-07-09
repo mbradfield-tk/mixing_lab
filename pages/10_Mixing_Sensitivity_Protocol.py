@@ -147,14 +147,11 @@ def _fmt_test_purposes(nums) -> str:
 
 # ── Page header ──────────────────────────────────────────────────────────
 st.title("🧭 Reaction Sensitivity Protocol")
-st.caption(
-    "An interactive decision tree to assess which mixing mechanisms "
-    "may limit your reaction at scale."
-)
-st.markdown(
-    "- Pre-screening requires completion of Test 1 of the Bourne Protocol.\n"
-    "- The protocol can be done as a purely desktop exercise for early estimates."
-)
+st.caption("""
+    An interactive decision tree to assess which mixing mechanisms may limit your reaction at scale.
+    - Pre-screening requires completion of Test 1 of the Bourne Protocol.\n
+    - The protocol can be done as a purely desktop exercise for early estimates.\n
+""")
 
 # ── Visual overview of the decision tree ─────────────────────────────────
 _IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "general"

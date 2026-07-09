@@ -51,6 +51,7 @@ DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
 # ── Load databases ───────────────────────────────────────────────────────
 from utils.data_helpers import load_db, safe_float as _safe, all_fluid_names, safe_iloc, reactor_search_name
+from utils import ui
 
 
 @st.cache_data(show_spinner=False)
@@ -148,7 +149,7 @@ def _on_volume_change():
 # =====================================================================
 # 1 · REACTOR SELECTION
 # =====================================================================
-st.header("1 · Reactor & Fluid Selection")
+_box1 = ui.begin_step("1", "Reactor & Fluid Selection")
 
 col_r, col_f = st.columns(2)
 with col_r:
@@ -203,10 +204,12 @@ else:
     if np.isnan(_k_fluid) or _k_fluid <= 0:
         _k_fluid = 0.607
 
+ui.end_step(_box1)
+
 # =====================================================================
 # 2 · PARAMETER OVERRIDES
 # =====================================================================
-st.header("2 · Review / Override Parameters")
+_box2 = ui.begin_step("2", "Review / Override Parameters")
 
 with st.expander("Reactor geometry & agitation", expanded=False):
     gc1, gc2, gc3 = st.columns(3)
@@ -272,10 +275,12 @@ with st.expander("Fluid properties (process side)", expanded=False):
     Cp = fc3.number_input("Cp (J/(kg·K))", value=_Cp, min_value=1.0, max_value=CP_MAX, format="%.1f", key="ht_Cp")
     k_fluid = fc4.number_input("k (W/(m·K))", value=_k_fluid, min_value=0.001, max_value=K_THERMAL_MAX, format="%.4f", key="ht_kf")
 
+ui.end_step(_box2)
+
 # =====================================================================
 # 3 · VESSEL WALL & LINING
 # =====================================================================
-st.header("3 · Vessel Wall & Jacket Configuration")
+_box3 = ui.begin_step("3", "Vessel Wall & Jacket Configuration")
 
 with st.expander("Wall and lining", expanded=True):
     wc1, wc2, wc3 = st.columns(3)
@@ -325,10 +330,12 @@ with st.expander("Wall and lining", expanded=True):
         help="Typical: 0.0001 (clean) – 0.001 (heavy fouling)",
     )
 
+ui.end_step(_box3)
+
 # =====================================================================
 # 4 · HEAT TRANSFER MEDIUM
 # =====================================================================
-st.header("4 · Heat Transfer Medium (Utility)")
+_box4 = ui.begin_step("4", "Heat Transfer Medium (Utility)")
 
 htm_names = list(HTM_DB.keys())
 htm_name = st.selectbox("Heat transfer medium", htm_names,
@@ -380,10 +387,12 @@ m_dot_jacket = st.number_input(
     help="Mass flow rate of utility fluid through the jacket",
 )
 
+ui.end_step(_box4)
+
 # =====================================================================
 # 5 · NUSSELT CORRELATION SELECTION
 # =====================================================================
-st.header("5 · Nusselt Correlation (Process Side)")
+_box5 = ui.begin_step("5", "Nusselt Correlation (Process Side)")
 
 _corr_names = list(NUSSELT_CORRELATIONS.keys())
 nu_corr = st.selectbox("Nusselt correlation", _corr_names,
@@ -398,10 +407,12 @@ mu_wall = st.number_input(
     help="0 = assume μ_wall = μ_bulk (no wall viscosity correction)",
 )
 
+ui.end_step(_box5)
+
 # =====================================================================
 # 6 · HEAT TRANSFER AREA
 # =====================================================================
-st.header("6 · Heat Transfer Area")
+_box6 = ui.begin_step("6", "Heat Transfer Area")
 
 _A_override = _safe(reactor.get("A_ht_m2"), 0.0)
 _A_calc = estimate_jacket_area(D_tank, H, _bottom_dish)
@@ -421,10 +432,12 @@ with ac2:
                                 value=_A_override if _A_override > 0 else _A_calc,
                                 min_value=0.001, format="%.4f", key="ht_A_ov")
 
+ui.end_step(_box6)
+
 # =====================================================================
 # 7 · OPERATING CONDITIONS
 # =====================================================================
-st.header("7 · Operating Conditions")
+_box7 = ui.begin_step("7", "Operating Conditions")
 
 oc1, oc2, oc3 = st.columns(3)
 T_start = oc1.number_input("T_start (°C)", value=25.0, step=1.0,
@@ -478,6 +491,8 @@ else:
                  f"Target {T_target:.1f} °C is unreachable.")
         st.stop()
 
+ui.end_step(_box7)
+
 # =====================================================================
 # 8 · COMPUTE RESULTS
 # =====================================================================
@@ -485,8 +500,7 @@ if st.button("🔬 Compute Heat Transfer", type="primary", key="ht_compute"):
     st.session_state["_ht_computed"] = True
 
 if st.session_state.get("_ht_computed"):
-    st.divider()
-    st.header("8 · Results")
+    _box8 = ui.begin_step("8", "Results")
 
     # ── Process-side h_i ──────────────────────────────────────────────
     Re = rho * N_rps * D_imp**2 / mu if mu > 0 else 0.0
@@ -1022,9 +1036,10 @@ if st.session_state.get("_ht_computed"):
     st.dataframe(pd.DataFrame([_summary]).T.rename(columns={0: "Value"}),
                  width='stretch')
 
+    ui.end_step(_box8)
+
     # ── Export PDF Report ─────────────────────────────────────────────
-    st.divider()
-    st.header("9 · Export Report")
+    _box9 = ui.begin_step("9", "Export Report")
 
     if st.button("📥 Export PDF Report", type="primary", key="ht_export_pdf"):
         with st.spinner("Generating PDF…"):
@@ -1159,3 +1174,5 @@ if st.session_state.get("_ht_computed"):
             mime="application/pdf",
         )
         st.success("PDF ready for download.")
+
+    ui.end_step(_box9)
