@@ -57,7 +57,7 @@ if not _check_password():
 
 st.caption(
     "Convert the transposed master file **reactors_alt.csv** into the "
-    "row-per-reactor format used by the Reactor Database."
+    "row-per-reactor format used by the Vessel Database."
 )
 
 with st.expander("Reactor Import Tool", expanded=False):
@@ -234,7 +234,7 @@ with st.expander("Reactor Import Tool", expanded=False):
     # ─────────────────────────────────────────────────────────────────────────
     # 4. Load current reactor DB for comparison
     # ─────────────────────────────────────────────────────────────────────────
-    st.header("3 · Current Reactor Database")
+    st.header("3 · Current Vessel Database")
 
     if REACTOR_CSV.exists():
         current_df = pd.read_csv(REACTOR_CSV)
@@ -387,7 +387,7 @@ with st.expander("📋 Field mapping reference", expanded=False):
 | `baffles` | Baffle count | direct |
 | `material` | Shell material | direct |
 
-**Not in alt file** (must be set manually in Reactor Database):
+**Not in alt file** (must be set manually in Vessel Database):
 `Np`, `Nq`, `Np2`, `Np3`, `Zwietering_S`, `GMB_z`, `V_L_min`, `V_L_max`,
 `OD_m`, `knuckle_radius_m`
 """)
@@ -411,11 +411,11 @@ _BOURNE_DOT = """
         edge [fontname="Arial" fontsize=9 color="#616161"]
 
         /* Start */
-        START [label="🧫  Bourne Protocol\nMixing Sensitivity Screening" shape=Mrecord
+        START [label="Bourne Protocol" shape=Mrecord
                fillcolor="#4CAF50" fontcolor=white fontsize=11]
 
         /* Test 1 */
-        T1 [label="Test 1\nVary Impeller Speed\n(~100× change in P/m)" shape=diamond
+        T1 [label="<B>Test 1\nVary Impeller Speed\n(~100× change in P/m)" shape=diamond
             fillcolor="#E3F2FD" color="#90CAF9" fontsize=10]
         T1_SETUP [label="3 speeds:\nLow (0.1× P/m)\nCenter (1× P/m)\nHigh (10× P/m)"
                   fillcolor="#FFF3E0" color="#FFB74D"]
@@ -435,9 +435,9 @@ _BOURNE_DOT = """
             fillcolor="#E3F2FD" color="#90CAF9" fontsize=10]
         T3_SETUP [label="3 locations:\nSurface (ε_loc ≈ 0.1 ε_avg)\nSub-surface (ε_loc ≈ 1 ε_avg)\nImpeller zone (ε_loc ≈ 3 ε_avg)"
                   fillcolor="#FFF3E0" color="#FFB74D"]
-        T3_MACRO [label="🌀 Macromixing\nControls Process\n\n→ Reduce blend time\n→ High-efficiency impellers\n→ Multiple impellers / static mixers"
+        T3_MACRO [label="Macromixing\nControls Process\n\n→ Reduce blend time\n→ High-efficiency impellers\n→ Multiple impellers / static mixers"
                   fillcolor="#FFEBEE" color="#EF9A9A" fontsize=10]
-        T3_MESO [label="📐 Mesomixing\nControls Process\n\n→ Hold local ε constant (match P/m,\n   i.e. lower RPM at larger scale)\n→ Extend feed time\n→ Multiple feed points / smaller feed pipe"
+        T3_MESO [label="Mesomixing\nControls Process\n\n→ Hold local ε constant (match P/m,\n   i.e. lower RPM at larger scale)\n→ Extend feed time\n→ Multiple feed points / smaller feed pipe"
                  fillcolor="#FFF8E1" color="#FFD54F" fontsize=10]
 
         /* Confirmatory */
@@ -517,20 +517,22 @@ _MSP_DOT = """
         edge [fontname="Arial" fontsize=9 color="#616161"]
 
         /* start / end nodes */
-        START [label="🧭  Start Protocol" shape=Mrecord
+        START [label="Mixing Sensitivity Protocol" shape=Mrecord
                fillcolor="#4CAF50" fontcolor=white fontsize=11]
         SUM   [label="6 · Summary & \\nRecommendations" shape=Mrecord
                fillcolor="#2196F3" fontcolor=white fontsize=11]
 
-        /* Step 0 – Bourne pre-screening (3 outcomes) */
-        BOURNE [label="0 · Bourne Protocol\\nPart 1 pre-screen" shape=diamond
+        /* Step 0 – Bourne pre-screening (import outcomes) */
+        BOURNE [label="0 · Bourne Protocol\\nPart 1 pre-screen\\n(import results / skip)" shape=diamond
                 fillcolor="#E3F2FD" color="#90CAF9"]
         B_SENS [label="🔴 Mixing sensitivity\\nconfirmed experimentally"
                 fillcolor="#FFEBEE" color="#EF9A9A"]
-        B_MECH [label="(optional) identify controlling\\nscale from Bourne tests:\\nTest 1 → micromixing\\nTest 2 → mesomixing\\nTest 3 → meso-/macromixing"
+        B_MECH [label="(optional) controlling scale\\nfrom Bourne tests:\\nTest 2 insensitive → micromixing\\nTest 2 sens. + Test 3 sens. → mesomixing\\nTest 2 sens. + Test 3 insens. → macromixing"
                 fillcolor="#FFF8E1" color="#FFD54F"]
         B_NONE [label="🟢 No sensitivity\\nobserved at lab scale"
                 fillcolor="#E8F5E9" color="#81C784"]
+        B_UNK [label="🟡 Imported, but Test 1\\nnot completed →\\nsensitivity undetermined"
+               fillcolor="#FFF8E1" color="#FFD54F"]
         B_SKIP [label="⚪ Skipped\\n→ proceed with theory"
                 fillcolor="#F5F5F5" color="#BDBDBD"]
 
@@ -543,6 +545,8 @@ _MSP_DOT = """
                  fillcolor="#FFF8E1" color="#FFD54F"]
         KSEL  [label="Select reaction\\nfrom database\\n→ compute t_rxn"
                fillcolor="#E8F5E9" color="#81C784"]
+        KBONLY [label="🅱️ Finish now — use\\nBourne result as final\\noutput (skip Damköhler)" shape=Mrecord
+                fillcolor="#E8EAF6" color="#7986CB"]
 
         /* Semi-batch decision (after kinetics, before phases) */
         SB    [label="Semi-batch\\n(fed-batch)?" shape=diamond
@@ -614,14 +618,17 @@ _MSP_DOT = """
         START -> BOURNE
         BOURNE -> B_SENS [label="Sensitivity\\nconfirmed"]
         BOURNE -> B_NONE [label="No sensitivity\\nobserved"]
+        BOURNE -> B_UNK  [label="Test 1\\nincomplete"]
         BOURNE -> B_SKIP [label="Skip"]
         B_SENS -> B_MECH [style=dashed]
         B_MECH -> K
         B_NONE -> K
+        B_UNK  -> K
         B_SKIP -> K
 
         /* Step 1 */
-        K -> KACT    [label="No kinetics\\n(STOP)"]
+        K -> KACT    [label="No kinetics\\n(measure)"]
+        K -> KBONLY  [label="No kinetics +\\nBourne imported\\n(finish now)"]
         K -> KAPPROX [label="Approximate"]
         K -> KSEL    [label="Yes"]
         KACT -> K    [label="Data obtained\\n→ repeat Step 1" style=dashed]

@@ -15,14 +15,14 @@ Welcome to **Mixing Lab** – an interactive tool for assessing reaction mixing 
 
 | Group | Page | Purpose |
 |-------|------|---------|
-| **Databases** | **⚗️ Reactor Database** | Browse, add, and edit reactor geometries with 2D/3D schematics; use existing reactors as templates |
-| | **🧪 Reaction Database** | Manage reactions with kinetic parameters (rate constants, orders, concentrations, ΔH) |
-| | **💧 Fluid Database** | Browse built-in solvents, explore temperature-dependent properties, and manage custom fluids |
-| | **❇️ Particle Database** | Define solid-particle properties (density, PSD, shape factor) |
-| **Analysis** | **🧭 Reaction Sensitivity Protocol** | Interactive decision tree to assess which mixing mechanisms may limit your reaction at scale |
-| | **💎 Crystallization Sensitivity Protocol** | Decision tree for crystallization mixing sensitivity (nucleation, growth, anti-solvent) |
+| **Databases** | **⚗️ Vessels** | Browse, add, and edit reactor geometries with 2D/3D schematics; use existing reactors as templates |
+| | **🧪 Reactions** | Manage reactions with kinetic parameters (rate constants, orders, concentrations, ΔH) |
+| | **💧 Fluids** | Browse built-in solvents, explore temperature-dependent properties, and manage custom fluids |
+| | **❇️ Particles** | Define solid-particle properties (density, PSD, shape factor) |
+| **Mixing Analysis** | **🅱️ Bourne Protocol** | Step-by-step Bourne/Sarafinas mixing-sensitivity screening – vary agitation speed, feed rate, and feed location to identify the controlling mixing scale |
+| | **🧭 Reaction Sensitivity Protocol** | Interactive workflow to identify potential mixing sensitivities of a reaction process and determine which mixing mechanisms may limit the reaction at scale |
+| | **🚧 Crystallization Sensitivity Protocol (WIP)** | Interactive workflow to identify potential mixing sensitivities of a crystallization process and determine which mixing mechanisms may limit the reaction at scale |
 | | **🌀 Vessel Assessment** | Reactor–reaction–fluid analysis: compute hydrodynamics, Damköhler numbers, heat balance, solids suspension & operating envelopes |
-| | **🅱️ Bourne Protocol** | Step-by-step Bourne/Sarafinas mixing-sensitivity screening – vary speed, feed rate, and feed location to identify the controlling mixing scale |
 | | **⚖️ Vessel Comparison** | Side-by-side comparison of hydrodynamics and operating envelopes across multiple reactors |
 | **Tools** | **🔄 Unit Converter** | Quick conversion between common engineering units |
 | | **🔥 Heat Transfer** | Estimate heating/cooling times, compute overall U from first principles, visualize batch temperature profiles, and compare heat-transfer media |

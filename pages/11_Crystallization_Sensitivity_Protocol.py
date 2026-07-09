@@ -661,7 +661,7 @@ if t_G < np.inf and t_G < 120:
 st.subheader("(Optional) Compute Da for a Specific Reactor")
 
 if reactors.empty:
-    st.info("No reactors in database. Add via 🧪 Reactor Database page.")
+    st.info("No reactors in database. Add via ⚗️ Vessel Database page.")
 else:
     _reactor_list = reactors["reactor_name"].tolist()
     reactor_name = st.selectbox(

@@ -45,10 +45,10 @@ for _k in list(st.session_state.keys()):
 home = st.Page("pages/home.py", title="App Overview", default=True)
 
 databases = [
-    st.Page("pages/1_Reactor_Database.py",  title="Reactor Database",  icon="⚗️"),
-    st.Page("pages/2_Reaction_Database.py", title="Reaction Database", icon="🧪"),
-    st.Page("pages/3_Fluid_Database.py",    title="Fluid Database",    icon="💧"),
-    st.Page("pages/4_Particle_Database.py", title="Particle Database", icon="❇️"),
+    st.Page("pages/1_Reactor_Database.py",  title="Vessels",   icon="⚗️"),
+    st.Page("pages/2_Reaction_Database.py", title="Reactions", icon="🧪"),
+    st.Page("pages/3_Fluid_Database.py",    title="Fluids",    icon="💧"),
+    st.Page("pages/4_Particle_Database.py", title="Particles", icon="❇️"),
 ]
 
 analysis = [
@@ -80,7 +80,7 @@ admin = [
 nav = st.navigation({
     "": [home],
     "Databases": databases,
-    "Analysis": analysis,
+    "Mixing Analysis": analysis,
     "Tools": tools,
     "Results": results,
     "Reference": reference,

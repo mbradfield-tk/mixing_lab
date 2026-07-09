@@ -77,7 +77,7 @@ def load_db(key: str, filename: str, columns: list[str] | None = None) -> pd.Dat
                 df = pd.DataFrame(columns=columns or [])
         else:
             df = pd.DataFrame(columns=columns or [])
-        # Add search_name for reactor databases
+        # Add search_name for vessel databases
         if "reactor_name" in df.columns:
             df = build_search_names(df)
         st.session_state[key] = df

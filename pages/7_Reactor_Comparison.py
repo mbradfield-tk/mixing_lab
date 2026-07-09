@@ -70,7 +70,7 @@ _all_fluid_names = _solvent_names + _custom_names
 st.title("⚖️ Vessel Comparison")
 
 if reactors.empty:
-    st.warning("Populate the Reactor Database first.")
+    st.warning("Populate the Vessel Database first.")
     st.stop()
 
 # ── Step gating: track confirmed input sections ──────────────────────────

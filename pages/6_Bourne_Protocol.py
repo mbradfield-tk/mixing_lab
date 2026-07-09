@@ -175,7 +175,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("🅱️ Bourne Protocol – Mixing Sensitivity Screening")
+st.title("🅱️ Bourne Protocol")
 st.markdown("""
 Determines **which mixing scale** (macro / meso / micro) controls your
 process outcome. Applicable to any semi-batch stirred-tank process with
@@ -604,7 +604,7 @@ with col_r:
         V_L_min = safe_float(r.get("V_L_min"), 0.0) or safe_float(r.get("V_L"), 0.0)
         V_L_max = safe_float(r.get("V_L_max"), 0.0) or safe_float(r.get("V_L"), 0.0)
         V_L_avg = (V_L_min + V_L_max) / 2.0
-        # RPM bounds from reactor database
+        # RPM bounds from vessel database
         N_rpm_min = safe_float(r.get("N_rpm_min"), 0.0) or None
         N_rpm_max = safe_float(r.get("N_rpm_max"), 0.0) or None
         # Use average of min/max RPM as the centerpoint speed
@@ -687,7 +687,7 @@ _reactor_tag = reactor_name.replace(" ", "_") if not reactors.empty else "manual
 V_L = st.number_input(
     "Working volume (L)", min_value=_vol_min, value=_vol_min,
     step=0.001, format="%.3f", key=_bk(f"vol_L_{_reactor_tag}"),
-    help="Defaults to the minimum volume from the reactor database.",
+    help="Defaults to the minimum volume from the vessel database.",
 )
 V_m3 = V_L / 1000.0  # m³
 
@@ -849,7 +849,7 @@ pv_ratio = t1_rows[2]["P/m (W/kg)"] / t1_rows[0]["P/m (W/kg)"] if t1_rows[0]["P/
 _speed_ratio = N_high / N_low if N_low > 0 else 0
 st.caption(f"P/m ratio (high/low) = **{pv_ratio:.1f}×**  •  Speed ratio (high/low) = **{_speed_ratio:.2f}×**")
 st.caption(f"Power is computed with a fixed power number Np = **{Np_val:.2f}** "
-           f"(from the reactor database, or 1.27 if unset). The Vessel Assessment "
+           f"(from the vessel database, or 1.27 if unset). The Vessel Assessment "
            f"and Vessel Comparison pages instead use a Reynolds-dependent / ROM "
            f"power number, so their P/V values may differ for the same reactor.")
 

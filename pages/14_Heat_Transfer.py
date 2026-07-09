@@ -115,7 +115,7 @@ _all_fluid_names = all_fluid_names(custom_fluids)
 st.title("🔥 Heat Transfer Modeling")
 
 if reactors.empty:
-    st.warning("Please populate the Reactor database first.")
+    st.warning("Please populate the Vessel database first.")
     st.stop()
 
 # ── Callbacks to clear dependent widget keys on upstream changes ─────

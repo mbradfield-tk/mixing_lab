@@ -1,4 +1,4 @@
-"""Page 1 – Reactor Database: browse, add, edit, import/export reactor geometries."""
+"""Page 1 – Vessel Database: browse, add, edit, import/export reactor geometries."""
 
 import streamlit as st
 
@@ -171,7 +171,7 @@ else:
     # Rebuild search_name in case probes or impeller_type changed
     st.session_state.reactor_db = build_search_names(st.session_state.reactor_db)
 
-st.title("⚗️ Reactor Database")
+st.title("⚗️ Vessel Database")
 
 # Warn if any reactor IDs were auto-assigned on this load
 _startup_assigned = st.session_state.pop("_startup_assigned_ids", [])
@@ -191,7 +191,7 @@ tab_browse, tab_add, tab_import = st.tabs(["Browse & Edit", "Add Reactor", "Impo
 
 # ── Browse & Edit ─────────────────────────────────────────────────────────
 with tab_browse:
-    st.markdown("Filter and edit the reactor database. Changes are saved when you click **Save changes**.")
+    st.markdown("Filter and edit the vessel database. Changes are saved when you click **Save changes**.")
 
     col_f0, col_f1, col_f2, col_f3 = st.columns(4)
     with col_f0:
@@ -267,7 +267,7 @@ with tab_browse:
             else:
                 st.session_state.reactor_db = _save_df
             _save_reactors(st.session_state.reactor_db)
-            st.toast("Reactor database saved.")
+            st.toast("Vessel database saved.")
             st.rerun()
 
     # ── Reactor Viewer ────────────────────────────────────────────────────
@@ -1533,7 +1533,7 @@ with tab_add:
             st.session_state.reactor_db = pd.concat(
                 [st.session_state.reactor_db, new_row], ignore_index=True)
             _save_reactors(st.session_state.reactor_db)
-            st.success(f"Added **{name}** to the reactor database.")
+            st.success(f"Added **{name}** to the vessel database.")
         elif submitted and _reactor_errors:
             for _e in _reactor_errors:
                 st.error(_e)
@@ -1544,7 +1544,7 @@ with tab_add:
 with tab_import:
     st.markdown("### Export")
     st.download_button(
-        "⬇️ Download reactor database (CSV)",
+        "⬇️ Download vessel database (CSV)",
         data=st.session_state.reactor_db.to_csv(index=False).encode("utf-8"),
         file_name="reactors_export.csv",
         mime="text/csv",
@@ -1577,6 +1577,6 @@ with tab_import:
 
                 st.session_state.reactor_db = result_df
                 _save_reactors(st.session_state.reactor_db)
-                st.success("Reactor database updated.")
+                st.success("Vessel database updated.")
         except Exception as e:
             st.error(f"Error reading CSV: {e}")
