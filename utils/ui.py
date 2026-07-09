@@ -98,3 +98,53 @@ class step_card:
     def __exit__(self, exc_type, exc_val, exc_tb):
         end_step(self._box)
         return False
+
+
+# Widget value_types that CANNOT be assigned via st.session_state (buttons,
+# download/form-submit buttons, file uploaders, chat inputs). Assigning them
+# raises StreamlitValueAssignmentNotAllowedError when the widget is recreated.
+_TRIGGER_VALUE_TYPES = frozenset({
+    "trigger_value",
+    "string_trigger_value",
+    "chat_input_value",
+    "json_trigger_value",
+    "file_uploader_state_value",
+})
+
+
+def unsettable_widget_keys() -> set[str]:
+    """Return the session_state keys backed by trigger-type widgets.
+
+    The state-preservation loop in ``Mixing_Lab.py`` re-assigns every
+    session_state key to itself so widget values survive page navigation. But
+    trigger widgets (buttons etc.) forbid session_state assignment, so touching
+    their key triggers a self-heal ``st.rerun()`` that DISCARDS the very click
+    that caused the run — making every such button need two clicks.
+
+    This returns those keys so the loop can skip them proactively. Detection
+    uses the widget metadata registered on the PREVIOUS run (a trigger widget
+    is always clicked on the run *after* it rendered), so the key is skipped
+    before it can be reassigned. Guarded so a Streamlit internals change can
+    never break the app — on failure it returns an empty set and the reactive
+    self-heal still applies.
+    """
+    keys: set[str] = set()
+    try:
+        from streamlit.runtime.scriptrunner_utils.script_run_context import (
+            get_script_run_ctx,
+        )
+        ctx = get_script_run_ctx()
+        if ctx is None:
+            return keys
+        state = ctx.session_state._state
+        for k in list(st.session_state.keys()):
+            try:
+                wid = state._get_widget_id(k)
+                meta = state._new_widget_state.widget_metadata.get(wid)
+                if meta is not None and meta.value_type in _TRIGGER_VALUE_TYPES:
+                    keys.add(k)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return keys

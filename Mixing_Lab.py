@@ -8,7 +8,7 @@ import streamlit as st
 from streamlit.errors import StreamlitValueAssignmentNotAllowedError
 from utils.sidebar import render_sidebar
 from utils.usage import log_access
-from utils.ui import reset_container_stack
+from utils.ui import reset_container_stack, unsettable_widget_keys
 
 st.set_page_config(
     page_title="Mixing Lab",
@@ -39,11 +39,15 @@ render_sidebar()
 # A few widget types (buttons, download buttons, form-submit buttons and file
 # uploaders) forbid setting their value via ``st.session_state`` and raise when
 # re-instantiated. Their transient state never needs to persist, so those keys
-# are collected in ``_persist_skip`` (populated self-healingly below) and left
-# untouched.
+# are skipped: proactively via ``unsettable_widget_keys()`` (which reads the
+# previous run's widget metadata) so a button's key is never reassigned on the
+# run that processes its click, plus reactively via ``_persist_skip`` as a
+# fallback. Reassigning a trigger key would trigger a self-heal ``st.rerun()``
+# that discards the click, making buttons require two clicks.
 _persist_skip: set[str] = st.session_state.setdefault("_persist_skip", set())
+_trigger_keys = unsettable_widget_keys()
 for _k in list(st.session_state.keys()):
-    if _k == "_persist_skip" or _k in _persist_skip:
+    if _k == "_persist_skip" or _k in _persist_skip or _k in _trigger_keys:
         continue
     st.session_state[_k] = st.session_state[_k]
 
