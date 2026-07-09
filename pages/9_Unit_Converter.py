@@ -12,6 +12,8 @@ from utils.validation import TEMP_MIN_C, TEMP_MAX_C, PRESSURE_MAX_ATM
 
 st.title("🔄 Unit Converter")
 
+st.caption("General unit conversions for physical properties relevant to mixing and reactor engineering.")
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Conversion tables — each property maps unit names to a factor that
 # converts 1 <unit> → the SI base unit (or a convenient common base).

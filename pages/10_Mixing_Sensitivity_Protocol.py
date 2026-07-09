@@ -25,6 +25,7 @@ DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
 from utils.data_helpers import load_db, safe_float as _safe
 from utils.solvent_properties import is_known_solvent, get_properties
+from utils import ui
 
 reactions = load_db("reaction_db", "reactions.csv")
 fluids = load_db("fluid_db", "fluids.csv")
@@ -150,6 +151,10 @@ st.caption(
     "An interactive decision tree to assess which mixing mechanisms "
     "may limit your reaction at scale."
 )
+st.markdown(
+    "- Pre-screening requires completion of Test 1 of the Bourne Protocol.\n"
+    "- The protocol can be done as a purely desktop exercise for early estimates."
+)
 
 # ── Visual overview of the decision tree ─────────────────────────────────
 _IMG_DIR = pathlib.Path(__file__).resolve().parent.parent / "images" / "general"
@@ -179,7 +184,7 @@ st.divider()
 # ══════════════════════════════════════════════════════════════════════════
 # STEP 0 – BOURNE PROTOCOL PRE-SCREENING
 # ══════════════════════════════════════════════════════════════════════════
-st.header("0 · Bourne Protocol Pre-Screening")
+_box0 = ui.begin_step("0", "Bourne Protocol Pre-Screening")
 
 with st.expander("ℹ️ Background — Bourne pre-screening", expanded=False):
     st.markdown(
@@ -358,12 +363,12 @@ else:
     _bourne_sensitive = None
     _bourne_mechanisms = []
 
-st.divider()
+ui.end_step(_box0)
 
 # ══════════════════════════════════════════════════════════════════════════
 # STEP 1 – KINETICS
 # ══════════════════════════════════════════════════════════════════════════
-st.header("1 · Reaction Kinetics")
+_box1 = ui.begin_step("1", "Reaction Kinetics")
 
 with st.expander("ℹ️ Background — why kinetics matter", expanded=False):
     st.markdown(
@@ -717,12 +722,12 @@ is_semi_batch = st.checkbox(
     help="Reagent or anti-solvent is dosed during the reaction.",
 )
 
-st.divider()
+ui.end_step(_box1)
 
 # ══════════════════════════════════════════════════════════════════════════
 # STEP 2 – PHASES
 # ══════════════════════════════════════════════════════════════════════════
-st.header("2 · Phase Assessment")
+_box2 = ui.begin_step("2", "Phase Assessment")
 
 with st.expander("ℹ️ Background — interphase mass transfer", expanded=False):
     st.markdown(
@@ -880,12 +885,12 @@ else:
         "meso-, and macromixing may still affect the reaction.",
     )
 
-st.divider()
+ui.end_step(_box2)
 
 # ══════════════════════════════════════════════════════════════════════════
 # STEP 3 – COMPETING REACTIONS / MICRO- & MESOMIXING
 # ══════════════════════════════════════════════════════════════════════════
-st.header("3 · Competing Reactions")
+_box3 = ui.begin_step("3", "Competing Reactions")
 
 with st.expander("ℹ️ Background — micromixing & mesomixing theory", expanded=False):
     st.markdown(
@@ -1026,12 +1031,12 @@ if is_semi_batch and not _meso_sensitive:
         "by feed rate, feed location, and local turbulence."
     )
 
-st.divider()
+ui.end_step(_box3)
 
 # ══════════════════════════════════════════════════════════════════════════
 # STEP 4 – HEAT TRANSFER
 # ══════════════════════════════════════════════════════════════════════════
-st.header("4 · Heat Transfer Screening")
+_box4 = ui.begin_step("4", "Heat Transfer Screening")
 
 _has_enthalpy = rxn_delta_H != 0.0
 _dT_ad = None  # adiabatic temperature rise (K), computed below when data allow
@@ -1249,12 +1254,12 @@ if _has_enthalpy:
         )
         _heat_sensitive = True
 
-st.divider()
+ui.end_step(_box4)
 
 # ══════════════════════════════════════════════════════════════════════════
 # STEP 5 – MIXING TIME COMPARISON (micro / macro)
 # ══════════════════════════════════════════════════════════════════════════
-st.header("5 · Mixing Time vs Reaction Time")
+_box5 = ui.begin_step("5", "Mixing Time vs Reaction Time")
 with st.expander("ℹ️ Background — Damköhler number interpretation", expanded=False):
     st.markdown(
         "The **Damköhler number** (Da) compares the characteristic mixing time "
@@ -1379,12 +1384,12 @@ if is_semi_batch:
         "and feed location (meso- and macromixing)."
     )
 
-st.divider()
+ui.end_step(_box5)
 
 # ══════════════════════════════════════════════════════════════════════════
 # STEP 6 – SUMMARY & RECOMMENDATIONS
 # ══════════════════════════════════════════════════════════════════════════
-st.header("6 · Summary & Recommendations")
+_box6 = ui.begin_step("6", "Summary & Recommendations")
 
 if _using_approximate:
     st.warning(
@@ -1835,9 +1840,10 @@ if not _steps:
 steps_df = pd.DataFrame(_steps)
 st.dataframe(steps_df, width='stretch', hide_index=True)
 
+ui.end_step(_box6)
+
 # ── Generate PDF Report ──────────────────────────────────────────────────
-st.divider()
-st.header("7 · Export Report")
+_box7 = ui.begin_step("7", "Export Report")
 
 if st.button("📥 Export PDF Report", type="primary", key="p10_export_pdf"):
     with st.spinner("Generating PDF…"):
@@ -1892,3 +1898,5 @@ if "_p10_pdf_bytes" in st.session_state:
         mime="application/pdf",
     )
     st.success("PDF ready for download.")
+
+ui.end_step(_box7)

@@ -31,6 +31,7 @@ import numpy as np
 
 from utils.validation import TEMP_MIN_C, TEMP_MAX_C, PRESSURE_MAX_ATM
 import pathlib
+from utils import ui
 
 from utils.solvent_properties import (
     SOLVENT_DB, get_properties, is_known_solvent,
@@ -176,10 +177,11 @@ st.markdown(
 )
 
 st.title("🅱️ Bourne Protocol")
-st.markdown("""
-Determines **which mixing scale** (macro / meso / micro) controls your
-process outcome. Applicable to any semi-batch stirred-tank process with
-competitive rate processes.
+
+st.caption("""
+    Determines if a process is sensitive to mixing and **which mixing scale** (macro / meso / micro) controls the process outcome.\n
+- Test 1 is general.\n
+- Test 2 and 3 are applicable to any semi-batch stirred-tank process.
 """)
 
 _BP_IMG = pathlib.Path(__file__).resolve().parent.parent / "images" / "general" / "bourne_protocol_decision_tree.png"
@@ -451,6 +453,9 @@ st.divider()
 # ════════════════════════════════════════════════════════════════════════════
 # Save / Load all protocol inputs (CSV) so a run can be reproduced later.
 # ════════════════════════════════════════════════════════════════════════════
+
+_box_ie = ui.begin_step("", "Import / Export Protocol Inputs and Results")
+
 with st.expander("💾 Save / Load Protocol Inputs", expanded=False):
     st.caption(
         "Export every input you've entered (system definition plus all three "
@@ -520,7 +525,9 @@ with st.expander("📤 Export results for the Sensitivity Protocol", expanded=Fa
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 00 – Project & Step Metadata
 # ══════════════════════════════════════════════════════════════════════════
-st.header("Project Information")
+ui.end_step(_box_ie)
+
+_box_proj = ui.begin_step("", "Project Information")
 
 _UNIT_OPS = [
     "Reaction",
@@ -559,12 +566,12 @@ with col_uop:
         ) or "Other"
     st.session_state["_sel_bp_uop"] = unit_operation
 
-st.divider()
+ui.end_step(_box_proj)
 
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 0 – Reactor & Fluid Selection
 # ══════════════════════════════════════════════════════════════════════════
-st.header("Define Your System")
+_box_sys = ui.begin_step("", "Define Your System")
 
 # Persist selections across page navigations
 _reactor_list = reactors["reactor_name"].tolist() if not reactors.empty else []
@@ -691,7 +698,7 @@ V_L = st.number_input(
 )
 V_m3 = V_L / 1000.0  # m³
 
-st.divider()
+ui.end_step(_box_sys)
 
 # ── Start gate ────────────────────────────────────────────────────────────
 # The protocol walkthrough (Test 1 onward) and all results stay hidden until
@@ -709,7 +716,7 @@ if not st.session_state.get("_bp_started", False):
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 1 – TEST 1: Impeller Speed  (Does mixing matter?)
 # ══════════════════════════════════════════════════════════════════════════
-st.header("Test 1 - Vary Impeller Speed")
+_box_t1 = ui.begin_step("", "Test 1 - Vary Impeller Speed")
 st.markdown("""
 - Vary **impeller speed only** (hold feed rate & location constant)
 - Target ≈**100× P/m range** across 3 agitation speeds
@@ -1551,12 +1558,12 @@ _step_export_ui(1, {
 if not t1_sensitive:
     st.stop()
 
-st.divider()
+ui.end_step(_box_t1)
 
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 2 – TEST 2: Feed Rate / Time  (Meso vs Micro)
 # ══════════════════════════════════════════════════════════════════════════
-st.header("Test 2 - Feed Rate / Feed Time")
+_box_t2 = ui.begin_step("", "Test 2 - Feed Rate / Feed Time")
 st.markdown("""
 - Vary **feed time only** (hold speed & location at centerpoint)         
 - Test a **9× flow-rate range** (spanning 1/3× to 3× the centerpoint)
@@ -1770,7 +1777,7 @@ _step_export_ui(2, {
     "t2_responses": st.session_state.get(_bk("t2_assessed")),
 })
 
-st.divider()
+ui.end_step(_box_t2)
 
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 3 – TEST 3: Feed Location  (Meso vs Macro)
@@ -1787,7 +1794,7 @@ eps_avg = power_per_volume(impeller_power(Np_val, rho, N_center_calc, D_imp), V_
 eps_avg_kg = eps_avg / rho  # W/kg for micromixing calculations
 
 if t2_sensitive:
-    st.header("Test 3 - Feed Location")
+    _box_t3 = ui.begin_step("", "Test 3 - Feed Location")
     st.markdown("""
     - Vary **feed location only** (hold speed & feed time at centerpoint).
     - Move from surface to impeller zone.
@@ -1962,12 +1969,14 @@ if t2_sensitive:
         "t3_responses": st.session_state.get(_bk("t3_assessed")),
     })
 
+    ui.end_step(_box_t3)
+
 st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 4 – Confirmatory Experiments
 # ══════════════════════════════════════════════════════════════════════════
-st.header("4 · Confirmatory Experiments (Optional)")
+_box_conf = ui.begin_step("4", "Confirmatory Experiments (Optional)")
 st.caption("Optional tests to validate the conclusion from Tests 2–3.")
 
 tab_fp, tab_visc = st.tabs(["A – Number of Feed Points", "B – Viscosity Change"])
@@ -2020,12 +2029,12 @@ with tab_visc:
     elif visc_result.startswith("No"):
         st.info("✅ Suggests micromixing is **not** the controlling mechanism.")
 
-st.divider()
+ui.end_step(_box_conf)
 
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 5 – Overall Conclusion & Decision Tree
 # ══════════════════════════════════════════════════════════════════════════
-st.header("5 · Protocol Summary & Conclusion")
+_box_sum = ui.begin_step("5", "Protocol Summary & Conclusion")
 
 # Build the conclusion from all recorded answers
 conclusions = []
@@ -2127,12 +2136,12 @@ if scaleup_notes:
     for note in scaleup_notes:
         st.markdown(f"- {note}")
 
-st.divider()
+ui.end_step(_box_sum)
 
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 6 – Save Protocol Record
 # ══════════════════════════════════════════════════════════════════════════
-st.header("6 · Save Protocol Record")
+_box_save = ui.begin_step("6", "Save Protocol Record")
 
 if st.button("📌 Save Bourne Protocol result to Recorded Results", key=_bk("save")):
     result_row = {
@@ -2160,12 +2169,12 @@ if st.button("📌 Save Bourne Protocol result to Recorded Results", key=_bk("sa
     st.session_state.recorded_results.to_csv(results_csv, index=False)
     st.success("Protocol result saved to **Recorded Results**.")
 
-st.divider()
+ui.end_step(_box_save)
 
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 7 – Export Report
 # ══════════════════════════════════════════════════════════════════════════
-st.header("7 · Export Report")
+_box_export = ui.begin_step("7", "Export Report")
 
 if st.button("📥 Export PDF Report", type="primary", key=_bk("export_pdf")):
     with st.spinner("Generating PDF…"):
@@ -2233,7 +2242,7 @@ if "_p6_pdf_bytes" in st.session_state:
     )
     st.success("PDF ready for download.")
 
-st.divider()
+ui.end_step(_box_export)
 
 # ══════════════════════════════════════════════════════════════════════════
 # SECTION 7 – References

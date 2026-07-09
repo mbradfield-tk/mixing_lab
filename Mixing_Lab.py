@@ -8,6 +8,7 @@ import streamlit as st
 from streamlit.errors import StreamlitValueAssignmentNotAllowedError
 from utils.sidebar import render_sidebar
 from utils.usage import log_access
+from utils.ui import reset_container_stack
 
 st.set_page_config(
     page_title="Mixing Lab",
@@ -15,6 +16,11 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Clear any Streamlit container left half-open by a previous run that ended via
+# st.stop() inside a step card (see utils.ui.reset_container_stack). Must run
+# before any st.* rendering below so the leak can't corrupt this run's tree.
+reset_container_stack()
 
 # Record one access event per browser session (client IP, timestamp, etc.).
 log_access()

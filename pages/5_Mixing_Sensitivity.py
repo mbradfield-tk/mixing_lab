@@ -74,6 +74,7 @@ from utils.corr_widgets import (
     MODE_COLORS,
 )
 from utils.data_helpers import load_db, safe_float as _safe, all_fluid_names, safe_iloc, find_reactor_image, reactor_search_name, find_reactor_model_3d, render_reactor_3d
+from utils import ui
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
@@ -97,8 +98,10 @@ if "_p5_step" not in st.session_state:
 def _reset_p5():
     st.session_state["_p5_step"] = 0
 
+st.caption("Assess the mixing sensitivity of a process in a specific vessel.")
+
 # ── Step 1: Select system ────────────────────────────────────────────────
-st.header("1 · Define System")
+_box1 = ui.begin_step("1", "Define System")
 
 # Persist selections across page navigations
 _reactor_list = reactors["reactor_name"].tolist()
@@ -459,6 +462,8 @@ elif include_SL and particles.empty:
     st.warning("Particle database is empty. Add particles on the Particle Database page.")
 
 # ── Gate 1: confirm system selection ─────────────────────────────────────
+ui.end_step(_box1)
+
 if st.session_state["_p5_step"] < 1:
     st.info("Confirm the system selection above to continue.")
     if st.button("✅ Confirm system selection", key="p5_gate1", type="primary"):
@@ -467,8 +472,7 @@ if st.session_state["_p5_step"] < 1:
     st.stop()
 
 # ── Step 2: Allow overrides ──────────────────────────────────────────────
-st.divider()
-st.header("2 · Review / Override Parameters")
+_box2 = ui.begin_step("2", "Review / Override Parameters")
 
 with st.expander("Reactor geometry & agitation", expanded=False):
     oc1, oc2, oc3, oc4 = st.columns(4)
@@ -531,6 +535,8 @@ with st.expander("Reaction parameters", expanded=False):
                                     help="0 = auto-compute from k and C₀")
 
 # ── Gate 2: confirm parameter overrides ──────────────────────────────────
+ui.end_step(_box2)
+
 if st.session_state["_p5_step"] < 2:
     st.info("Confirm parameters above to continue.")
     if st.button("✅ Confirm parameters", key="p5_gate2", type="primary"):
@@ -539,8 +545,7 @@ if st.session_state["_p5_step"] < 2:
     st.stop()
 
 # ── Step 3: Correlations ─────────────────────────────────────────────
-st.divider()
-st.header("3 · Correlation Source Selection")
+_box3 = ui.begin_step("3", "Correlation Source Selection")
 
 if has_any_alt_correlations(reactor_name):
     with st.expander("Correlation source selection", expanded=False):
@@ -568,6 +573,8 @@ ms_T_process = fluid_T_C
 include_heat = rxn_delta_H != 0
 
 # ── Gate 3: confirm correlations & compute ───────────────────────────────
+ui.end_step(_box3)
+
 if st.session_state["_p5_step"] < 3:
     st.info("Confirm correlation sources to compute results.")
     if st.button("🔬 Confirm & Compute", key="p5_gate3", type="primary"):
@@ -576,8 +583,7 @@ if st.session_state["_p5_step"] < 3:
     st.stop()
 
 # ── Step 4: Compute ──────────────────────────────────────────────────────
-st.divider()
-st.header("4 · Centerpoint Results")
+_box4 = ui.begin_step("4", "Centerpoint Results")
 
 # Compute reaction time if needed
 t_rxn = t_rxn_input
@@ -950,8 +956,9 @@ if include_SL and not particles.empty:
         st.success(f"🟢 **{susp}**")
 
 # ── Operating Envelope Charts ────────────────────────────────────────────
-st.divider()
-st.header("5 · Operating Envelopes")
+ui.end_step(_box4)
+
+_box5 = ui.begin_step("5", "Operating Envelopes")
 st.caption("Sweep across full RPM and volume range.")
 
 # Read RPM range
@@ -1472,7 +1479,9 @@ st.session_state["_ms_report_snapshot"] = {
 }
 
 # ── Step 4: Save to recorded results ────────────────────────────────────
-st.header("6 · Save Result")
+ui.end_step(_box5)
+
+_box6 = ui.begin_step("6", "Save Result")
 
 if st.button("📌 Save this result to Recorded Results"):
     result_row = {
@@ -1550,8 +1559,9 @@ if st.button("📌 Save this result to Recorded Results"):
     st.success("Saved — see **Recorded Results** page.")
 
 # ── Generate PDF Report ──────────────────────────────────────────────────
-st.divider()
-st.header("7 · Export Report")
+ui.end_step(_box6)
+
+_box7 = ui.begin_step("7", "Export Report")
 
 if st.button("📥 Export PDF Report", type="primary", key="p5_export_pdf"):
     with st.spinner("Generating PDF…"):
@@ -1573,3 +1583,5 @@ if "_p5_pdf_bytes" in st.session_state:
         mime="application/pdf",
     )
     st.success("PDF ready for download.")
+
+ui.end_step(_box7)

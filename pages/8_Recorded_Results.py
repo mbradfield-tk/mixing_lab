@@ -30,6 +30,8 @@ if df.empty:
     st.info("No results recorded yet.  Use the **Mixing Sensitivity Workflow** page to compute and save results.")
     st.stop()
 
+st.caption("All results recorded from vessel assessments.")
+
 # ── Filters ──────────────────────────────────────────────────────────────
 st.header("Filter Results")
 col1, col2, col3 = st.columns(3)

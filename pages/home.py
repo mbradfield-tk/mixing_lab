@@ -3,15 +3,13 @@
 import streamlit as st
 
 st.title("Mixing Lab")
-st.badge("v1.0.0", color="blue")
-st.badge("Updated: July 9, 2026", color="green")
-st.subheader("Hydrodynamics & Mixing-Sensitivity Assessment Tool")
+st.caption("Hydrodynamics & Mixing-Sensitivity Assessment Tool")
+st.caption("""
+Welcome to **Mixing Lab** - an interactive tool for assessing reaction mixing sensitivities,
+            hydrodynamics and scale dependencies.""")
 
 st.markdown("""
-Welcome to **Mixing Lab** – an interactive tool for assessing reaction mixing sensitivities,
-            hydrodynamics and scale dependencies.
-
-### What you can do
+### App Contents:
 
 | Group | Page | Purpose |
 |-------|------|---------|
@@ -43,3 +41,7 @@ Welcome to **Mixing Lab** – an interactive tool for assessing reaction mixing 
 6. **Generate a report** – Most analysis pages (*Vessel Assessment*, *Vessel Comparison*, the sensitivity protocols, and *Bourne Protocol*) can export a branded PDF with metrics, sensitivity assessment, and envelope charts directly from the page.
 7. **Record & export** – Save results from any analysis page to *Recorded Results* for documentation and comparison.
 """)
+
+st.divider()
+st.badge("v1.0.0", color="blue")
+st.badge("Updated: July 9, 2026", color="green")

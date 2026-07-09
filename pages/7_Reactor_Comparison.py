@@ -37,6 +37,7 @@ from utils.rom_registry import (
 )
 from utils.corr_widgets import render_correlation_matrix
 from utils.data_helpers import safe_iloc, load_db, safe_float, find_reactor_image, reactor_search_name, build_search_names, find_reactor_model_3d, render_reactor_3d
+from utils import ui
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 
@@ -80,8 +81,10 @@ if "_p7_step" not in st.session_state:
 def _reset_p7():
     st.session_state["_p7_step"] = 0
 
+st.caption("Compare the mixing performance of different vessels.")
+
 # ── Selection ────────────────────────────────────────────────────────────
-st.header("1 · Select Reactors & Conditions")
+_box1 = ui.begin_step("1", "Select Reactors & Conditions")
 
 _all_reactor_names = reactors["reactor_name"].tolist()
 _preferred_defaults = ["Nalas – EasyMax 102", "Cambrex – R-802", "Nalas – 20-L"]
@@ -244,10 +247,10 @@ for _row_start in range(0, len(selected_names), _MAX_PER_ROW):
                     else:
                         st.caption("No image available")
 
-st.divider()
-
 # ── Per-reactor correlation mode selector ─────────────────────────────────
-st.header("2 · Correlation Source Selection")
+ui.end_step(_box1)
+
+_box2 = ui.begin_step("2", "Correlation Source Selection")
 corr_modes: dict[str, dict[str, str] | str] = {}  # reactor_name → per-param dict
 _any_has_alt = any(has_any_alt_correlations(n) for n in selected_names)
 if _any_has_alt:
@@ -272,6 +275,8 @@ else:
             "No ROM or Experimental correlations are registered for these reactors.")
 
 # ── Gate 2: confirm correlations ────────────────────────────────────────
+ui.end_step(_box2)
+
 if st.session_state["_p7_step"] < 2:
     st.info("👆 Review the correlation sources above, then confirm to continue.")
     if st.button("✅ Confirm correlations", key="p7_gate2", type="primary"):
@@ -279,10 +284,8 @@ if st.session_state["_p7_step"] < 2:
         st.rerun()
     st.stop()
 
-st.divider()
-
 # ── Additional options ─────────────────────────────────────────────────────────
-st.header("3 · Additional Options")
+_box3 = ui.begin_step("3", "Additional Options")
 
 # ── Particle options ──────────────────────────────────────────────────────────
 include_particles = st.checkbox("Include solid particles", value=False, key="cmp_include_particles")
@@ -375,7 +378,9 @@ cmp_T_process = fluid_T_C
 include_heat = rxn_delta_H != 0
 
 # ── Scale-up matching options ────────────────────────────────────────────
-st.header("4 · Scale-Up Matching")
+ui.end_step(_box3)
+
+_box4 = ui.begin_step("4", "Scale-Up Matching")
 include_scaling = st.checkbox(
     "Perform scale-up matching", value=False, key="cmp_include_scaling",
     help="Find equivalent operating conditions across reactors to match a chosen parameter.",
@@ -497,6 +502,8 @@ if include_scaling:
                 )
 
 # ── Gate 3: confirm options & compute ───────────────────────────────────
+ui.end_step(_box4)
+
 if st.session_state["_p7_step"] < 3:
     st.info("👆 Review the additional options above, then confirm to compute results.")
     if st.button("🔬 Confirm & Compute", key="p7_gate3", type="primary"):
@@ -869,10 +876,8 @@ else:
     st.session_state["_p7_env_sig"] = _p7_env_sig
     st.session_state["_p7_curve_data"] = curve_data
 
-st.divider()
-
 # ── Summary Table ─────────────────────────────────────────────────────────
-st.header("5 · Operating Envelope Summary")
+_box5 = ui.begin_step("5", "Operating Envelope Summary")
 st.caption("Each row shows the range across the 4 corner conditions (min/max RPM × min/max volume).")
 
 table_rows = []
@@ -907,10 +912,10 @@ with st.expander("Full 4-corner detail table", expanded=False):
     fmt = {c: "{:.3g}" for c in detail_cols if c not in ("Reactor", "Corner")}
     st.dataframe(env_df[detail_cols].style.format(fmt), width='content', hide_index=True)
 
-st.divider()
+ui.end_step(_box5)
 
 # ── Charts: operating envelopes ──────────────────────────────────────────
-st.header("6 · Operating Envelope Charts")
+_box6 = ui.begin_step("6", "Operating Envelope Charts")
 
 with st.expander("Show / hide envelope charts", expanded=True):
 
@@ -1146,10 +1151,11 @@ spanning its RPM range (as % of max) on the x-axis.
 Overlapping shaded regions indicate where two reactors can achieve similar parameter values.
 """)
 
+ui.end_step(_box6)
+
 # ── Heat Balance Summary ─────────────────────────────────────────────────
 if include_heat and rxn_delta_H != 0:
-    st.divider()
-    st.header("6b · Heat Balance Summary")
+    _box6b = ui.begin_step("6b", "Heat Balance Summary")
     st.caption(
         f"Reaction: **{rxn_name if not reactions.empty else 'N/A'}** | "
         f"ΔH = {rxn_delta_H:.0f} kJ/mol | "
@@ -1271,6 +1277,8 @@ if include_heat and rxn_delta_H != 0:
         )
         st.plotly_chart(fig_heat, width='content')
 
+    ui.end_step(_box6b)
+
 # ── Scale-up matching computation ────────────────────────────────────────
 scaling_results: list[dict] = []
 scaling_all_params: list[dict] = []  # full hydro at matched condition
@@ -1278,8 +1286,7 @@ scaling_all_params: list[dict] = []  # full hydro at matched condition
 if include_scaling and scale_basis_reactor and scale_param and len(selected_names) >= 2:
     from scipy.optimize import brentq
 
-    st.divider()
-    st.header("7 · Scale-Up Matching Results")
+    _box7 = ui.begin_step("7", "Scale-Up Matching Results")
     st.markdown("⬅️ [Back to scaling basis (Section 4)](#4-scale-up-matching)")
 
     # 1. Compute target value from basis reactor
@@ -1589,10 +1596,12 @@ if include_scaling and scale_basis_reactor and scale_param and len(selected_name
             st.dataframe(_pct_df[_pct_cols].style.format(_fmt_pct),
                          width='content', hide_index=True)
 
+    ui.end_step(_box7)
+
 st.divider()
 
 # ── Scale-up summary ─────────────────────────────────────────────────────
-st.header("8 · Scale-Up Impact Summary")
+_box8 = ui.begin_step("8", "Scale-Up Impact Summary")
 st.caption("Ratios use midpoint (average of 4 corners) for each parameter, relative to the first selected reactor.")
 
 if len(agg_df) >= 2:
@@ -1635,10 +1644,10 @@ if len(agg_df) >= 2:
 else:
     st.info("Select at least two reactors to see scale-up ratios.")
 
-st.divider()
+ui.end_step(_box8)
 
 # ── Save results per reactor ─────────────────────────────────────────────
-st.header("9 · Save Results")
+_box9 = ui.begin_step("9", "Save Results")
 st.caption(
     "Save the max-RPM / max-V corner result for each selected reactor to "
     "Recorded Results (same format as the Mixing Sensitivity page)."
@@ -1707,8 +1716,9 @@ if st.button("📌 Save results for all selected reactors", key="cmp_save_all"):
     st.success(f"Saved {_saved_count} reactor result(s) to **Recorded Results**.")
 
 # ── Generate PDF Report ──────────────────────────────────────────────────
-st.divider()
-st.header("10 · Export Report")
+ui.end_step(_box9)
+
+_box10 = ui.begin_step("10", "Export Report")
 
 if st.button("📥 Export PDF Report", type="primary", key="p7_export_pdf"):
     with st.spinner("Generating PDF…"):
@@ -1758,3 +1768,5 @@ if "_p7_pdf_bytes" in st.session_state:
         mime="application/pdf",
     )
     st.success("PDF ready for download.")
+
+ui.end_step(_box10)

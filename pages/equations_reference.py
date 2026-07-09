@@ -14,7 +14,7 @@ from utils.rom_registry import (
 
 st.title("📐 Equations Reference")
 
-st.markdown("""
+st.caption("""
 Reference correlations and equations used throughout Mixing Lab.
 Expand each section below for details.
 

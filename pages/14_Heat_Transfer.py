@@ -114,6 +114,8 @@ _all_fluid_names = all_fluid_names(custom_fluids)
 
 st.title("🔥 Heat Transfer Modeling")
 
+st.caption("Tool to model heat transfer in a chosen vessel under various operating conditions.")
+
 if reactors.empty:
     st.warning("Please populate the Vessel database first.")
     st.stop()
