@@ -67,7 +67,7 @@ _solvent_names = sorted(SOLVENT_DB.keys())
 _custom_names = custom_fluids["fluid_name"].tolist() if not custom_fluids.empty else []
 _all_fluid_names = _solvent_names + _custom_names
 
-st.title("📈 Vessel Comparison")
+st.title("⚖️ Vessel Comparison")
 
 if reactors.empty:
     st.warning("Populate the Reactor Database first.")

@@ -993,7 +993,7 @@ if not is_seeded and _micro_meso_sensitive:
 
 if _heat_sensitive:
     _steps.append(
-        "Run **heat balance** on target vessel (🌀 Vessel Assessment or 📈 Vessel Comparison)."
+        "Run **heat balance** on target vessel (🌀 Vessel Assessment or ⚖️ Vessel Comparison)."
     )
 
 if not _steps:

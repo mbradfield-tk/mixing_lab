@@ -23,7 +23,7 @@ Welcome to **Mixing Lab** – an interactive tool for assessing reaction mixing 
 | | **💎 Crystallization Sensitivity Protocol** | Decision tree for crystallization mixing sensitivity (nucleation, growth, anti-solvent) |
 | | **🌀 Vessel Assessment** | Reactor–reaction–fluid analysis: compute hydrodynamics, Damköhler numbers, heat balance, solids suspension & operating envelopes |
 | | **🅱️ Bourne Protocol** | Step-by-step Bourne/Sarafinas mixing-sensitivity screening – vary speed, feed rate, and feed location to identify the controlling mixing scale |
-| | **📈 Vessel Comparison** | Side-by-side comparison of hydrodynamics and operating envelopes across multiple reactors |
+| | **⚖️ Vessel Comparison** | Side-by-side comparison of hydrodynamics and operating envelopes across multiple reactors |
 | **Tools** | **🔄 Unit Converter** | Quick conversion between common engineering units |
 | | **🔥 Heat Transfer** | Estimate heating/cooling times, compute overall U from first principles, visualize batch temperature profiles, and compare heat-transfer media |
 | **Results** | **📋 Recorded Results** | Save, review, filter, and export results for specific reactor/reaction combinations |

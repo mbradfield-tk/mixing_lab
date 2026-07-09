@@ -784,7 +784,7 @@ if _multiphase:
 
     _mass_transfer_notes.extend([
         "It is **highly recommended** to characterise each vessel's "
-        "hydrodynamics (see 🌀 Vessel Assessment and 📈 Vessel Comparison pages) "
+        "hydrodynamics (see 🌀 Vessel Assessment and ⚖️ Vessel Comparison pages) "
         "to understand how each transport mechanism varies with scale.",
         "If the intrinsic reaction is fast relative to any mass-transfer step, "
         "the observed rate will be transport-limited and mixing-sensitive.",
@@ -870,7 +870,7 @@ if _multiphase:
         "Mass-transfer limitations are system-dependent — the remaining steps still "
         "assess micro/meso/macromixing and heat transfer, but keep in mind that "
         "interphase transport may dominate. Compute Da_GL and/or Da_LS for your "
-        "specific reactor on the **🌀 Vessel Assessment** or **📈 Vessel Comparison** "
+        "specific reactor on the **🌀 Vessel Assessment** or **⚖️ Vessel Comparison** "
         "pages."
     )
 else:
@@ -966,7 +966,7 @@ if competing == "Yes":
             "**integral scale of turbulence** at the feed point, which in practice "
             "is approximated by the feed-pipe diameter $d_{feed}$, so this app "
             r"evaluates $\tau_S = 1.2\,(d_{feed}^2/\varepsilon)^{1/3}$ on the "
-            "🌀 Vessel Assessment and 📈 Vessel Comparison pages.\n"
+            "🌀 Vessel Assessment and ⚖️ Vessel Comparison pages.\n"
             "  - *Turbulent dispersion* of the plume by the mean flow: "
             r"$\tau_D = Q_{feed}/(\bar{u}\,D_t)$, "
             "where $Q_{feed}$ is the feed flow rate, $\\bar{u}$ the local mean "
@@ -1238,7 +1238,7 @@ if _has_enthalpy:
     if _heat_flag:
         _recommendation(
             "Run the heat balance on the **🌀 Vessel Assessment** or "
-            "**📈 Vessel Comparison** page to quantify Q_gen vs Q_cool for your "
+            "**⚖️ Vessel Comparison** page to quantify Q_gen vs Q_cool for your "
             "specific reactor(s)."
         )
     if _flagged:
@@ -1364,7 +1364,7 @@ if t_rxn < 30:
     _recommendation(
         "Compute Damköhler numbers for your specific reactor(s) on the "
         "**🌀 Vessel Assessment** page or compare multiple vessels on the "
-        "**📈 Vessel Comparison** page."
+        "**⚖️ Vessel Comparison** page."
     )
 
 if is_semi_batch:
@@ -1806,14 +1806,14 @@ if _multiphase:
     _steps.append({
         "Area": "Mass transfer",
         "Action": "Assess interphase mass-transfer coefficients (kLa, k_SL) on "
-                  "the 🌀 Vessel Assessment or 📈 Vessel Comparison pages.",
+                  "the 🌀 Vessel Assessment or ⚖️ Vessel Comparison pages.",
     })
 
 if _has_enthalpy and _heat_sensitive:
     _steps.append({
         "Area": "Heat transfer",
         "Action": "Run a full heat balance (🔥 button on 🌀 Vessel Assessment or "
-                  "📈 Vessel Comparison) to evaluate Q_gen vs Q_cool.",
+                  "⚖️ Vessel Comparison) to evaluate Q_gen vs Q_cool.",
     })
 
 if is_semi_batch:
