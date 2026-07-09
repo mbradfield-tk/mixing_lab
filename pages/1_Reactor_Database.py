@@ -14,6 +14,7 @@ from utils.data_helpers import (
     build_search_names, reactor_search_name,
     find_reactor_model_3d, render_reactor_3d,
 )
+from utils.validation import TEMP_MIN_C, TEMP_MAX_C, name_exists
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 REACTOR_CSV = DATA_DIR / "reactors.csv"
@@ -1298,8 +1299,8 @@ with tab_add:
         st.text_input("Reactor ID (auto-generated)", value=_auto_id, disabled=True, key="_display_reactor_id")
         id1, id2, id3, id4 = st.columns(4)
         with id1:
-            owner = st.text_input("Owner / site *", key="add_owner")
-            tag = st.text_input("Tag", key="add_tag")
+            owner = st.text_input("Owner / site *", max_chars=80, key="add_owner")
+            tag = st.text_input("Tag", max_chars=80, key="add_tag")
         with id2:
             location = st.text_input("Location", key="add_location")
             rtype = st.selectbox("Type", _TYPE_OPTIONS, key="add_type")
@@ -1345,7 +1346,7 @@ with tab_add:
             V_L_max = st.number_input("Volume max (L)", min_value=0.0, value=1.0, format="%.2f", key="add_V_max")
         or6, or7, _ = st.columns(3)
         with or6:
-            T_max_C = st.number_input("Temperature max (°C)", min_value=0.0, value=0.0, format="%.1f", key="add_T_max")
+            T_max_C = st.number_input("Temperature max (°C)", min_value=TEMP_MIN_C, max_value=TEMP_MAX_C, value=0.0, format="%.1f", key="add_T_max")
         with or7:
             P_max_atm = st.number_input("Pressure max (atm)", min_value=0.0, value=0.0, format="%.2f", key="add_P_max")
 
@@ -1441,7 +1442,25 @@ with tab_add:
         # Auto-generate reactor_name from owner + tag
         name = f"{owner} \u2013 {tag}".strip(" \u2013 ") if (owner or tag) else ""
 
+        # ── Cross-field validation ──────────────────────────────────────
+        _reactor_errors = []
         if submitted and owner and manufacturer_model:
+            if D_tank > 0 and D_imp > 0 and D_imp >= D_tank:
+                _reactor_errors.append(
+                    f"Impeller diameter ({D_imp:g} m) must be smaller than tank ID ({D_tank:g} m).")
+            if H > 0 and imp1_clearance > 0 and imp1_clearance >= H:
+                _reactor_errors.append(
+                    f"Impeller 1 clearance ({imp1_clearance:g} m) must be less than height tan-tan ({H:g} m).")
+            if N_rpm_min > 0 and N_rpm_max > 0 and N_rpm_min > N_rpm_max:
+                _reactor_errors.append(
+                    f"RPM min ({N_rpm_min:g}) must be ≤ RPM max ({N_rpm_max:g}).")
+            if V_L_min > 0 and V_L_max > 0 and V_L_min > V_L_max:
+                _reactor_errors.append(
+                    f"Volume min ({V_L_min:g} L) must be ≤ volume max ({V_L_max:g} L).")
+            if name_exists(st.session_state.reactor_db.get("reactor_name", []), name):
+                _reactor_errors.append(f"A reactor named “{name}” already exists.")
+
+        if submitted and owner and manufacturer_model and not _reactor_errors:
             new_row = pd.DataFrame([{
                 "reactor_id": _auto_id,
                 "reactor_name": name,
@@ -1515,6 +1534,9 @@ with tab_add:
                 [st.session_state.reactor_db, new_row], ignore_index=True)
             _save_reactors(st.session_state.reactor_db)
             st.success(f"Added **{name}** to the reactor database.")
+        elif submitted and _reactor_errors:
+            for _e in _reactor_errors:
+                st.error(_e)
         elif submitted:
             st.warning("Please enter an owner and a manufacturer model.")
 

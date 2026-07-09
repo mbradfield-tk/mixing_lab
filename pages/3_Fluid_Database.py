@@ -13,6 +13,10 @@ from utils.solvent_properties import (
     is_known_solvent, vapor_pressure_mmHg, boiling_point_at_pressure,
     solvent_miscibility,
 )
+from utils.validation import (
+    TEMP_MIN_C, TEMP_MAX_C, name_exists,
+    RHO_MAX, MU_MAX, CP_MAX, K_THERMAL_MAX, SIGMA_MAX, D_MOL_MAX,
+)
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 FLUID_CSV = DATA_DIR / "fluids.csv"
@@ -112,7 +116,7 @@ with tab_solvent:
     with s_col3:
         T_C = st.number_input(
             f"Temperature (°C)  [liquid range: {sd.mp_C:.1f} – {bp_at_P:.1f}]",
-            min_value=-200.0, max_value=400.0,
+            min_value=TEMP_MIN_C, max_value=TEMP_MAX_C,
             value=25.0, step=1.0, format="%.1f",
             key="solv_temp",
         )
@@ -223,14 +227,14 @@ with tab_custom:
     with st.form("add_fluid"):
         c1, c2 = st.columns(2)
         with c1:
-            name = st.text_input("Fluid name *")
-            rho = st.number_input("Density ρ (kg/m³)", min_value=1.0, value=997.0, format="%.1f")
-            mu = st.number_input("Dynamic viscosity μ (Pa·s)", min_value=1e-6, value=0.00089, format="%.6f")
+            name = st.text_input("Fluid name *", max_chars=80)
+            rho = st.number_input("Density ρ (kg/m³)", min_value=1.0, max_value=RHO_MAX, value=997.0, format="%.1f")
+            mu = st.number_input("Dynamic viscosity μ (Pa·s)", min_value=1e-6, max_value=MU_MAX, value=0.00089, format="%.6f")
         with c2:
-            D_mol = st.number_input("Molecular diffusivity D (m²/s)", min_value=1e-12, value=2.3e-9, format="%.2e")
-            sigma = st.number_input("Surface tension σ (N/m)", min_value=0.0, value=0.072, format="%.4f")
-            Cp = st.number_input("Specific heat Cp (J/kg·K)", min_value=1.0, value=4182.0, format="%.1f")
-            k_val = st.number_input("Thermal conductivity k (W/m·K)", min_value=0.001, value=0.607, format="%.4f")
+            D_mol = st.number_input("Molecular diffusivity D (m²/s)", min_value=1e-12, max_value=D_MOL_MAX, value=2.3e-9, format="%.2e")
+            sigma = st.number_input("Surface tension σ (N/m)", min_value=0.0, max_value=SIGMA_MAX, value=0.072, format="%.4f")
+            Cp = st.number_input("Specific heat Cp (J/kg·K)", min_value=1.0, max_value=CP_MAX, value=4182.0, format="%.1f")
+            k_val = st.number_input("Thermal conductivity k (W/m·K)", min_value=0.001, max_value=K_THERMAL_MAX, value=0.607, format="%.4f")
         st.markdown("**Hansen Solubility Parameters** _(optional — for miscibility screening)_")
         h1, h2, h3 = st.columns(3)
         hsp_d = h1.number_input("δd dispersion (MPa½)", min_value=0.0, value=0.0, format="%.1f",
@@ -244,6 +248,8 @@ with tab_custom:
         if submitted and name:
             if is_known_solvent(name):
                 st.warning(f"**{name}** is already in the solvent library — no need to add it.")
+            elif name_exists(st.session_state.fluid_db.get("fluid_name", []), name):
+                st.error(f"A custom fluid named “{name}” already exists.")
             else:
                 new = pd.DataFrame([{
                     "fluid_name": name,
@@ -318,6 +324,7 @@ with tab_blend:
 
     blend_T = st.number_input(
         "Temperature for solvent properties (°C)", value=25.0, step=1.0,
+        min_value=TEMP_MIN_C, max_value=TEMP_MAX_C,
         format="%.1f", key="blend_T",
         help="Built-in solvent properties are evaluated at this temperature.  "
              "Custom fluids use their fixed values regardless.",

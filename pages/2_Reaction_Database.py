@@ -6,6 +6,8 @@ import pandas as pd
 import pathlib
 from html import escape as _html_escape
 
+from utils.validation import TEMP_MIN_C, TEMP_MAX_C, name_exists
+
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 REACTION_CSV = DATA_DIR / "reactions.csv"
 
@@ -115,7 +117,7 @@ with tab_add:
     with st.form("add_rxn"):
         c1, c2, c3 = st.columns(3)
         with c1:
-            name = st.text_input("Reaction name *",
+            name = st.text_input("Reaction name *", max_chars=80,
                                  value=f"{_tpl('reaction_name', '')} (copy)" if tpl else "")
             rxn_type = st.text_input("Type (e.g. Cross-coupling)",
                                      value=str(_tpl("type", "")))
@@ -135,6 +137,7 @@ with tab_add:
                                     value=float(_tpl("t_rxn_s", 0.0)), format="%.4g",
                                     help="Leave 0 to auto-compute from k and C₀")
             T = st.number_input("Temperature (°C)",
+                                min_value=TEMP_MIN_C, max_value=TEMP_MAX_C,
                                 value=float(_tpl("T_C", 25.0)))
             solvent = st.text_input("Solvent",
                                     value=str(_tpl("solvent", "THF")))
@@ -169,10 +172,18 @@ with tab_add:
                 "delta_H_kJ_mol": delta_H, "notes": notes,
                 "reaction_scheme": rxn_scheme,
             }])
-            st.session_state.reaction_db = pd.concat(
-                [st.session_state.reaction_db, new], ignore_index=True)
-            _save_reactions(st.session_state.reaction_db)
-            st.success(f"Added **{name}**.")
+            if name_exists(st.session_state.reaction_db.get("reaction_name", []), name):
+                st.error(f"A reaction named “{name}” already exists.")
+            elif k_val <= 0 and t_rxn <= 0:
+                st.error(
+                    "Enter a rate constant k (> 0) or a characteristic reaction time "
+                    "(> 0) — both are 0, so there is nothing to compute."
+                )
+            else:
+                st.session_state.reaction_db = pd.concat(
+                    [st.session_state.reaction_db, new], ignore_index=True)
+                _save_reactions(st.session_state.reaction_db)
+                st.success(f"Added **{name}**.")
         elif submitted:
             st.warning("Enter a reaction name.")
 

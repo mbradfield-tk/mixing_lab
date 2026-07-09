@@ -11,6 +11,10 @@ import numpy as np
 import pathlib
 import plotly.graph_objects as go
 
+from utils.validation import (
+    TEMP_MIN_C, TEMP_MAX_C, PRESSURE_MAX_ATM,
+    RHO_MAX, MU_MAX, CP_MAX, K_THERMAL_MAX,
+)
 from utils.solvent_properties import (
     SOLVENT_DB, get_properties, list_solvents, is_known_solvent,
 )
@@ -161,14 +165,16 @@ col_T, col_P = st.columns(2)
 with col_T:
     if _is_solvent:
         fluid_T_C = st.number_input("Reference temperature (°C)", value=25.0,
-                                     step=1.0, format="%.1f", key="ht_T")
+                                     step=1.0, min_value=TEMP_MIN_C, max_value=TEMP_MAX_C,
+                                     format="%.1f", key="ht_T")
     else:
         st.caption("Custom fluid — fixed properties")
         fluid_T_C = 25.0
 with col_P:
     if _is_solvent:
         fluid_P_atm = st.number_input("Pressure (atm)", value=1.0,
-                                       min_value=0.01, step=0.1, format="%.2f",
+                                       min_value=0.01, max_value=PRESSURE_MAX_ATM,
+                                       step=0.1, format="%.2f",
                                        key="ht_P")
     else:
         fluid_P_atm = 1.0
@@ -259,10 +265,10 @@ with st.expander("Fluid properties (process side)", expanded=False):
     if _is_solvent:
         st.caption(f"Computed from **{fluid_name}** at **{fluid_T_C:.1f} °C**")
     fc1, fc2, fc3, fc4 = st.columns(4)
-    rho = fc1.number_input("ρ (kg/m³)", value=_rho, format="%.1f", key="ht_rho")
-    mu = fc2.number_input("μ (Pa·s)", value=_mu, format="%.6f", key="ht_mu")
-    Cp = fc3.number_input("Cp (J/(kg·K))", value=_Cp, format="%.1f", key="ht_Cp")
-    k_fluid = fc4.number_input("k (W/(m·K))", value=_k_fluid, format="%.4f", key="ht_kf")
+    rho = fc1.number_input("ρ (kg/m³)", value=_rho, min_value=0.1, max_value=RHO_MAX, format="%.1f", key="ht_rho")
+    mu = fc2.number_input("μ (Pa·s)", value=_mu, min_value=1e-6, max_value=MU_MAX, format="%.6f", key="ht_mu")
+    Cp = fc3.number_input("Cp (J/(kg·K))", value=_Cp, min_value=1.0, max_value=CP_MAX, format="%.1f", key="ht_Cp")
+    k_fluid = fc4.number_input("k (W/(m·K))", value=_k_fluid, min_value=0.001, max_value=K_THERMAL_MAX, format="%.4f", key="ht_kf")
 
 # =====================================================================
 # 3 · VESSEL WALL & LINING
@@ -333,12 +339,16 @@ with st.expander("HTM properties", expanded=False):
 
     hm1, hm2, hm3, hm4 = st.columns(4)
     htm_rho = hm1.number_input("ρ_htm (kg/m³)", value=htm["rho_kg_m3"],
+                                min_value=0.1, max_value=RHO_MAX,
                                 format="%.1f", key="ht_htm_rho")
     htm_Cp = hm2.number_input("Cp_htm (J/(kg·K))", value=htm["Cp_J_kgK"],
+                               min_value=1.0, max_value=CP_MAX,
                                format="%.1f", key="ht_htm_Cp")
     htm_mu = hm3.number_input("μ_htm (Pa·s)", value=htm["mu_Pa_s"],
+                               min_value=1e-6, max_value=MU_MAX,
                                format="%.6f", key="ht_htm_mu")
     htm_k = hm4.number_input("k_htm (W/(m·K))", value=htm["k_W_mK"],
+                              min_value=0.001, max_value=K_THERMAL_MAX,
                               format="%.4f", key="ht_htm_k")
 
 _has_override = "h_jacket_override" in htm
@@ -416,10 +426,13 @@ st.header("7 · Operating Conditions")
 
 oc1, oc2, oc3 = st.columns(3)
 T_start = oc1.number_input("T_start (°C)", value=25.0, step=1.0,
+                            min_value=TEMP_MIN_C, max_value=TEMP_MAX_C,
                             format="%.1f", key="ht_Tstart")
 T_target = oc2.number_input("T_target (°C)", value=5.0, step=1.0,
+                             min_value=TEMP_MIN_C, max_value=TEMP_MAX_C,
                              format="%.1f", key="ht_Ttarget")
 T_jacket_in = oc3.number_input("T_jacket inlet (°C)", value=-10.0, step=1.0,
+                                min_value=TEMP_MIN_C, max_value=TEMP_MAX_C,
                                 format="%.1f", key="ht_Tj")
 
 oc4, oc5 = st.columns(2)

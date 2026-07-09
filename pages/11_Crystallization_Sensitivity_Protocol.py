@@ -34,6 +34,7 @@ import pandas as pd
 import numpy as np
 import pathlib
 
+from utils.validation import TEMP_MIN_C, TEMP_MAX_C
 from utils.calculations import (
     reynolds_number,
     impeller_power,
@@ -280,10 +281,10 @@ else:
     col_m3, col_m4, col_m5 = st.columns(3)
     with col_m3:
         c_sat_ref = st.number_input(
-            "c_sat at T_ref (g/L)", value=100.0, format="%.1f", key=_key("m_csat")
+            "c_sat at T_ref (g/L)", value=100.0, min_value=0.0, format="%.1f", key=_key("m_csat")
         )
     with col_m4:
-        T_ref = st.number_input("T_ref (°C)", value=25.0, format="%.1f", key=_key("m_Tref"))
+        T_ref = st.number_input("T_ref (°C)", value=25.0, min_value=TEMP_MIN_C, max_value=TEMP_MAX_C, format="%.1f", key=_key("m_Tref"))
     with col_m5:
         dc_dT = st.number_input(
             "dc/dT (g/L/K)", value=2.0, format="%.2f", key=_key("m_dcdT"),
@@ -293,17 +294,17 @@ else:
     col_m6, col_m7, col_m8 = st.columns(3)
     with col_m6:
         sigma_target = st.number_input(
-            "Target σ (dimensionless)", value=0.3, format="%.3f", key=_key("m_sigma"),
+            "Target σ (dimensionless)", value=0.3, min_value=0.0, format="%.3f", key=_key("m_sigma"),
             help="σ = (c − c_sat) / c_sat",
         )
     with col_m7:
         MSZW = st.number_input(
-            "Metastable zone width (°C)", value=10.0, format="%.1f",
+            "Metastable zone width (°C)", value=10.0, min_value=0.0, format="%.1f",
             key=_key("m_mszw"),
         )
     with col_m8:
         t_ind = st.number_input(
-            "Induction time t_ind (s)", value=30.0, format="%.4g",
+            "Induction time t_ind (s)", value=30.0, min_value=0.0, format="%.4g",
             key=_key("m_tind"),
             help="Time to first detected nucleation at target σ.",
         )
@@ -312,11 +313,11 @@ else:
     with col_m9:
         k_g = st.number_input(
             "Growth rate constant k_g (m/s)",
-            value=1.0e-8, format="%.2e", key=_key("m_kg"),
+            value=1.0e-8, min_value=0.0, format="%.2e", key=_key("m_kg"),
         )
     with col_m10:
         g_order = st.number_input(
-            "Growth order g", value=1.5, format="%.1f", key=_key("m_g"),
+            "Growth order g", value=1.5, min_value=0.0, format="%.1f", key=_key("m_g"),
         )
     with col_m11:
         delta_H_cryst = st.number_input(
@@ -335,7 +336,7 @@ else:
         is_seeded = _seed_choice == "Yes"
     with col_m14:
         target_L = st.number_input(
-            "Target crystal size (µm)", value=100.0, format="%.0f", key=_key("m_L"),
+            "Target crystal size (µm)", value=100.0, min_value=0.1, format="%.0f", key=_key("m_L"),
         )
 
 # ── validate minimum data ─────────────────────────────────────────────

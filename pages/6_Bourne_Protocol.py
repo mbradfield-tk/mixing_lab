@@ -28,6 +28,8 @@ import streamlit as st
 import json
 import pandas as pd
 import numpy as np
+
+from utils.validation import TEMP_MIN_C, TEMP_MAX_C, PRESSURE_MAX_ATM
 import pathlib
 
 from utils.solvent_properties import (
@@ -614,12 +616,12 @@ with col_r:
         N_rps_max = N_rpm_max / 60.0 if N_rpm_max is not None else None
     else:
         st.info("No reactors in database — enter manually below.")
-        D_tank = st.number_input("Tank diameter (m)", value=0.10, format="%.4f")
-        H = st.number_input("Liquid height (m)", value=0.13, format="%.4f")
-        D_imp = st.number_input("Impeller diameter (m)", value=0.05, format="%.4f")
-        N_center = st.number_input("Centerpoint speed (rev/s)", value=5.0, format="%.2f")
-        Np_val = st.number_input("Power number Np", value=1.27, format="%.2f")
-        Nq_val = st.number_input("Pumping number Nq", value=0.79, format="%.2f")
+        D_tank = st.number_input("Tank diameter (m)", value=0.10, min_value=0.001, format="%.4f")
+        H = st.number_input("Liquid height (m)", value=0.13, min_value=0.001, format="%.4f")
+        D_imp = st.number_input("Impeller diameter (m)", value=0.05, min_value=0.001, format="%.4f")
+        N_center = st.number_input("Centerpoint speed (rev/s)", value=5.0, min_value=0.01, format="%.2f")
+        Np_val = st.number_input("Power number Np", value=1.27, min_value=0.01, format="%.2f")
+        Nq_val = st.number_input("Pumping number Nq", value=0.79, min_value=0.0, format="%.2f")
         V_L_avg = np.pi / 4 * D_tank**2 * H * 1000
         V_L_min = V_L_avg
         V_L_max = V_L_avg
@@ -638,8 +640,10 @@ with col_f:
     _is_solvent = is_known_solvent(fluid_name)
     if _is_solvent:
         _bp_T_C = col_t.number_input("Temperature (°C)", value=25.0, step=1.0,
+                                    min_value=TEMP_MIN_C, max_value=TEMP_MAX_C,
                                     format="%.1f", key=_bk("fluid_T"))
         _bp_P_atm = col_p.number_input("Pressure (atm)", value=1.0, min_value=0.01,
+                                     max_value=PRESSURE_MAX_ATM,
                                      step=0.1, format="%.2f", key=_bk("fluid_P"))
         _fprops = get_properties(fluid_name, _bp_T_C, _bp_P_atm)
         rho = _fprops["rho_kg_m3"]

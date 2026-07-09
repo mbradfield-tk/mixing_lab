@@ -8,6 +8,8 @@ relevant to mixing and reactor engineering.
 import streamlit as st
 import pandas as pd
 
+from utils.validation import TEMP_MIN_C, TEMP_MAX_C, PRESSURE_MAX_ATM
+
 st.title("🔄 Unit Converter")
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -348,9 +350,11 @@ if entry == "gas_flow":
     gc1, gc2 = st.columns(2)
     with gc1:
         gas_T_C = st.number_input("Gas temperature (°C)", value=25.0, step=1.0,
+                                   min_value=TEMP_MIN_C, max_value=TEMP_MAX_C,
                                    format="%.1f", key="uc_gas_T")
     with gc2:
         gas_P_atm = st.number_input("Gas pressure (atm)", value=1.0, min_value=0.001,
+                                     max_value=PRESSURE_MAX_ATM,
                                      step=0.1, format="%.3f", key="uc_gas_P")
     with st.expander("Reference conditions", expanded=False):
         st.dataframe(

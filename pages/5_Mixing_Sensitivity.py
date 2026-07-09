@@ -12,6 +12,7 @@ import numpy as np
 import pathlib
 import plotly.graph_objects as go
 
+from utils.validation import TEMP_MIN_C, TEMP_MAX_C, PRESSURE_MAX_ATM
 from utils.solvent_properties import (
     SOLVENT_DB, get_properties, list_solvents, is_known_solvent,
     hansen_distance, miscibility_assessment, get_hsp, solvent_miscibility,
@@ -136,18 +137,19 @@ with col_f:
 with col_T:
     _is_solvent = is_known_solvent(fluid_name)
     if _is_solvent:
-        fluid_T_C = st.number_input("Temperature (°C)", value=25.0, step=1.0, format="%.1f", key="ms_fluid_T")
+        fluid_T_C = st.number_input("Temperature (°C)", value=25.0, step=1.0, min_value=TEMP_MIN_C, max_value=TEMP_MAX_C, format="%.1f", key="ms_fluid_T")
     else:
         st.caption("Custom fluid — fixed properties (no T dependence)")
         fluid_T_C = 25.0
 with col_P:
     if _is_solvent:
-        fluid_P_atm = st.number_input("Pressure (atm)", value=1.0, min_value=0.01, step=0.1, format="%.2f", key="ms_fluid_P")
+        fluid_P_atm = st.number_input("Pressure (atm)", value=1.0, min_value=0.01, max_value=PRESSURE_MAX_ATM, step=0.1, format="%.2f", key="ms_fluid_P")
     else:
         fluid_P_atm = 1.0
 with col_cw:
     ms_T_coolant = st.number_input(
         "Coolant temperature (°C)", value=15.0, step=1.0,
+        min_value=TEMP_MIN_C, max_value=TEMP_MAX_C,
         format="%.1f", key="ms_T_cool",
         help="Jacket coolant inlet temperature",
     )

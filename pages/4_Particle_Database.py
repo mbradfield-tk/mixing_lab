@@ -5,6 +5,8 @@ import streamlit as st
 import pandas as pd
 import pathlib
 
+from utils.validation import check_ordered, name_exists
+
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 PARTICLE_CSV = DATA_DIR / "particles.csv"
 
@@ -88,7 +90,7 @@ with tab_add:
     with st.form("add_particle"):
         c1, c2 = st.columns(2)
         with c1:
-            name = st.text_input("Particle name *")
+            name = st.text_input("Particle name *", max_chars=80)
             rho_p = st.number_input("Particle density ρ_p (kg/m³)", min_value=1.0,
                                      value=1400.0, format="%.0f")
             d10 = st.number_input("D10 (µm)", min_value=0.1, value=20.0, format="%.1f")
@@ -101,7 +103,12 @@ with tab_add:
                                    help="1.0 = sphere, lower = more irregular")
             notes = st.text_input("Notes", "")
         submitted = st.form_submit_button("Add particle")
-        if submitted and name:
+        _psd_err = check_ordered([("D10", d10), ("D50", d50), ("D90", d90)])
+        if submitted and name and _psd_err:
+            st.error(_psd_err)
+        elif submitted and name_exists(st.session_state.particle_db["particle_name"], name):
+            st.error(f"A particle named “{name}” already exists.")
+        elif submitted and name:
             new = pd.DataFrame([{
                 "particle_name": name,
                 "rho_p_kg_m3": rho_p,

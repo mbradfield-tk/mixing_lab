@@ -13,6 +13,7 @@ import numpy as np
 import pathlib
 import plotly.graph_objects as go
 
+from utils.validation import TEMP_MIN_C, TEMP_MAX_C, PRESSURE_MAX_ATM
 from utils.solvent_properties import (
     SOLVENT_DB, get_properties, is_known_solvent, resolve_solvent_name,
 )
@@ -143,8 +144,10 @@ with col1:
     _is_solvent = is_known_solvent(fluid_name)
     if _is_solvent:
         fluid_T_C = col3.number_input("Temperature (°C)", value=25.0, step=1.0,
+                                     min_value=TEMP_MIN_C, max_value=TEMP_MAX_C,
                                      format="%.1f", key="cmp_fluid_T")
         fluid_P_atm = col4.number_input("Pressure (atm)", value=1.0, min_value=0.01,
+                                       max_value=PRESSURE_MAX_ATM,
                                        step=0.1, format="%.2f", key="cmp_fluid_P")
         _fprops = get_properties(fluid_name, fluid_T_C, fluid_P_atm)
         rho = _fprops["rho_kg_m3"]
@@ -206,6 +209,7 @@ with col6:
 with col7:
     cmp_T_coolant = st.number_input(
         "Coolant temperature (°C)", value=15.0, step=1.0,
+        min_value=TEMP_MIN_C, max_value=TEMP_MAX_C,
         format="%.1f", key="cmp_T_cool",
         help="Jacket coolant inlet temperature",
     )
